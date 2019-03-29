@@ -168,7 +168,7 @@ typedef U64                  B64;
 # define true                1U
 # define false               0U
 
-typedef char                 Byte;
+typedef unsigned char        Byte;
 typedef char                 Char;
 
 /* ========================
@@ -741,7 +741,7 @@ typedef struct Sbuf_Header {
     Byte buf[];
 } Sbuf_Header;
 
-# define sbuf_GetHeader(sb) ((Sbuf_Header*)((Byte*)(sb) - offsetof(Sbuf_Header, buf)))
+# define sbuf_GetHeader(sb) ((Sbuf_Header*)(void*)((Byte*)(sb) - offsetof(Sbuf_Header, buf)))
 # define sbufLen(sb)        (((sb) != NULL) ? sbuf_GetHeader(sb)->len : 0U)
 # define sbufCap(sb)        (((sb) != NULL) ? sbuf_GetHeader(sb)->cap : 0U)
 # define sbuf_Fit(sb, n)    (sbufLen(sb) + (n) < sbufCap(sb) ?          \

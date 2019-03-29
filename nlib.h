@@ -209,9 +209,9 @@ typedef char                 Char;
 /* Microsoft Visual C */
 # if defined(COMPILER_MSVC)
 
-#  if _MSC_VER != 1916 // Visual Studio 2017 Version 15.7
-#   error MSVC version not supported
-#  endif // MSVC Versions
+// #  if _MSC_VER != 1916 // Visual Studio 2017 Version 15.7
+// #   error MSVC version not supported
+// #  endif // MSVC Versions
 
 #  define _Alignof __alignof
 #  define alignof _Alignof

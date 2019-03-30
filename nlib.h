@@ -1275,12 +1275,72 @@ Char* internBuffer (Hashmap *hm, Char *start, Char *end)
     }
 }
 
+// Checks if a non-zero terminated string has been interned already
+//     start points to the first character.
+//     end points to the character after the last character.
+header_function
+Char* internCheckBuffer (Hashmap *hm, Char *start, Char *end)
+{
+    Size len = (Size)(Dptr)(end - start); // Length of string
+
+    // Hash String
+    // Jenkins One-at-a-time Hash
+    // https://en.wikipedia.org/wiki/Jenkins_hash_function#one-at-a-time
+    U32 hash = 0;
+    {
+        // TODO(naman): Move this to txtHash once a string type is implemented.
+        for (Size i = 0; i < len; i++) {
+            hash += (U32)(start[i]);
+            hash += (hash << 10);
+            hash ^= (hash >> 6);
+        }
+
+        hash += (hash << 3);
+        hash ^= (hash >> 11);
+        hash += (hash << 15);
+    }
+
+# if defined(COMPILER_CLANG)
+#  pragma clang diagnostic push
+#   pragma clang diagnostic ignored "-Wbad-function-cast"
+# endif
+
+    void *value = (void*)hmLookupI(hm, hash);
+
+# if defined(COMPILER_CLANG)
+#  pragma clang diagnostic pop
+# endif
+
+    // TODO(naman): Use strncmp here and remove the allocation
+    Char *str = memCRTAlloc(len + 1);
+    memcpy(str, start, len);
+    str[len] = '\0';
+
+    if ((value != 0) && (strcmp(value, str) == 0)) {
+        // If the string has already been interned, return the pointer to that internment;
+        memCRTDealloc(str);
+        return value;
+    } else {
+        return NULL;
+    }
+}
+
 // Intern a zero-terminated C-string
 header_function
 Char* internString (Hashmap *hm, Char *str)
 {
     Size len = strlen(str);
     Char *result = internBuffer(hm, str, str + len);
+
+    return result;
+}
+
+// Check if a zero-terminated C-string has already been interned
+header_function
+Char* internCheckString (Hashmap *hm, Char *str)
+{
+    Size len = strlen(str);
+    Char *result = internCheckBuffer(hm, str, str + len);
 
     return result;
 }

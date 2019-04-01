@@ -744,17 +744,25 @@ typedef struct Sbuf_Header {
 } Sbuf_Header;
 
 # define sbuf_GetHeader(sb) ((Sbuf_Header*)(void*)((Byte*)(sb) - offsetof(Sbuf_Header, buf)))
-# define sbufLen(sb)        (((sb) != NULL) ? sbuf_GetHeader(sb)->len : 0U)
-# define sbufCap(sb)        (((sb) != NULL) ? sbuf_GetHeader(sb)->cap : 0U)
-# define sbuf_Fit(sb, n)    (sbufLen(sb) + (n) < sbufCap(sb) ?          \
-                             0 :                                        \
-                             ((sb) = sbuf_Grow(sb, sbufLen(sb) + (n), sizeof(*(sb)))))
-# define sbufAdd(sb, ...)   (sbuf_Fit(sb, 1),                   \
-                             (sb)[sbufLen(sb)] = (__VA_ARGS__), \
-                             sbuf_GetHeader(sb)->len++)
-# define sbufDelete(sb)     (((sb) != NULL) ?                           \
-                             (memCRTDealloc(sbuf_GetHeader(sb)), (sb) = NULL) : \
-                             0)
+
+# define sbufLen(sb)          ((sb) ? sbuf_GetHeader(sb)->len : 0U)
+# define sbufCap(sb)          ((sb) ? sbuf_GetHeader(sb)->cap : 0U)
+# define sbufEnd(sb)          ((sb) + sbufLen(sb))
+# define sbufSizeof(sb)       ((sb) ? (sbufLen(sb) * sizeof(*(sb))) : 0)
+
+# define sbufFit(sb, new_cap) ((new_cap) <= sbufCap(sb) ?               \
+                               0 :                                      \
+                               ((sb) = sbuf_Grow((sb), (new_cap), sizeof(*(sb)))))
+# define sbufAdd(sb, ...)     (sbufFit((sb), 1 + sbufLen(sb)),          \
+                               (sb)[sbufLen(sb)] = (__VA_ARGS__),       \
+                               sbuf_GetHeader(sb)->len++)
+# define sbufDelete(sb)       ((sb) ?                                   \
+                               (memCRTDealloc(sbuf_GetHeader(sb)), (sb) = NULL) : \
+                               0)
+# define sbufClear(sb)        ((sb) ?                                  \
+                               (memset((sb), 0, sbufSizeof(sb)),       \
+                                sbuf_GetHeader(sb)->len = 0) :         \
+                               0)
 
 # if defined(COMPILER_CLANG)
 #  pragma clang diagnostic push
@@ -764,13 +772,10 @@ typedef struct Sbuf_Header {
 header_function
 void* sbuf_Grow (void *buf, Size new_cap, Size elem_size)
 {
-    claim(sbufCap(buf) <= ((SIZE_MAX - 1)/2));
-
     Size old_len = sbufLen(buf);
 
-    Size new_cap_max = max(1 + 2 * sbufCap(buf), new_cap);
+    Size new_cap_max = max(2 * sbufCap(buf), max(new_cap, 8));
     claim(new_cap <= new_cap_max);
-    claim(new_cap_max <= (SIZE_MAX - offsetof(Sbuf_Header, buf))/elem_size);
 
     Size new_size = (new_cap_max * elem_size) + sizeof(Sbuf_Header);
 

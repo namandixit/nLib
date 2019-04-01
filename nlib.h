@@ -843,10 +843,10 @@ void sbufUnitTest (void)
 typedef struct Hashmap {
     struct HashmapKeys {
         U64  hash;
-        Sptr key;
+        Uptr key;
     } *keys;
 
-    Sptr *values;
+    Uptr *values;
 
     MemAllocator *allocator;
 
@@ -869,11 +869,11 @@ typedef enum HM_Flag {
  *                    Size min_slots);
  * void    hmDelete  (Hashmap hm);
  * void*   hmInsert  (Hashmap *hm, void *key, void *value);
- * Sptr    hmInsertI (Hashmap *hm, Sptr key, Sptr value);
+ * Uptr    hmInsertI (Hashmap *hm, Uptr key, Uptr value);
  * void*   hmLookup  (Hashmap *hm, void *key);
- * Sptr    hmLookupI (Hashmap *hm, Sptr key);
+ * Uptr    hmLookupI (Hashmap *hm, Uptr key);
  * void*   hmRemove  (Hashmap *hm, void *key);
- * Sptr    hmRemoveI (Hashmap *hm, Sptr key);
+ * Uptr    hmRemoveI (Hashmap *hm, Uptr key);
  */
 
 
@@ -911,9 +911,9 @@ void hm_UpdateConstants (Hashmap *hm)
 }
 
 header_function
-U64 hm_Hash (Hashmap *hm, Sptr key)
+U64 hm_Hash (Hashmap *hm, Uptr key)
 {
-    U64 result =  ((hm->a * *((Uptr*)&key)) + hm->b) & (0xFFFFFFFFFFFFFFFFULL >> (64 - hm->m));
+    U64 result =  ((hm->a * key) + hm->b) & (0xFFFFFFFFFFFFFFFFULL >> (64 - hm->m));
     return result;
 }
 
@@ -950,7 +950,7 @@ void hmDelete (Hashmap hm)
 }
 
 header_function
-Size hm_LinearProbeSearch (Hashmap *hm, Sptr key)
+Size hm_LinearProbeSearch (Hashmap *hm, Uptr key)
 {
     if (key == 0) return 0;
 
@@ -984,10 +984,10 @@ Size hm_LinearProbeSearch (Hashmap *hm, Sptr key)
 }
 
 header_function
-Sptr hm_LinearProbeInsertion (Hashmap *hm,
-                              U64 hash, Sptr key, Sptr value)
+Uptr hm_LinearProbeInsertion (Hashmap *hm,
+                              U64 hash, Uptr key, Uptr value)
 {
-    Sptr result_value = value;
+    Uptr result_value = value;
 
     for (Size i = 0; i < hm->total_slots; ++i) {
         Size index = (hash + i) % (hm->total_slots);
@@ -1019,14 +1019,14 @@ Sptr hm_LinearProbeInsertion (Hashmap *hm,
 }
 
 header_function
-Sptr hmInsertI (Hashmap *hm, Sptr key, Sptr value)
+Uptr hmInsertI (Hashmap *hm, Uptr key, Uptr value)
 {
     if ((key == 0) || (value == 0)) return 0;
 
     if ((2U * (hm->filled_slots)) > (hm->total_slots)) {
         Size total_slots = hm->total_slots;
         struct HashmapKeys *keys   = hm->keys;
-        Sptr *values = hm->values;
+        Uptr *values = hm->values;
 
         hm_UpdateConstants(hm);
 
@@ -1042,8 +1042,8 @@ Sptr hmInsertI (Hashmap *hm, Sptr key, Sptr value)
 
         for (Size i = 1; i < total_slots; ++i) {
             U64 hash_i_old = keys[i].hash;
-            Sptr key_i     = keys[i].key;
-            Sptr value_i   = values[i];
+            Uptr key_i     = keys[i].key;
+            Uptr value_i   = values[i];
             HM_Flag flag_i   = hm_GetFlag(hash_i_old);
             U64 hash_i_new = hm_Hash(hm, key_i);
             if (flag_i == HM_Flag_FILLED) {
@@ -1057,7 +1057,7 @@ Sptr hmInsertI (Hashmap *hm, Sptr key, Sptr value)
 
     U64 hash = hm_Hash(hm, key);
 
-    Sptr result_value = hm_LinearProbeInsertion(hm, hash, key, value);
+    Uptr result_value = hm_LinearProbeInsertion(hm, hash, key, value);
     hm->filled_slots += 1;
 
     return result_value;
@@ -1071,15 +1071,15 @@ Sptr hmInsertI (Hashmap *hm, Sptr key, Sptr value)
 header_function
 void* hmInsert (Hashmap *hm, void *key, void *value)
 {
-    void *result_value = (void*)hmInsertI(hm, (Sptr)key, (Sptr)value);
+    void *result_value = (void*)hmInsertI(hm, (Uptr)key, (Uptr)value);
     return result_value;
 }
 
 header_function
-Sptr hmLookupI (Hashmap *hm, Sptr key)
+Uptr hmLookupI (Hashmap *hm, Uptr key)
 {
     Size location = hm_LinearProbeSearch(hm, key);
-    Sptr result_value = hm->values[location];
+    Uptr result_value = hm->values[location];
 
     return result_value;
 }
@@ -1087,16 +1087,16 @@ Sptr hmLookupI (Hashmap *hm, Sptr key)
 header_function
 void* hmLookup (Hashmap *hm, void *key)
 {
-    void *result_value = (void*)hmLookupI(hm, (Sptr)key);
+    void *result_value = (void*)hmLookupI(hm, (Uptr)key);
     return result_value;
 }
 
 header_function
-Sptr hmRemoveI (Hashmap *hm, Sptr key)
+Uptr hmRemoveI (Hashmap *hm, Uptr key)
 {
     Size location = hm_LinearProbeSearch(hm, key);
 
-    Sptr result_value = 0;
+    Uptr result_value = 0;
     if (location != 0) {
         U64 hash = hm->keys[location].hash;
         hm->keys[location].hash = hm_SetFlag(hash, HM_Flag_VACATED);
@@ -1110,7 +1110,7 @@ Sptr hmRemoveI (Hashmap *hm, Sptr key)
 header_function
 void* hmRemove (Hashmap *hm, void *key)
 {
-    void *result_value = (void*)hmRemoveI(hm, (Sptr)key);
+    void *result_value = (void*)hmRemoveI(hm, (Uptr)key);
     return result_value;
 }
 

@@ -546,14 +546,18 @@ MEM_ALLOCATOR(memCRT)
 
             Byte *result = mem + header_size;
 
-            Byte *previous_mem = (Byte*)old_ptr - header_size;
-            struct MemCRT_Header *previous_header = (struct MemCRT_Header *)previous_mem;
-            Size previous_size = previous_header->size;
+            if (old_ptr != NULL) {
+                Byte *previous_mem = (Byte*)old_ptr - header_size;
+                struct MemCRT_Header *previous_header = (struct MemCRT_Header *)previous_mem;
+                Size previous_size = previous_header->size;
 
-            memcpy(result, old_ptr, previous_size);
-            memset(result + previous_size, 0, memory_size - previous_size);
+                memcpy(result, old_ptr, previous_size);
+                memset(result + previous_size, 0, memory_size - previous_size);
 
-            memCRTDealloc(old_ptr);
+                memCRTDealloc(old_ptr);
+            } else {
+                memset(result, 0, memory_size);
+            }
 
             return result;
         } break;

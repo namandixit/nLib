@@ -1231,125 +1231,266 @@ void hmUnitTest (void)
 
 // TODO(naman): Replace all the Char* with Txt after implementing a proper string type
 
+typedef struct {
+    Size string_index;
+    Size string_length;
+    Size child_index;
+    B32 used;
+    B32 has_child;
+} InternElem;
+
+typedef struct {
+    InternElem base_elems[256];
+
+    InternElem *more_elems;
+    Size more_elem_count;
+    Size more_elem_next_entry;
+
+    Char *strings;
+    Size strings_size;
+    Size strings_next_index;
+} InternTable;
+
+header_function
+InternTable internCreate (void)
+{
+    InternTable i = {0};
+
+    i.strings_size = 1024;
+    i.strings = memCRTAlloc(i.strings_size);
+
+    return i;
+}
+
+header_function
+Char *intern_StringInsert (InternTable *it, InternElem *elems, Size index,
+                           Char *start, Size string_len)
+{
+    elems[index].used = true;
+    elems[index].string_index = it->strings_next_index;
+    elems[index].string_length = string_len;
+
+    if (it->strings_next_index + string_len > it->strings_size) {
+        it->strings_size = string_len + (2 * it->strings_size);
+        it->strings = memCRTRealloc(it->strings, it->strings_size);
+    }
+
+    memcpy(&(it->strings[it->strings_next_index]), start, string_len);
+    it->strings[it->strings_next_index + string_len] = '\0';
+    it->strings_next_index = it->strings_next_index + string_len + 1;
+
+    Char *result = &(it->strings[elems[index].string_index]);
+    return result;
+}
+
+header_function
+U8 intern_PearsonHash (Char *string, Size len)
+{
+    // NOTE(naman): Pearson's hash for 8-bit hashing
+    // https://en.wikipedia.org/wiki/Pearson_hashing
+    persistent_value U8 hash_lookup_table[256] = {
+        // 0-255 shuffled in any (random) order suffices
+        98,    6,   85, 150,  36,  23, 112, 164, 135, 207, 169,   5,  26,  64, 165, 219, // 01
+        61,   20,   68,  89, 130,  63,  52, 102,  24, 229, 132, 245,  80, 216, 195, 115, // 02
+        90,  168,  156, 203, 177, 120,   2, 190, 188,   7, 100, 185, 174, 243, 162,  10, // 03
+        237,  18,  253, 225,   8, 208, 172, 244, 255, 126, 101,  79, 145, 235, 228, 121, // 04
+        123, 251,   67, 250, 161,   0, 107,  97, 241, 111, 181,  82, 249,  33,  69,  55, // 05
+        59,  153,   29,   9, 213, 167,  84,  93,  30,  46, 94,   75, 151, 114,  73, 222, // 06
+        197,  96,  210,  45,  16, 227, 248, 202,  51, 152, 252, 125,  81, 206, 215, 186, // 07
+        39,  158,  178, 187, 131, 136,   1,  49,  50,  17, 141,  91,  47, 129,  60,  99, // 08
+        154,  35,   86, 171, 105,  34,  38, 200, 147,  58,  77, 118, 173, 246,  76, 254, // 09
+        133, 232,  196, 144, 198, 124,  53,   4, 108,  74, 223, 234, 134, 230, 157, 139, // 10
+        189, 205,  199, 128, 176,  19, 211, 236, 127, 192, 231,  70, 233,  88, 146,  44, // 11
+        183, 201,   22,  83,  13, 214, 116, 109, 159,  32,  95, 226, 140, 220,  57,  12, // 12
+        221,  31,  209, 182, 143,  92, 149, 184, 148,  62, 113,  65,  37,  27, 106, 166, // 13
+        3,    14,  204,  72,  21,  41,  56,  66,  28, 193,  40, 217,  25,  54, 179, 117, // 14
+        238,  87,  240, 155, 180, 170, 242, 212, 191, 163,  78, 218, 137, 194, 175, 110, // 15
+        43,  119,  224,  71, 122, 142,  42, 160, 104,  48, 247, 103,  15,  11, 138, 239, // 16
+    };
+
+    U8 hash = (U8)len;
+    for (Size i = 0; i < len; i++) {
+        hash = hash_lookup_table[hash ^ string[i]];
+    }
+
+    return hash;
+}
+
 // Intern a non-zero terminated string
 //     start points to the first character.
 //     end points to the character after the last character.
 header_function
-Char* internBuffer (Hashmap *hm, Char *start, Char *end)
+Char * internStringBuffer (InternTable *it, Char *start, Char *end)
 {
     Size len = (Size)(Dptr)(end - start); // Length of string
 
-    // Hash String
-    // Jenkins One-at-a-time Hash
-    // https://en.wikipedia.org/wiki/Jenkins_hash_function#one-at-a-time
-    U32 hash = 0;
-    {
-        // TODO(naman): Move this to txtHash once a string type is implemented.
-        for (Size i = 0; i < len; i++) {
-            hash += (U32)(start[i]);
-            hash += (hash << 10);
-            hash ^= (hash >> 6);
+    U8 base_index = intern_PearsonHash(start, len);
+
+    if (it->base_elems[base_index].used) {
+        // Our string has probably been inserted already.
+        // (or atleast some string with same hash has been inserted :)
+        Char *value = &(it->strings[it->base_elems[base_index].string_index]);
+
+        if ((it->base_elems[base_index].string_length == len) &&
+            (strncmp(value, start, len) == 0)) {
+            // This is our string, return it
+            return value;
         }
 
-        hash += (hash << 3);
-        hash ^= (hash >> 11);
-        hash += (hash << 15);
-    }
+        // That wasn't our string, keep searching for it...
+        // Perhaps our string lies deeper in a rabbit hole?
+        if (it->base_elems[base_index].has_child) {
+            // More strings with same hash have been added, our string might be one of them!
+            Size i = it->base_elems[base_index].child_index;
 
-# if defined(COMPILER_CLANG)
-#  pragma clang diagnostic push
-#   pragma clang diagnostic ignored "-Wbad-function-cast"
-# endif
+            do {
+                value = &(it->strings[it->more_elems[i].string_index]);
+                if ((it->more_elems[i].string_length == len) &&
+                    (strncmp(value, start, len) == 0)) {
+                    // Found it, this is our string. Return it
+                    return value;
+                }
 
-    void *value = (void*)hmLookupI(hm, hash);
+                i = it->more_elems[i].child_index;
+            } while (it->more_elems[i].has_child);
 
-# if defined(COMPILER_CLANG)
-#  pragma clang diagnostic pop
-# endif
 
-    // TODO(naman): Use strncmp here and move the allocation in the else-branch
-    Char *str = memCRTAlloc(len + 1);
-    memcpy(str, start, len);
-    str[len] = '\0';
+            // No, it wasn't.
+            // That means our string hasn't been added yet.
+            // So, let's add it!!! (and return it)
+            if (it->more_elem_next_entry == it->more_elem_count) {
+                it->more_elem_count = 2 * it->more_elem_count;
+                it->more_elems = memCRTRealloc(it->more_elems,
+                                               sizeof(*(it->more_elems)) * it->more_elem_count);
+            }
 
-    if ((value != 0) && (strcmp(value, str) == 0)) {
-            // If the string has already been interned, return the pointer to that internment;
-        memCRTDealloc(str);
-        return value;
+            Size entry_index = it->more_elem_next_entry;
+            it->more_elem_next_entry += 1;
+
+            it->more_elems[i].has_child = true;
+            it->more_elems[i].child_index = entry_index;
+
+
+            Char *result = intern_StringInsert(it, it->more_elems, entry_index, start, len);
+            return result;
+        } else {
+            // Base didn't have a child, so we'll make it adopt our string by necessary force.
+            if (it->more_elems != NULL) {
+                // Though a rabbit hole exists, our string is not yet in it.
+                // So by gods, we are going to shove it right in.
+                if (it->more_elem_next_entry == it->more_elem_count) {
+                    it->more_elem_count = 2 * (it->more_elem_count);
+                    it->more_elems = memCRTRealloc(it->more_elems,
+                                                   sizeof(*(it->more_elems)) *
+                                                          it->more_elem_count);
+                }
+
+                Size entry_index = it->more_elem_next_entry;
+                it->more_elem_next_entry += 1;
+
+                it->base_elems[base_index].has_child = true;
+                it->base_elems[base_index].child_index = entry_index;
+
+                Char *result = intern_StringInsert(it, it->more_elems, entry_index, start, len);
+                return result;
+            } else {
+                // There is no rabbit hole to begin with, there never was! :(
+                // But we, the brave earthlings, are going to make one. Or die trying.
+                it->more_elem_count = 256;
+                it->more_elems = memCRTRealloc(it->more_elems,
+                                               sizeof(*(it->more_elems)) * it->more_elem_count);
+
+                // And now let's put in the element and return it.
+                Size entry_index = 0;
+                it->more_elem_next_entry = 1;
+
+                it->base_elems[base_index].has_child = true;
+                it->base_elems[base_index].child_index = entry_index;
+
+                Char *result = intern_StringInsert(it, it->more_elems, entry_index, start, len);
+                return result;
+            }
+        }
     } else {
-        // else, create a new internment.
-        hmInsertI(hm, hash, (Sptr)str);
-
-        return str;
+        // The string is a lie.
+        // Tyler Durden never existed.
+        // God is dead.
+        // E.g., string has not been inserted before, insert it and return a pointer to it.
+        Char *result = intern_StringInsert(it, it->base_elems, base_index, start, len);
+        return result;
     }
 }
 
-// Checks if a non-zero terminated string has been interned already
+// Intern a non-zero terminated string
 //     start points to the first character.
 //     end points to the character after the last character.
 header_function
-Char* internCheckBuffer (Hashmap *hm, Char *start, Char *end)
+Char * internCheckStringBuffer (InternTable *it, Char *start, Char *end)
 {
     Size len = (Size)(Dptr)(end - start); // Length of string
 
-    // Hash String
-    // Jenkins One-at-a-time Hash
-    // https://en.wikipedia.org/wiki/Jenkins_hash_function#one-at-a-time
-    U32 hash = 0;
-    {
-        // TODO(naman): Move this to txtHash once a string type is implemented.
-        for (Size i = 0; i < len; i++) {
-            hash += (U32)(start[i]);
-            hash += (hash << 10);
-            hash ^= (hash >> 6);
+    U8 base_index = intern_PearsonHash(start, len);
+
+    if (it->base_elems[base_index].used) {
+        // Our string has probably been inserted already.
+        // (or atleast some string with same hash has been inserted :)
+        Char *value = &(it->strings[it->base_elems[base_index].string_index]);
+
+        if ((it->base_elems[base_index].string_length == len) &&
+            (strncmp(value, start, len) == 0)) {
+            // This is our string, return it
+            return value;
         }
 
-        hash += (hash << 3);
-        hash ^= (hash >> 11);
-        hash += (hash << 15);
-    }
+        // That wasn't our string, keep searching for it...
+        // Perhaps our string lies deeper in a rabbit hole?
+        if (it->base_elems[base_index].has_child) {
+            // More strings with same hash have been added, our string might be one of them!
+            Size i = it->base_elems[base_index].child_index;
 
-# if defined(COMPILER_CLANG)
-#  pragma clang diagnostic push
-#   pragma clang diagnostic ignored "-Wbad-function-cast"
-# endif
+            do {
+                value = &(it->strings[it->more_elems[i].string_index]);
+                if ((it->more_elems[i].string_length == len) &&
+                    (strncmp(value, start, len) == 0)) {
+                    // Found it, this is our string. Return it
+                    return value;
+                }
 
-    void *value = (void*)hmLookupI(hm, hash);
+                i = it->more_elems[i].child_index;
+            } while (it->more_elems[i].has_child);
 
-# if defined(COMPILER_CLANG)
-#  pragma clang diagnostic pop
-# endif
 
-    // TODO(naman): Use strncmp here and remove the allocation
-    Char *str = memCRTAlloc(len + 1);
-    memcpy(str, start, len);
-    str[len] = '\0';
-
-    if ((value != 0) && (strcmp(value, str) == 0)) {
-        // If the string has already been interned, return the pointer to that internment;
-        memCRTDealloc(str);
-        return value;
+            // No, it wasn't.
+            // That means our string hasn't been added yet.
+            return NULL;
+        } else {
+            // Base didn't have a child, so that's that.
+            return NULL;
+        }
     } else {
+        // The string is a lie.
+        // Tyler Durden never existed.
+        // God is dead.
         return NULL;
     }
 }
 
 // Intern a zero-terminated C-string
 header_function
-Char* internString (Hashmap *hm, Char *str)
+Char* internString (InternTable *it, Char *str)
 {
     Size len = strlen(str);
-    Char *result = internBuffer(hm, str, str + len);
+    Char *result = internStringBuffer(it, str, str + len);
 
     return result;
 }
 
 // Check if a zero-terminated C-string has already been interned
 header_function
-Char* internCheckString (Hashmap *hm, Char *str)
+Char* internCheckString (InternTable *it, Char *str)
 {
     Size len = strlen(str);
-    Char *result = internCheckBuffer(hm, str, str + len);
+    Char *result = internCheckStringBuffer(it, str, str + len);
 
     return result;
 }
@@ -1360,7 +1501,7 @@ void internUnitTest (void)
     Char x[] = "Hello";
     Char y[] = "Hello";
 
-    Hashmap intern_table = hmCreate(memCRT, 8);
+    InternTable intern_table = internCreate();
 
     utTest(x != y);
 
@@ -1375,6 +1516,8 @@ void internUnitTest (void)
     Char p[] = "Hello!!";
     Char *p_interned = internString(&intern_table, p);
     utTest(x_interned != p_interned);
+
+    // TODO(naman): Write tests to see what happens if two strings with same hash are interned.
 
     return;
 }

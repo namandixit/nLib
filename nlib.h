@@ -500,6 +500,7 @@ void ut_Test (B32 cond,
 
 typedef enum MemAllocMode {
     MemAllocMode_NONE,
+    MemAllocMode_CREATE,
     MemAllocMode_ALLOC,
     MemAllocMode_REALLOC,
     MemAllocMode_DEALLOC,
@@ -509,7 +510,7 @@ typedef enum MemAllocMode {
 # define MEM_ALLOCATOR(allocator)               \
     void* allocator(MemAllocMode mode,          \
                     Size size, void* old_ptr,   \
-                    void *allocator_data)
+                    void *data)
 typedef MEM_ALLOCATOR(MemAllocator);
 
 /* =============================
@@ -527,8 +528,12 @@ struct MemCRT_Header {
 header_function
 MEM_ALLOCATOR(memCRT)
 {
-    unused_variable(allocator_data);
+    unused_variable(data);
     switch (mode) {
+        case MemAllocMode_CREATE: {
+            // NOTE(naman): Not needed for now
+        } break;
+
         case MemAllocMode_ALLOC: {
             Size memory_size = memAlignUp(size);
             Size header_size = memAlignUp(sizeof(struct MemCRT_Header));

@@ -57,6 +57,18 @@
  * Standard C Headers Includes
  */
 
+# if defined(OS_WINDOWS)
+#  if defined(COMPILER_CLANG)
+#   pragma clang diagnostic push
+#    pragma clang diagnostic ignored "-Wreserved-id-macro"
+#  endif
+// NOTE(naman): Prevents Microsoft's headers from peddeling their own weird functions.
+#  define _CRT_SECURE_NO_WARNINGS
+#  if defined(COMPILER_CLANG)
+#   pragma clang diagnostic pop
+#  endif
+# endif
+
 # if defined(COMPILER_MSVC)
 #  pragma warning(push)
 #   pragma warning(disable:4668)

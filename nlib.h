@@ -598,6 +598,101 @@ MEM_ALLOCATOR(memCRT)
 }
 
 /* =============================
+ * Arena Memory Allocator
+ */
+
+typedef struct {
+    Size len;
+    Size cap;
+    void *previous;
+    void *next;
+    Byte memory[];
+} MemArena;
+
+# define memArenaCreate(cap)       memArena(MemAllocMode_CREATE,     cap,  NULL, NULL)
+# define memArenaAlloc(data, size) memArena(MemAllocMode_ALLOC,      size, NULL, data)
+# define memArenaDeallocAll(data)  memArena(MemAllocMode_DEALLOC_ALL, 0,   NULL, data)
+
+header_function
+MEM_ALLOCATOR(memArena)
+{
+    unused_variable(old_ptr);
+
+    switch (mode) {
+        case MemAllocMode_CREATE: {
+            Size memory_size = memAlignUp(size);
+            MemArena *arena = memCRTAlloc(sizeof(*arena) + memory_size);
+
+            arena->len = 0;
+            arena->cap = memory_size;
+            arena->previous = NULL;
+            arena->next = NULL;
+
+            return arena;
+        } break;
+
+        case MemAllocMode_ALLOC: {
+            Size memory_size = memAlignUp(size);
+
+            MemArena *arena = data;
+
+            while (true) {
+                if ((arena->len + memory_size) <= (arena->cap)) {
+                    break;
+                } else if (arena->next == NULL) {
+                    Size arena_size = (arena->cap > memory_size) ? arena->cap : memory_size;
+                    MemArena *next = memCRTAlloc(sizeof(*next) + arena_size);
+
+                    arena->next = next;
+
+                    next->len = 0;
+                    next->cap = arena_size;
+                    next->previous = arena;
+                    next->next = NULL;
+
+                    arena = next;
+
+                    break;
+                } else {
+                    arena = arena->next;
+                }
+            }
+
+            // NOTE(naman): At this point, `arena` holds the arena which has enough space for
+            // the memory allocation
+            void *result = &(arena->memory[arena->len]);
+            arena->len = arena->len + memory_size;
+
+            return result;
+        } break;
+
+        case MemAllocMode_REALLOC: {
+            // NOTE(naman): Not supported
+        } break;
+
+        case MemAllocMode_DEALLOC: {
+            // NOTE(naman): Not supported
+        } break;
+
+        case MemAllocMode_DEALLOC_ALL: {
+            MemArena *arena = data;
+
+            while (arena != NULL) {
+                MemArena *child = arena->next;
+                memCRTDealloc(arena);
+                arena = child;
+            }
+        } break;
+
+        case MemAllocMode_NONE: {
+            breakpoint();
+        } break;
+    }
+
+    return NULL;
+}
+
+/* =============================
  * Tree Memory Allocator
  */
 

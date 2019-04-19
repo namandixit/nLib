@@ -754,7 +754,7 @@ MEM_ALLOCATOR(memTree)
 {
     switch (mode) {
         case MemAllocMode_ALLOC: {
-            void *parent = allocator_data;
+            void *parent = data;
 
             Size requested_size = size;
             Size allocated_size = memAlignUp(requested_size);

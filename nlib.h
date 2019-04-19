@@ -842,39 +842,43 @@ MEM_ALLOCATOR(memTree)
  */
 
 /* API ----------------------------------------
- * Size  sbufAdd (T *ptr, T elem)
- * void  sbufDelete (T *ptr)
- * Size  sbufLen (T *ptr)
- * Size  sbufCap (T *ptr)
- * void* sbufToMemTree (T *ptr, void *parent)
+ * Size  sbufAdd       (T *ptr, T elem)
+ * void  sbufDelete    (T *ptr)
+ * T*    sbufEnd       (T *ptr)
+*
+ * Size  sbufSizeof    (T *ptr)
+ * Size  sbufElemin    (T *ptr)
+ * Size  sbufMaxSizeof (T *ptr)
+ * Size  sbufMaxElemin (T *ptr)
  */
 
 typedef struct Sbuf_Header {
-    Size cap;
-    Size len;
+    Size cap; // NOTE(naman): Maximum number of elements that can be stored
+    Size len; // NOTE(naman): Count of elements actually stored
     Byte buf[];
 } Sbuf_Header;
 
 # define sbuf_GetHeader(sb) ((Sbuf_Header*)(void*)((Byte*)(sb) - offsetof(Sbuf_Header, buf)))
 
-# define sbufLen(sb)          ((sb) ? sbuf_GetHeader(sb)->len : 0U)
-# define sbufCap(sb)          ((sb) ? sbuf_GetHeader(sb)->cap : 0U)
-# define sbufEnd(sb)          ((sb) + sbufLen(sb))
-# define sbufSizeof(sb)       ((sb) ? (sbufLen(sb) * sizeof(*(sb))) : 0)
+# define sbuf_Len(sb)         ((sb) ? sbuf_GetHeader(sb)->len : 0U)
+# define sbuf_Cap(sb)         ((sb) ? sbuf_GetHeader(sb)->cap : 0U)
 
-# define sbufFit(sb, new_cap) ((new_cap) <= sbufCap(sb) ?               \
-                               0 :                                      \
-                               ((sb) = sbuf_Grow((sb), (new_cap), sizeof(*(sb)))))
-# define sbufAdd(sb, ...)     (sbufFit((sb), 1 + sbufLen(sb)),          \
-                               (sb)[sbufLen(sb)] = (__VA_ARGS__),       \
-                               sbuf_GetHeader(sb)->len++)
+# define sbufAdd(sb, ...)     ((sb) = sbuf_Grow((sb), sizeof(*(sb))),   \
+                               (sb)[sbuf_Len(sb)] = (__VA_ARGS__),      \
+                               ((sbuf_GetHeader(sb))->len)++)
 # define sbufDelete(sb)       ((sb) ?                                   \
                                (memCRTDealloc(sbuf_GetHeader(sb)), (sb) = NULL) : \
                                0)
-# define sbufClear(sb)        ((sb) ?                                  \
-                               (memset((sb), 0, sbufSizeof(sb)),       \
-                                sbuf_GetHeader(sb)->len = 0) :         \
+# define sbufClear(sb)        ((sb) ?                                   \
+                               (memset((sb), 0, sbufSizeof(sb)),        \
+                                sbuf_GetHeader(sb)->len = 0) :          \
                                0)
+
+# define sbufSizeof(sb)       (sbuf_Len(sb) * sizeof(*(sb)))
+# define sbufElemin(sb)       (sbuf_Len(sb))
+# define sbufMaxSizeof(sb)    (sbuf_Cap(sb) * sizeof(*(sb)))
+# define sbufMaxElemin(sb)    (sbuf_Cap(sb))
+# define sbufEnd(sb)          ((sb) + sbuf_Len(sb))
 
 # if defined(COMPILER_CLANG)
 #  pragma clang diagnostic push
@@ -882,45 +886,27 @@ typedef struct Sbuf_Header {
 # endif
 
 header_function
-void* sbuf_Grow (void *buf, Size new_cap, Size elem_size)
+void* sbuf_Grow (void *buf, Size elem_size)
 {
-    Size old_len = sbufLen(buf);
-
-    Size new_cap_max = max(2 * sbufCap(buf), max(new_cap, 8));
-    claim(new_cap <= new_cap_max);
-
-    Size new_size = (new_cap_max * elem_size) + sizeof(Sbuf_Header);
-
-    Sbuf_Header *new_header = NULL;
-
-    if (buf != NULL) {
-        new_header = memCRTRealloc(sbuf_GetHeader(buf), new_size);
-        new_header->len = old_len;
+    if ((sbuf_Len(buf) + 1) <= sbuf_Cap(buf)) {
+        return buf;
     } else {
-        new_header = memCRTAlloc(new_size);
-        new_header->len = 0;
+        Size new_cap = max(2 * sbuf_Cap(buf), 4);
+
+        Size new_size = (new_cap * elem_size) + sizeof(Sbuf_Header);
+
+        Sbuf_Header *new_header = NULL;
+
+        if (buf != NULL) {
+            new_header = memCRTRealloc(sbuf_GetHeader(buf), new_size);
+        } else {
+            new_header = memCRTAlloc(new_size);
+        }
+
+        new_header->cap = new_cap;
+
+        return new_header->buf;
     }
-
-    new_header->cap = new_cap_max;
-
-    return new_header->buf;
-}
-
-# define sbufToMemTree(sb, parent) sbuf_ToMemTree(sb, sizeof(*sb), parent)
-
-header_function
-void* sbuf_ToMemTree (void *sbuf, Size elem_size, void *parent)
-{
-    if (sbuf == NULL) return NULL;
-
-    struct Sbuf_Header *hdr = sbuf_GetHeader(sbuf);
-    Size total_size = elem_size * hdr->len;
-
-    void *mem = memTreeAlloc(total_size, parent);
-
-    memcpy(mem, sbuf, total_size);
-
-    return mem;
 }
 
 header_function
@@ -933,8 +919,8 @@ void sbufUnitTest (void)
 
     sbufAdd(buf, 1234);
 
-    utTest(sbufLen(buf) == 2);
-    utTest(sbufCap(buf) >= sbufLen(buf));
+    utTest(sbuf_Len(buf) == 2);
+    utTest(sbuf_Cap(buf) >= sbuf_Len(buf));
 
     utTest(buf[0] == 42);
     utTest(buf[1] == 1234);

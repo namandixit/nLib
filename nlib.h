@@ -109,6 +109,7 @@
 #   pragma clang diagnostic ignored "-Wdouble-promotion"
 #   pragma clang diagnostic ignored "-Wunused-parameter"
 #   pragma clang diagnostic ignored "-Wconditional-uninitialized"
+#   pragma clang diagnostic ignored "-Wextra-semi-stmt"
 #    include "stb/stb_sprintf.h"
 #  pragma clang diagnostic pop
 # endif

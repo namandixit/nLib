@@ -269,36 +269,45 @@ typedef union {
 
 
 /* =======================
+ * Other nlib libraries
+ */
+
+# include "unicode.h"
+
+
+/* =======================
  * OS Specific Hacks
  */
 
 # if defined(OS_WINDOWS)
 
 header_function
-void reportDebug(Char *format, ...)
+void reportDebugV(Char *format, va_list ap)
 {
     Char buffer[2048] = {0};
 
-    va_list ap;
-
-    va_start(ap, format);
     stbsp_vsnprintf(buffer, 2048, format, ap);
-    va_end(ap);
+    buffer[2047] = '\0';
 
-    OutputDebugString(buffer);
+    LPWSTR wcstr = unicodeWin32UTF16FromUTF8(buffer);
+    OutputDebugStringW(wcstr);
+    unicodeWin32UTF16Dealloc(wcstr);
 
     return;
 }
 
 header_function
-void reportDebugV(Char *format, va_list ap)
+void reportDebug(Char *format, ...)
 {
-    Char buffer[2048] = {0};
-    stbsp_vsnprintf(buffer, 2048, format, ap);
-    OutputDebugString(buffer);
+    va_list ap;
+
+    va_start(ap, format);
+    reportDebugV(format, ap);
+    va_end(ap);
 
     return;
 }
+
 
 #  if defined(BUILD_INTERNAL)
 #   define report(...)  reportDebug(__VA_ARGS__)

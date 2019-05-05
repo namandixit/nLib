@@ -754,6 +754,9 @@ header_function
 MEM_ALLOCATOR(memTree)
 {
     switch (mode) {
+        case MemAllocMode_CREATE: {
+            // NOTE(naman): Not supported
+        } break;
         case MemAllocMode_ALLOC: {
             void *parent = data;
 

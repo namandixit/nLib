@@ -20,5 +20,11 @@ Color colorNew (F32 a, F32 b, F32 c, F32 d)
     return result;
 }
 
+header_function
+U32 colorBGRX32LE(U8 r, U8 g, U8 b)
+{
+    return (((U32)r << 16U) | ((U32)g << 8U) | (U32)b);
+}
+
 #define COLOR_H_INCLUDE_GUARD
 #endif

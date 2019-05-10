@@ -886,6 +886,9 @@ typedef struct Sbuf_Header {
                                (memset((sb), 0, sbufSizeof(sb)),        \
                                 sbuf_GetHeader(sb)->len = 0) :          \
                                0)
+# define sbufResize(sb, n)    (((n) > sbufMaxElemin(sb)) ? \
+                               ((sb) = sbuf_Resize(sb, n, sizeof(*(sb)))) : \
+                               (sb) = (sb))
 
 # define sbufSizeof(sb)       (sbuf_Len(sb) * sizeof(*(sb)))
 # define sbufElemin(sb)       (sbuf_Len(sb))
@@ -920,6 +923,26 @@ void* sbuf_Grow (void *buf, Size elem_size)
 
         return new_header->buf;
     }
+}
+
+header_function
+void* sbuf_Resize (void *buf, Size elem_size, Size elem_count)
+{
+    Size new_cap = elem_count;
+
+    Size new_size = (new_cap * elem_size) + sizeof(Sbuf_Header);
+
+    Sbuf_Header *new_header = NULL;
+
+    if (buf != NULL) {
+        new_header = memCRTRealloc(sbuf_GetHeader(buf), new_size);
+    } else {
+        new_header = memCRTAlloc(new_size);
+    }
+
+    new_header->cap = new_cap;
+
+    return new_header->buf;
 }
 
 header_function

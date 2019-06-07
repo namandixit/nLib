@@ -123,6 +123,7 @@
 #  if defined(COMPILER_MSVC)
 #   pragma warning(push)
 #    pragma warning(disable:4255)
+#    pragma warning(disable:4668)
 #  endif
 
 #  include <Windows.h>

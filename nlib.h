@@ -44,7 +44,7 @@
 #  if defined(__i386__)
 #   define ARCH_X86
 #  elif defined(__x86_64__)
-#   define ARCH_x64
+#   define ARCH_X64
 #  endif
 # endif
 
@@ -52,22 +52,38 @@
 #  error Architecture not supported
 # endif
 
+# if defined(COMPILER_MSVC)
+#  if !defined(__cplusplus) // TODO(naman): See if this is actually works and is the best way.
+#   define LANGUAGE_C99  // TODO(naman): Update when Microsoft gets off its ass.
+#  else
+#   error Language not supported
+#  endif
+# endif
+
+# if defined(COMPILER_CLANG)
+#  if (__STDC_VERSION__ == 199409)
+#   define LANGUAGE_C89
+#  elif (__STDC_VERSION__ == 199901)
+#   define LANGUAGE_C99
+#  elif (__STDC_VERSION__ == 201112) || (__STDC_VERSION__ == 201710)
+#   define LANGUAGE_C11
+#  else
+#   error Language not supported
+#  endif
+# endif
+
+
 
 /* ===========================
  * Standard C Headers Includes
  */
 
-# if defined(OS_WINDOWS)
-#  if defined(COMPILER_CLANG)
-#   pragma clang diagnostic push
-#    pragma clang diagnostic ignored "-Wreserved-id-macro"
-#  endif
-// NOTE(naman): Prevents Microsoft's headers from peddeling their own weird functions.
-#  define _CRT_SECURE_NO_WARNINGS
-#  if defined(COMPILER_CLANG)
-#   pragma clang diagnostic pop
-#  endif
-# endif
+/* NOTE(naman): Manually define NLIB_EXCLUDE_CRT if you want to not include CRT.
+   (done to maintain backwards compatibility). If you do prevent CRT from inclusion, do
+   the following from the code:
+
+   1. Run memCustomCreate()
+*/
 
 # if defined(COMPILER_MSVC)
 #  pragma warning(push)
@@ -80,39 +96,27 @@
 #  pragma warning(pop)
 # endif
 
+# include <limits.h>
 # include <stdint.h>
-# include <stdlib.h>
 # include <stdarg.h>
+# include <inttypes.h>
+# include <stdnoreturn.h>
+# include <float.h>
+# include <stddef.h>
+# include <errno.h>
+
+#include <stdatomic.h>
+# include <stdio.h>
+# include <string.h>
+
+# if !defined(NLIB_EXCLUDE_CRT)
+#  include <stdlib.h>
+# endif
 
 /* ===========================
  * Misc C Headers Includes
  */
 
-// stb_sprintf
-# define STB_SPRINTF_IMPLEMENTATION
-# define STB_SPRINTF_STATIC
-
-# if defined(COMPILER_MSVC)
-#  pragma warning(push)
-#   pragma warning(disable:4100)
-#   pragma warning(disable:4820)
-#    include "stb/stb_sprintf.h"
-#  pragma warning(pop)
-# endif
-
-# if defined(COMPILER_CLANG)
-#  pragma clang diagnostic push
-#   pragma clang diagnostic ignored "-Wlanguage-extension-token"
-#   pragma clang diagnostic ignored "-Wcast-align"
-#   pragma clang diagnostic ignored "-Wcast-qual"
-#   pragma clang diagnostic ignored "-Wsign-conversion"
-#   pragma clang diagnostic ignored "-Wdouble-promotion"
-#   pragma clang diagnostic ignored "-Wunused-parameter"
-#   pragma clang diagnostic ignored "-Wconditional-uninitialized"
-#   pragma clang diagnostic ignored "-Wextra-semi-stmt"
-#    include "stb/stb_sprintf.h"
-#  pragma clang diagnostic pop
-# endif
 
 /* ===========================
  * Platform Headers Includes
@@ -158,11 +162,13 @@ typedef int8_t               S8;
 typedef int16_t              S16;
 typedef int32_t              S32;
 typedef int64_t              S64;
+typedef int                  Sint;
 
 typedef uint8_t              U8;
 typedef uint16_t             U16;
 typedef uint32_t             U32;
 typedef uint64_t             U64;
+typedef unsigned             Uint;
 
 typedef size_t               Size;
 
@@ -188,14 +194,8 @@ typedef char                 Char;
  */
 
 # define elemin(array) (sizeof(array)/sizeof((array)[0]))
-
-# if !defined(max)
-#  define max(x, y) ((x) >= (y) ? (x) : (y))
-# endif
-
-# if !defined(min)
-# define min(x, y) ((x) <= (y) ? (x) : (y))
-# endif
+#define containerof(ptr, type, member)                                  \
+    ((type *)( ((Byte *)(true ? (ptr) : (type *)NULL)) - offsetof(type, member) ))
 
 # define KiB(x) (   (x) * 1024ULL)
 # define MiB(x) (KiB(x) * 1024ULL)
@@ -264,10 +264,46 @@ typedef union {
 
 # elif defined(COMPILER_CLANG)
 
-#  include <stdalign.h>
+#  define max(a, b)                             \
+    ({ __typeof__ (a) _a = (a);                 \
+        __typeof__ (b) _b = (b);                \
+        _a > _b ? _a : _b; })
+#  define min(a, b)                             \
+    ({ __typeof__ (a) _a = (a);                 \
+        __typeof__ (b) _b = (b);                \
+        _a < _b ? _a : _b; })
 
+#  if defined(LANGUAGE_C11)
+#   include <stdalign.h>
+#  else
+#    pragma clang diagnostic push
+#    pragma clang diagnostic ignored "-Wreserved-id-macro"
+#    define _Alignof __alignof__
+#    define alignof _Alignof
+#    define __alignof_is_defined 1
+#    define _Alignas(a) __attribute__ ((aligned (a)))
+#    define alignas _Alignas
+#    define __alignas_is_defined 1
+#    pragma clang diagnostic pop
+
+/* Malloc Alignment: https://msdn.microsoft.com/en-us/library/ycsb6wwf.aspx
+ */
+#   if defined(ARCH_x86)
+// Alignment is 8 bytes
+typedef union {
+    alignas(8) Byte alignment[8];
+    F64 a;
+} max_align_t;
+#   elif defined(ARCH_X64)
+// Alignment is 16 bytes
+typedef union {
+    alignas(16) Byte alignment[16];
+    alignas(16) struct { F64 a, b; } f;
+} max_align_t;
+#   endif
+
+#  endif
 # endif
-
 
 /* =======================
  * Other nlib libraries
@@ -320,6 +356,27 @@ void reportDebug(Char *format, ...)
 #   define reportv(...)
 #   define quit() abort()
 #  endif
+
+# elif defined(OS_LINUX)
+
+#  if defined(BUILD_INTERNAL)
+#   define report(...)      fprintf(stderr, __VA_ARGS__)
+#   define reportv(format, va_list) vfprintf(stderr, format, va_list)
+#   define breakpoint() __asm__ volatile("int $0x03")
+#   define quit() breakpoint()
+#  else
+#   define report(format, ...)
+#   define reportv(format, va_list)
+#   define quit() abort()
+#  endif
+
+# endif
+
+/* ===============================
+ * Integer Mathematics Functions
+ */
+
+# if defined(OS_WINDOWS)
 
 /* _BitScanReverse64(&r, x) scans for the first 1-bit from left in x. Once it finds it,
  * it returns the number of bits after the found 1-bit.
@@ -380,17 +437,6 @@ U64 u64Rand (U64 seed)
 
 # elif defined(OS_LINUX)
 
-#  if defined(BUILD_INTERNAL)
-#   define report(format, ...)      fprintf(stderr, format, ##__VA_ARGS__)
-#   define reportv(format, va_list) vfprintf(stderr, format, va_list)
-#   define breakpoint() __asm__ volatile("int $0x03")
-#   define quit() breakpoint()
-#  else
-#   define report(format, ...)
-#   define reportv(format, va_list)
-#   define quit() abort()
-#  endif
-
 /* __builtin_clzll(x) returns the leading number of 0-bits in x, starting from
  * most significant position.
  *
@@ -407,7 +453,7 @@ U64 u64Rand (U64 seed)
 header_function
 U64 u64Log2(U64 x)
 {
-    U64 result = 64 - (__builtin_clzll(x) + 1);
+    U64 result = 64ULL - ((U64)__builtin_clzll(x) + 1ULL);
     return result;
 }
 
@@ -426,6 +472,7 @@ U64 u64Log2(U64 x)
  * gives better randomness. Don't ask.
  *
  * NOTE(naman): Seed should be an odd number or the randomness might drop drastically.
+ * NOTE(naman): "a" should be equal to 5(mod 8) or 3(mod 8).
  */
 
 header_function
@@ -440,7 +487,7 @@ U64 u64Rand (U64 seed)
     U64 a = 214013ULL;
 
     __uint128_t product = (__uint128_t)previous * (__uint128_t)a;
-    U64 upper = product >> 64, lower = product;
+    U64 upper = product >> 64, lower = (U64)product;
     U64 log_upper = u64Log2(upper);
     U64 shift_amount = 64 - (log_upper + 1);
     upper = (upper << shift_amount) | (lower >> log_upper);
@@ -452,13 +499,19 @@ U64 u64Rand (U64 seed)
 
 # endif
 
-/* ===============================
- * Custom Memory Allocator Helpers
- */
+header_function
+U64 u64NextPowerOf2 (U64 x)
+{
+    U64 result = 0;
+    if ((x != 0) && ((x & (x - 1)) == 0)) { // If x is a power of true
+        result = x;
+    } else {
+        result = 1 << (u64Log2(x) + 1);
+    }
 
-#define MEM_MAX_ALIGN_MINUS_ONE (alignof(max_align_t) - 1u)
-#define memAlignUp(p) (((p) + MEM_MAX_ALIGN_MINUS_ONE) & (~ MEM_MAX_ALIGN_MINUS_ONE))
-#define memAlignDown(p) (mem_ALIGN_UP((p) - MEM_MAX_ALIGN_MINUS_ONE))
+    return result;
+}
+
 
 
 /* ****************************************************************************
@@ -504,6 +557,26 @@ void ut_Test (B32 cond,
  * MEMORY ALLOCATORS **********************************************************
  */
 
+/* ===============================
+ * Custom Memory Allocator Helpers
+ */
+
+#define MEM_MAX_ALIGN_MINUS_ONE (alignof(max_align_t) - 1u)
+#define memAlignUp(p) (((p) + MEM_MAX_ALIGN_MINUS_ONE) & (~ MEM_MAX_ALIGN_MINUS_ONE))
+#define memAlignDown(p) (memAlignUp((p) - MEM_MAX_ALIGN_MINUS_ONE))
+
+#define memBytesFromBits(b) (((b)+(CHAR_BIT-1))/(CHAR_BIT))
+
+#define memSetBit(array, index)                                 \
+    ((array)[(index)/CHAR_BIT] |= (1U << ((index)%CHAR_BIT)))
+#define memResetBit(array, index)                               \
+    ((array)[(index)/CHAR_BIT] &= ~(1U << ((index)%CHAR_BIT)))
+#define memToggleBit(array, index)                              \
+    ((array)[(index)/CHAR_BIT] ^= ~(1U << ((index)%CHAR_BIT)))
+#define memTestBit(array, index)                                \
+    ((array)[(index)/CHAR_BIT] & (1U << ((index)%CHAR_BIT)))
+
+
 # if defined(COMPILER_CLANG)
 #  pragma clang diagnostic push
 #   pragma clang diagnostic ignored "-Wcast-align"
@@ -516,28 +589,502 @@ typedef enum MemAllocMode {
     MemAllocMode_REALLOC,
     MemAllocMode_DEALLOC,
     MemAllocMode_DEALLOC_ALL,
-} MemAllocMode;
+} Memory_Allocator_Mode;
 
-# define MEM_ALLOCATOR(allocator)               \
-    void* allocator(MemAllocMode mode,          \
+# define MEMORY_ALLOCATOR(allocator)               \
+    void* allocator(Memory_Allocator_Mode mode,          \
                     Size size, void* old_ptr,   \
                     void *data)
-typedef MEM_ALLOCATOR(MemAllocator);
+typedef MEMORY_ALLOCATOR(Memory_Allocator_Function);
 
 /* =============================
- * Default Memory Allocator
+ * Custom Purpose Memory Allocator
  */
+
+typedef struct Memory_Custom_Buddy Memory_Custom_Buddy;
+
+typedef struct Memory_Custom {
+    Memory_Custom_Buddy *b;
+    Byte *base;
+    Size total;
+    Size filled;
+} Memory_Custom;
+
+struct Memory_Custom_Buddy {
+    Byte *free_bits;
+    Byte *split_bits;
+
+    struct Memory_Custom_Buddy *prev;
+    struct Memory_Custom_Buddy *next;
+
+    Byte *arena;
+    Size arena_size;
+    Size leaf_size;
+    Size leaf_count;
+    Size block_count;
+    U8 level_max;
+    U8 level_count;
+
+    Byte _pad1[6];
+};
+
+/*
+  -------------------------------------------------------------------
+  L:0 |                                0                             |
+  -------------------------------------------------------------------
+  L:1 |               1                |              2              |
+  -------------------------------------------------------------------
+  L:2 |       3       |       4        |       5      |       6      |
+  -------------------------------------------------------------------
+  L:3 |   7   |   8   |   9   |   10   |  11   |  12  |  13   |  14  |
+  -------------------------------------------------------------------
+*/
+
+#define memcb_CountOfBlocksAtLevel(level) (1u << (level))
+#define memcb_SizeOfBlocksAtLevel(b, level)                     \
+    (((b)->arena_size)/memcb_CountOfBlocksAtLevel(level))
+#define memcb_IndexOfBlockInLevel(b, ptr, level) /* Zero based */       \
+    ((Uptr)((ptr) - (b)->arena) / memcb_SizeOfBlocksAtLevel(b, level))
+#define memcb_IndexOfLeaf(b, ptr) /* Zero based */      \
+    ((Uptr)((ptr) - ((b)->arena)) / ((b)->leaf_size))
+#define memcb_PointerToBlockInLevel(b, index, level)                    \
+    (((index) * memcb_SizeOfBlocksAtLevel(b, level)) + (b)->arena)
+#define memcb_PreviousBlockInLevel(b, ptr, level)       \
+    ((void*)(((Byte*)ptr) - memcb_SizeOfBlocksAtLevel(b, level)))
+#define memcb_NextBlockInLevel(b, ptr, level)           \
+    ((void*)(((Byte*)ptr) + memcb_SizeOfBlocksAtLevel(b, level)))
+#define memcb_BlocksBeforeThisLevel(level)                              \
+    ((1 << (level)) - 1) /* Using sum of GP, blocks before level n are (2ⁿ - 1) */
+#define memcb_GlobalIndexOfBlock(b, ptr, level) \
+    (memcb_BlocksBeforeThisLevel(level) +       \
+     memcb_IndexOfBlockInLevel(b, ptr, level))
+#define memcb_IndexOfFirstChild(index)          \
+    ((2 * (index)) + 1)
+#define memcb_IndexOfSecondChild(index)         \
+    ((2 * (index)) + 2)
+#define memcb_IndexOfParent(index)              \
+    (((index) - 1) / 2)
+
+header_function
+Memory_Custom_Buddy memcb_Init (Byte* arena, Size arena_size, Size leaf_size)
+{
+    Size leaf_count  = arena_size / leaf_size;
+    U8 level_max   = (U8)u64Log2(leaf_count);
+    U8 level_count = level_max + 1;
+    Size block_count  = (1 << level_count) - 1; // 2ⁿ⁺¹ - 1 where n is level_max (sum of GP)
+
+    Memory_Custom_Buddy buddy = {0};
+    buddy.arena = arena;
+    buddy.arena_size = arena_size;
+    buddy.leaf_size = leaf_size;
+    buddy.leaf_count = leaf_count;
+    buddy.level_max = level_max;
+    buddy.level_count = level_count;
+    buddy.block_count = block_count;
+
+    return buddy;
+}
+
+header_function
+void* memcb_GetFreeBlockAtLevel (Memory_Custom_Buddy *buddy, Size level)
+{
+    Byte *found_block = NULL;
+    Size level_current = level;
+
+    do {
+        if (level_current == 0) {
+            if (memTestBit(buddy->free_bits, 0)) {
+                found_block = buddy->arena;
+            }
+            break;
+        }
+
+        Size free_bits_begin = memcb_GlobalIndexOfBlock(buddy,
+                                                        buddy->arena,
+                                                        level_current);
+        Size free_bits_end = free_bits_begin + memcb_CountOfBlocksAtLevel(level_current);
+
+        for (Size bi = free_bits_begin; bi < free_bits_end; bi = bi + 1) {
+            if (memTestBit(buddy->free_bits, bi)) {
+                found_block = (buddy->arena +
+                               (memcb_SizeOfBlocksAtLevel(buddy,
+                                                                    level_current) *
+                                (bi - memcb_BlocksBeforeThisLevel(level_current))));
+                break;
+            }
+        }
+
+        if (level_current == 0) {
+            break;
+        } else if (found_block == NULL) {
+            level_current--;
+        }
+    } while (found_block == NULL);
+
+    if (found_block != NULL) {
+        for (Size lvl = level_current + 1; lvl <= level; lvl++) {
+            Byte *found_block_sibiling = (found_block +
+                                          memcb_SizeOfBlocksAtLevel(buddy, lvl));
+
+            memSetBit(buddy->free_bits,
+                     memcb_GlobalIndexOfBlock(buddy, found_block, lvl));
+            memSetBit(buddy->free_bits,
+                     memcb_GlobalIndexOfBlock(buddy, found_block_sibiling, lvl));
+            memResetBit(buddy->free_bits,
+                       memcb_IndexOfParent(memcb_GlobalIndexOfBlock(buddy,
+                                                                                        found_block,
+                                                                                        lvl)));
+            memSetBit(buddy->split_bits,
+                     memcb_IndexOfParent(memcb_GlobalIndexOfBlock(buddy,
+                                                                                      found_block,
+                                                                                      lvl)));
+        }
+
+        memResetBit(buddy->free_bits,
+                   memcb_GlobalIndexOfBlock(buddy, found_block, level));
+    }
+
+    return found_block;
+}
+
+header_function
+void* memcb_Alloc (Memory_Custom_Buddy *bbuddy, Size size)
+{
+    Size size_real = size;
+
+    if (size_real == 0 || bbuddy == NULL) {
+        return NULL;
+    }
+
+    if (size_real < bbuddy->leaf_size) {
+        size_real = bbuddy->leaf_size;
+    }
+
+    if (size_real > bbuddy->arena_size) {
+        return NULL;
+    }
+
+    Size total_size = u64NextPowerOf2(size_real);
+
+    // "inverse" because it is taking smallest block as level 0
+    U8 inverse_level = (U8)u64Log2(total_size/(bbuddy->leaf_size));
+    U8 level = bbuddy->level_max - inverse_level; // Actually, largest block is level 0
+
+    Byte *m = memcb_GetFreeBlockAtLevel(bbuddy, level);
+
+    return m;
+}
+
+header_function
+Byte* memcb_MergeBuddies (Memory_Custom_Buddy *buddy, Byte *block, Size level)
+{
+    if (level == 0) return NULL;
+
+    Byte *result = NULL;
+
+    Size local_index  = memcb_IndexOfBlockInLevel(buddy, block, level);
+
+    Byte *parent_block = NULL; // the pointer to the merged blocks (if they get merged)
+    Byte *buddy_block = NULL; // pointer to buddy block
+
+    if (local_index % 2 == 1) { // odd = merge with previous block
+        buddy_block = memcb_PreviousBlockInLevel(buddy, block, level);
+        parent_block = buddy_block;
+    } else { // even = merge with next block
+        buddy_block = memcb_NextBlockInLevel(buddy, block, level);
+        parent_block = block;
+    }
+
+    Size block_global_index = memcb_GlobalIndexOfBlock(buddy, block, level);
+    Size buddy_global_index = memcb_GlobalIndexOfBlock(buddy, buddy_block, level);
+    Size parent_global_index = memcb_GlobalIndexOfBlock(buddy, parent_block, level - 1);
+
+    if (memTestBit(buddy->free_bits, buddy_global_index)) { // Buddy is also free
+        memResetBit(buddy->free_bits, buddy_global_index);
+        memResetBit(buddy->free_bits, block_global_index);
+        memSetBit(buddy->free_bits, parent_global_index);
+        memResetBit(buddy->split_bits, parent_global_index);
+
+        result = parent_block;
+    }
+
+    return result;
+}
+
+header_function
+void memcb_ReleaseBlockAtLevel (Memory_Custom_Buddy *buddy, Byte *ptr, Size level)
+{
+    memSetBit(buddy->free_bits, memcb_GlobalIndexOfBlock(buddy, ptr, level));
+
+    Size merge_level = level;
+    Byte *merge_ptr = ptr;
+
+    while (merge_level > 0) {
+        merge_ptr = memcb_MergeBuddies(buddy, merge_ptr, merge_level);
+        if (merge_ptr == NULL) break;
+        merge_level--;
+    }
+
+    return;
+}
+
+header_function
+void memcb_Dealloc (Memory_Custom_Buddy *buddy, void *ptr)
+{
+    if (ptr == NULL || buddy == NULL) return;
+
+     U8 level_min = buddy->level_max; //The real level will never be zero since we already
+                                      // made a bunch of allocations at that level manually during init.
+
+     while ((level_min < buddy->level_count) && (level_min > 0)) {
+         if (memcb_IndexOfBlockInLevel(buddy, (Byte*)ptr, level_min) % 2 == 1) break;
+         level_min--;
+     }
+
+    U8 level = buddy->level_max;
+    while ((level >= level_min) && (level <= buddy->level_max)) {
+        if (level == 0) {
+            break;
+        } else if (memTestBit(buddy->split_bits,
+                             memcb_IndexOfParent(memcb_GlobalIndexOfBlock(buddy,
+                                                                          (Byte*)ptr,
+                                                                          level)))) {
+            break;
+        }
+        level--;
+    }
+
+    memcb_ReleaseBlockAtLevel(buddy, ptr, level);
+
+    return;
+}
+
+header_function
+void* memcb_GetMemory (Memory_Custom *m, Size size)
+{
+    if ((m->filled + size) > m->total) {
+        fprintf(stderr, "Memory full: Total = %lu, Filled = %lu\n", m->total, m->filled);
+        fflush(stdout);
+        return NULL;
+    }
+
+    void *result = m->base + m->filled;
+
+    m->filled += size;
+
+    return result;
+}
+
+# define memCustomCreate(m, base, size)    memCustom(MemAllocMode_CREATE,  size, base, m)
+# define memCustomAlloc(m, size)           memCustom(MemAllocMode_ALLOC,   size, NULL, m)
+# define memCustomRealloc(m, ptr, size)    memCustom(MemAllocMode_REALLOC, size, ptr,  m)
+# define memCustomDealloc(m, ptr)          memCustom(MemAllocMode_DEALLOC, 0,    ptr,  m)
+
+header_function
+MEMORY_ALLOCATOR(memCustom)
+{
+    Memory_Custom *m = data;
+
+    switch (mode) {
+        case MemAllocMode_CREATE: {
+            m->total = size;
+            m->base = old_ptr;
+            m->filled = 0;
+            m->b = NULL;
+        } break;
+
+        case MemAllocMode_ALLOC: {
+            if (size == 0) return NULL;
+            size = u64NextPowerOf2(size);
+
+            void *mem = NULL;
+
+            for (Memory_Custom_Buddy *b = m->b; b != NULL; b = b->next) {
+                if ((size >= b->leaf_size) && (size <= b->arena_size)) {
+                    mem = memcb_Alloc(b, size);
+                    if (mem != NULL) break;
+                } else {
+                    continue;
+                }
+            }
+
+            if (mem == NULL) {
+                Size leaf_size = size;
+                Size arena_size = 1 << (u64Log2(size) + 5);
+
+                Memory_Custom_Buddy *buddy = memcb_GetMemory(m, sizeof(*buddy));
+                *buddy = (Memory_Custom_Buddy){0};
+
+                Byte *arena = memcb_GetMemory(m, arena_size);
+
+                *buddy = memcb_Init(arena, arena_size, leaf_size);
+
+                Size size_of_free_bits = memBytesFromBits(buddy->block_count);
+                Size size_of_split_bits = memBytesFromBits(buddy->block_count - buddy->leaf_count);
+                Size total_size = memAlignUp(size_of_free_bits + size_of_split_bits);
+
+                Byte *overhead = memcb_GetMemory(m, total_size);
+                memset(overhead, 0, total_size);
+
+                buddy->free_bits = overhead;
+                buddy->split_bits = overhead + size_of_free_bits;
+                memSetBit(buddy->free_bits, 0);
+
+                if (m->b != NULL) {
+                    m->b->prev = buddy;
+                }
+
+                buddy->next = m->b;
+                m->b = buddy;
+
+                mem = memcb_Alloc(buddy, size);
+            }
+
+            if (mem == NULL) breakpoint();
+            return mem;
+        } break;
+
+        case MemAllocMode_REALLOC: {
+            if (old_ptr == NULL) {
+                void *result = memCustom(MemAllocMode_ALLOC, size, NULL, m);
+                return result;
+            }
+
+            if (size == 0) {
+                memCustom(MemAllocMode_DEALLOC, 0, old_ptr, m);
+                return NULL;
+            }
+
+            Memory_Custom_Buddy *buddy = NULL;
+
+            for (Memory_Custom_Buddy *b = m->b; b != NULL; b = b->next) {
+                if (((Byte*)old_ptr > (Byte*)&(b->arena)) && ((Byte*)old_ptr < (((Byte*)&(b->arena)) + b->arena_size))) {
+                    buddy = b;
+                    break;
+                }
+            }
+
+            if (buddy == NULL) return NULL;
+
+            U8 level_min = buddy->level_max; // The real level will never be zero since we already
+            // made a bunch of allocations at that level manually during init.
+
+            while ((level_min < buddy->level_count) && (level_min > 0)) {
+                if (memcb_IndexOfBlockInLevel(buddy, (Byte*)old_ptr, level_min) % 2 == 1) break;
+                level_min--;
+            }
+
+            U8 level = buddy->level_max;
+            while ((level >= level_min) && (level <= buddy->level_max)) {
+                if (level == 0) {
+                    break;
+                } else if (memTestBit(buddy->split_bits,
+                                     memcb_IndexOfParent(memcb_GlobalIndexOfBlock(buddy, (Byte*)old_ptr, level)))) {
+                    break;
+                }
+                level--;
+            }
+
+            Size old_size = memcb_SizeOfBlocksAtLevel(buddy, level);
+            if (old_size > size) {
+                return old_ptr;
+            }
+
+            if (size < (2 * old_size)) {
+                size = 2 * old_size;
+            }
+
+            B32 reallocated = false;
+            Byte *new_ptr = NULL;
+
+            if (level != 0) {
+                Size local_index  = memcb_IndexOfBlockInLevel(buddy, (Byte*)old_ptr, level);
+
+                Byte *parent_ptr = NULL; // the pointer to the merged blocks (if they get merged)
+                Byte *buddy_ptr = NULL; // pointer to buddy block
+
+                if (local_index % 2 == 0) {
+                    buddy_ptr = memcb_NextBlockInLevel(buddy, old_ptr, level);
+                    parent_ptr = old_ptr;
+
+                    Size buddy_global_index = memcb_GlobalIndexOfBlock(buddy, buddy_ptr, level);
+                    Size parent_global_index = memcb_GlobalIndexOfBlock(buddy, parent_ptr, level - 1);
+
+                    if (memTestBit(buddy->free_bits, buddy_global_index)) {
+                        memResetBit(buddy->free_bits, buddy_global_index);
+                        memResetBit(buddy->split_bits, parent_global_index);
+
+                        reallocated = true;
+                        new_ptr = old_ptr;
+                    }
+                } else {
+                    buddy_ptr = memcb_PreviousBlockInLevel(buddy, old_ptr, level);
+                    parent_ptr = buddy_ptr;
+
+                    Size buddy_global_index = memcb_GlobalIndexOfBlock(buddy, buddy_ptr, level);
+                    Size parent_global_index = memcb_GlobalIndexOfBlock(buddy, parent_ptr, level - 1);
+
+                    if (memTestBit(buddy->free_bits, buddy_global_index)) {
+                        memcpy(buddy_ptr, old_ptr, old_size);
+
+                        memResetBit(buddy->free_bits, buddy_global_index);
+                        memResetBit(buddy->split_bits, parent_global_index);
+
+                        reallocated = true;
+                        new_ptr = old_ptr;
+                    }
+                }
+            }
+
+            if (!reallocated) {
+                new_ptr = memCustom(MemAllocMode_ALLOC, size, NULL, m);
+                if (new_ptr == NULL) return NULL;
+                memcpy(new_ptr, old_ptr, old_size);
+                memCustom(MemAllocMode_DEALLOC, 0, old_ptr,  m);
+            }
+
+            return new_ptr;
+        } break;
+
+        case MemAllocMode_DEALLOC: {
+            for (Memory_Custom_Buddy *b = m->b; b != NULL; b = b->next) {
+                if (((Byte*)old_ptr > (Byte*)&(b->arena)) && ((Byte*)old_ptr < (((Byte*)&(b->arena)) + b->arena_size))) {
+                    memcb_Dealloc(b, old_ptr);
+                    break;
+                }
+            }
+
+            return NULL;
+        } break;
+
+        case MemAllocMode_DEALLOC_ALL: {
+            // TODO(naman): Maybe we should use a off-the-shelf malloc that allows this?
+        } break;
+
+        case MemAllocMode_NONE: {
+            breakpoint();
+        } break;
+    }
+
+    return NULL;
+}
+
+/* =============================
+ * stdlib Memory Allocator
+ */
+
+# if !defined(NLIB_EXCLUDE_CRT)
 
 struct MemCRT_Header {
     Size size;
 };
 
-# define memCRTAlloc(size)        memCRT(MemAllocMode_ALLOC,   size, NULL, NULL)
-# define memCRTRealloc(ptr, size) memCRT(MemAllocMode_REALLOC, size, ptr,  NULL)
-# define memCRTDealloc(ptr)       memCRT(MemAllocMode_DEALLOC, 0,    ptr,  NULL)
+#  define memCRTAlloc(size)        memCRT(MemAllocMode_ALLOC,   size, NULL, NULL)
+#  define memCRTRealloc(ptr, size) memCRT(MemAllocMode_REALLOC, size, ptr,  NULL)
+#  define memCRTDealloc(ptr)       memCRT(MemAllocMode_DEALLOC, 0,    ptr,  NULL)
 
 header_function
-MEM_ALLOCATOR(memCRT)
+MEMORY_ALLOCATOR(memCRT)
 {
     unused_variable(data);
     switch (mode) {
@@ -551,13 +1098,12 @@ MEM_ALLOCATOR(memCRT)
             Size total_size = memory_size + header_size;
 
             Byte *mem = malloc(total_size);
+            memset(mem, 0, total_size);
 
             struct MemCRT_Header *header = (struct MemCRT_Header *)mem;
             header->size = memory_size;
 
             Byte *result = mem + header_size;
-
-            memset(result, 0, memory_size);
 
             return result;
         } break;
@@ -591,6 +1137,10 @@ MEM_ALLOCATOR(memCRT)
         } break;
 
         case MemAllocMode_DEALLOC: {
+            if (old_ptr == NULL) {
+                return NULL;
+            }
+
             Size header_size = memAlignUp(sizeof(struct MemCRT_Header));
             Byte *mem = (Byte*)old_ptr - header_size;
             free(mem);
@@ -607,6 +1157,23 @@ MEM_ALLOCATOR(memCRT)
 
     return NULL;
 }
+
+# endif
+
+# if !defined(NLIB_EXCLUDE_CRT)
+#  define MEM_ALLOCATOR_USER_DATA  NULL
+#  define memDefaultAllocator   memCRT
+#  define memAlloc(size)        memCRTAlloc(size)
+#  define memRealloc(ptr, size) memCRTRealloc(ptr, size)
+#  define memDealloc(ptr)       memCRTDealloc(ptr)
+# else
+global_variable Memory_Custom *global_memory_custom;
+#  define MEM_ALLOCATOR_USER_DATA global_memory_custom
+#  define memDefaultAllocator     memCustom
+#  define memAlloc(size)          memCustomAlloc(global_memory_custom, size)
+#  define memRealloc(ptr, size)   memCustomRealloc(global_memory_custom, ptr, size)
+#  define memDealloc(ptr)         memCustomDealloc(global_memory_custom, ptr)
+# endif
 
 /* =============================
  * Arena Memory Allocator
@@ -625,14 +1192,14 @@ typedef struct {
 # define memArenaDeallocAll(data)  memArena(MemAllocMode_DEALLOC_ALL, 0,   NULL, data)
 
 header_function
-MEM_ALLOCATOR(memArena)
+MEMORY_ALLOCATOR(memArena)
 {
     unused_variable(old_ptr);
 
     switch (mode) {
         case MemAllocMode_CREATE: {
             Size memory_size = memAlignUp(size);
-            MemArena *arena = memCRTAlloc(sizeof(*arena) + memory_size);
+            MemArena *arena = memAlloc(sizeof(*arena) + memory_size);
 
             arena->len = 0;
             arena->cap = memory_size;
@@ -652,7 +1219,7 @@ MEM_ALLOCATOR(memArena)
                     break;
                 } else if (arena->next == NULL) {
                     Size arena_size = (arena->cap > memory_size) ? arena->cap : memory_size;
-                    MemArena *next = memCRTAlloc(sizeof(*next) + arena_size);
+                    MemArena *next = memAlloc(sizeof(*next) + arena_size);
 
                     arena->next = next;
 
@@ -690,7 +1257,7 @@ MEM_ALLOCATOR(memArena)
 
             while (arena != NULL) {
                 MemArena *child = arena->next;
-                memCRTDealloc(arena);
+                memDealloc(arena);
                 arena = child;
             }
         } break;
@@ -755,13 +1322,13 @@ void memTree_DeallocRecursive (void *node)
         parent_header->child = node_header->next;
     }
 
-    memCRTDealloc(node_header);
+    memDealloc(node_header);
 
     return;
 }
 
 header_function
-MEM_ALLOCATOR(memTree)
+MEMORY_ALLOCATOR(memTree)
 {
     switch (mode) {
         case MemAllocMode_CREATE: {
@@ -778,7 +1345,7 @@ MEM_ALLOCATOR(memTree)
 
             Size total_size = allocated_size + aligned_header_size;
 
-            void *mem = memCRTAlloc(total_size);
+            void *mem = memAlloc(total_size);
 
             void *result = (Byte*)mem + aligned_header_size;
 
@@ -859,7 +1426,7 @@ MEM_ALLOCATOR(memTree)
  * Size  sbufAdd       (T *ptr, T elem)
  * void  sbufDelete    (T *ptr)
  * T*    sbufEnd       (T *ptr)
-*
+ *
  * Size  sbufSizeof    (T *ptr)
  * Size  sbufElemin    (T *ptr)
  * Size  sbufMaxSizeof (T *ptr)
@@ -881,21 +1448,27 @@ typedef struct Sbuf_Header {
                                (sb)[sbuf_Len(sb)] = (__VA_ARGS__),      \
                                ((sbuf_GetHeader(sb))->len)++)
 # define sbufDelete(sb)       ((sb) ?                                   \
-                               (memCRTDealloc(sbuf_GetHeader(sb)), (sb) = NULL) : \
+                               (memDealloc(sbuf_GetHeader(sb)), (sb) = NULL) : \
                                0)
 # define sbufClear(sb)        ((sb) ?                                   \
                                (memset((sb), 0, sbufSizeof(sb)),        \
                                 sbuf_GetHeader(sb)->len = 0) :          \
                                0)
-# define sbufResize(sb, n)    (((n) > sbufMaxElemin(sb)) ? \
+# define sbufResize(sb, n)    (((n) > sbufMaxElemin(sb)) ?              \
                                ((sb) = sbuf_Resize(sb, n, sizeof(*(sb)))) : \
-                               (sb) = (sb))
+                               0)
 
 # define sbufSizeof(sb)       (sbuf_Len(sb) * sizeof(*(sb)))
 # define sbufElemin(sb)       (sbuf_Len(sb))
 # define sbufMaxSizeof(sb)    (sbuf_Cap(sb) * sizeof(*(sb)))
 # define sbufMaxElemin(sb)    (sbuf_Cap(sb))
 # define sbufEnd(sb)          ((sb) + sbuf_Len(sb))
+
+#define sbufPrint(sb, ...) ((sb) = sbuf_Print((sb), __VA_ARGS__))
+
+#define sbufUnsortedRemove(sb, i, z) (((sb)[(i)] = (sb)[sbuf_Len(sb) - 1]), \
+                                      ((sb)[sbuf_Len(sb) - 1] = (z)),   \
+                                      ((sbuf_GetHeader(sb)->len)--))
 
 # if defined(COMPILER_CLANG)
 #  pragma clang diagnostic push
@@ -915,9 +1488,9 @@ void* sbuf_Grow (void *buf, Size elem_size)
         Sbuf_Header *new_header = NULL;
 
         if (buf != NULL) {
-            new_header = memCRTRealloc(sbuf_GetHeader(buf), new_size);
+            new_header = memRealloc(sbuf_GetHeader(buf), new_size);
         } else {
-            new_header = memCRTAlloc(new_size);
+            new_header = memAlloc(new_size);
         }
 
         new_header->cap = new_cap;
@@ -927,7 +1500,7 @@ void* sbuf_Grow (void *buf, Size elem_size)
 }
 
 header_function
-void* sbuf_Resize (void *buf, Size elem_size, Size elem_count)
+void* sbuf_Resize (void *buf, Size elem_count, Size elem_size)
 {
     Size new_cap = elem_count;
 
@@ -936,15 +1509,46 @@ void* sbuf_Resize (void *buf, Size elem_size, Size elem_count)
     Sbuf_Header *new_header = NULL;
 
     if (buf != NULL) {
-        new_header = memCRTRealloc(sbuf_GetHeader(buf), new_size);
+        new_header = memRealloc(sbuf_GetHeader(buf), new_size);
     } else {
-        new_header = memCRTAlloc(new_size);
+        new_header = memAlloc(new_size);
     }
 
     new_header->cap = new_cap;
 
     return new_header->buf;
 }
+
+# if defined(COMPILER_CLANG)
+#  pragma clang diagnostic push
+#   pragma clang diagnostic ignored "-Wformat-nonliteral"
+# endif
+header_function
+Char* sbuf_Print(Char *buf, const Char *fmt, ...)
+{
+    // TODO(naman): Replace with stbsp_vsnprintf once the following bug is taken care of:
+    // https://github.com/nothings/stb/issues/612
+    va_list args;
+
+    va_start(args, fmt);
+    size_t cap = sbufMaxElemin(buf) - sbufElemin(buf);
+    int n = 1 + vsnprintf(sbufEnd(buf), cap, fmt, args);
+    va_end(args);
+
+    if ((Size)n > cap) {
+        sbufResize(buf, (Size)n + sbufElemin(buf));
+        size_t new_cap = sbufMaxElemin(buf) - sbufElemin(buf);
+    va_start(args, fmt);
+        n = 1 + vsnprintf(sbufEnd(buf), new_cap, fmt, args);
+    va_end(args);
+    }
+
+    sbuf_GetHeader(buf)->len += ((Size)n - 1);
+    return buf;
+}
+# if defined(COMPILER_CLANG)
+#  pragma clang diagnostic pop
+# endif
 
 header_function
 void sbufUnitTest (void)
@@ -956,8 +1560,8 @@ void sbufUnitTest (void)
 
     sbufAdd(buf, 1234);
 
-    utTest(sbuf_Len(buf) == 2);
-    utTest(sbuf_Cap(buf) >= sbuf_Len(buf));
+    utTest(sbufElemin(buf) == 2);
+    utTest(sbufMaxElemin(buf) >= sbufElemin(buf));
 
     utTest(buf[0] == 42);
     utTest(buf[1] == 1234);
@@ -965,6 +1569,13 @@ void sbufUnitTest (void)
     sbufDelete(buf);
 
     utTest(buf == NULL);
+
+    Char *stream = NULL;
+    sbufPrint(stream, "Hello, %s\n", "World!");
+    sbufPrint(stream, "Still here? %d\n", 420);
+    sbufPrint(stream, "GO AWAY!!!\n");
+
+    utTest(strcmp(stream, "Hello, World!\nStill here? 420\nGO AWAY!!!\n") == 0);
 }
 
 # if defined(COMPILER_CLANG)
@@ -983,7 +1594,7 @@ typedef struct Hashmap {
 
     Uptr *values;
 
-    MemAllocator *allocator;
+    Memory_Allocator_Function *allocator;
 
     Size total_slots, filled_slots;
 
@@ -1053,22 +1664,26 @@ U64 hm_Hash (Hashmap *hm, Uptr key)
 }
 
 header_function
-Hashmap hmCreate (MemAllocator allocator,
+Hashmap hmCreate (Memory_Allocator_Function allocator,
                   Size min_slots)
 {
     Hashmap hm = {0};
-    hm.allocator = allocator;
-    hm.m = u64Log2(min_slots); // Log of closest lower power of two
+
+    if (allocator == NULL) {
+        hm.allocator = memDefaultAllocator;
+    }
+
+    hm.m = u64Log2(max(min_slots, 4)); // Log of closest lower power of two
 
     // This will make m log of closest upper power of two
     hm_UpdateConstants(&hm);
 
-    hm.keys   = allocator(MemAllocMode_ALLOC,
-                          (hm.total_slots) * sizeof(*(hm.keys)),
-                          NULL, NULL);
-    hm.values = allocator(MemAllocMode_ALLOC,
-                          (hm.total_slots) * sizeof(*(hm.values)),
-                          NULL, NULL);
+    hm.keys   = hm.allocator(MemAllocMode_ALLOC,
+                             (hm.total_slots) * sizeof(*(hm.keys)),
+                             NULL, MEM_ALLOCATOR_USER_DATA);
+    hm.values = hm.allocator(MemAllocMode_ALLOC,
+                             (hm.total_slots) * sizeof(*(hm.values)),
+                             NULL, MEM_ALLOCATOR_USER_DATA);
 
     // For NULL keys
     hm.keys[0].hash = hm_SetFlag(hm.keys[0].hash, HM_Flag_FILLED);
@@ -1167,10 +1782,10 @@ Uptr hmInsertI (Hashmap *hm, Uptr key, Uptr value)
 
         hm->keys   = (hm->allocator)(MemAllocMode_ALLOC,
                                      sizeof(*(hm->keys)) * hm->total_slots,
-                                     NULL, NULL);
+                                     NULL, MEM_ALLOCATOR_USER_DATA);
         hm->values = (hm->allocator)(MemAllocMode_ALLOC,
                                      sizeof(*(hm->values)) * hm->total_slots,
-                                     NULL, NULL);
+                                     NULL, MEM_ALLOCATOR_USER_DATA);
 
         // For NULL keys
         hm->keys[0].hash = hm_SetFlag(hm->keys[0].hash, HM_Flag_FILLED);
@@ -1186,8 +1801,8 @@ Uptr hmInsertI (Hashmap *hm, Uptr key, Uptr value)
             }
         }
 
-        (hm->allocator)(MemAllocMode_DEALLOC, 0, keys,   NULL);
-        (hm->allocator)(MemAllocMode_DEALLOC, 0, values, NULL);
+        (hm->allocator)(MemAllocMode_DEALLOC, 0, keys,   MEM_ALLOCATOR_USER_DATA);
+        (hm->allocator)(MemAllocMode_DEALLOC, 0, values, MEM_ALLOCATOR_USER_DATA);
     }
 
     U64 hash = hm_Hash(hm, key);
@@ -1256,7 +1871,7 @@ void* hmRemove (Hashmap *hm, void *key)
 header_function
 void hmUnitTest (void)
 {
-    Hashmap hm = hmCreate(memCRT, 1);
+    Hashmap hm = hmCreate(memDefaultAllocator, 1);
 
     /* No Entries */
     utTest(hmLookup(&hm, (void*)0) == NULL);
@@ -1360,8 +1975,8 @@ void hmUnitTest (void)
  */
 
 /* API ----------------------------------------------------
- * Char* internBuffer (Hashmap *hm, Char *start, Char *end)
- * Char* internString (Hashmap *hm, Char *str)
+ * Char* internBuffer (InternTable *it, Char *start, Char *end)
+ * Char* internString (InternTable *it, Char *str)
  */
 
 // TODO(naman): Replace all the Char* with Txt after implementing a proper string type
@@ -1392,7 +2007,7 @@ InternTable internCreate (void)
     InternTable i = {0};
 
     i.strings_size = 1024;
-    i.strings = memCRTAlloc(i.strings_size);
+    i.strings = memAlloc(i.strings_size);
 
     return i;
 }
@@ -1407,7 +2022,7 @@ Char *intern_StringInsert (InternTable *it, InternElem *elems, Size index,
 
     if (it->strings_next_index + string_len > it->strings_size) {
         it->strings_size = string_len + (2 * it->strings_size);
-        it->strings = memCRTRealloc(it->strings, it->strings_size);
+        it->strings = memRealloc(it->strings, it->strings_size);
     }
 
     memcpy(&(it->strings[it->strings_next_index]), start, string_len);
@@ -1495,7 +2110,7 @@ Char * internStringBuffer (InternTable *it, Char *start, Char *end)
             // So, let's add it!!! (and return it)
             if (it->more_elem_next_entry == it->more_elem_count) {
                 it->more_elem_count = 2 * it->more_elem_count;
-                it->more_elems = memCRTRealloc(it->more_elems,
+                it->more_elems = memRealloc(it->more_elems,
                                                sizeof(*(it->more_elems)) * it->more_elem_count);
             }
 
@@ -1515,9 +2130,9 @@ Char * internStringBuffer (InternTable *it, Char *start, Char *end)
                 // So by gods, we are going to shove it right in.
                 if (it->more_elem_next_entry == it->more_elem_count) {
                     it->more_elem_count = 2 * (it->more_elem_count);
-                    it->more_elems = memCRTRealloc(it->more_elems,
+                    it->more_elems = memRealloc(it->more_elems,
                                                    sizeof(*(it->more_elems)) *
-                                                          it->more_elem_count);
+                                                   it->more_elem_count);
                 }
 
                 Size entry_index = it->more_elem_next_entry;
@@ -1532,7 +2147,7 @@ Char * internStringBuffer (InternTable *it, Char *start, Char *end)
                 // There is no rabbit hole to begin with, there never was! :(
                 // But we, the brave earthlings, are going to make one. Or die trying.
                 it->more_elem_count = 256;
-                it->more_elems = memCRTRealloc(it->more_elems,
+                it->more_elems = memRealloc(it->more_elems,
                                                sizeof(*(it->more_elems)) * it->more_elem_count);
 
                 // And now let's put in the element and return it.
@@ -1655,6 +2270,64 @@ void internUnitTest (void)
     // TODO(naman): Write tests to see what happens if two strings with same hash are interned.
 
     return;
+}
+
+/* ==========================
+ * Intrusive Linked List
+ */
+
+/* API ----------------------------------------------------
+ * List* listInsert (List *list, List_Node *node)
+ * List_Node* listRemove (List *list)
+ */
+
+typedef struct List_Node {
+  struct List_Node* next;
+  struct List_Node* prev;
+} List_Node;
+
+typedef List_Node List;
+
+# define listInsert(l, ln) ((l) = list_Insert(l, ln))
+# define listRemove(l) (list_Remove(l))
+
+header_function
+List_Node* list_Insert (List_Node *l, List_Node *ln)
+{
+    if (l == NULL) {
+        l = memAlloc(sizeof(*l));
+        l->prev = l;
+        l->next = l;
+    }
+
+    List_Node *next = l->next;
+
+    l->next = ln;
+
+    ln->next = next;
+    ln->prev = l;
+
+    next->prev = ln;
+
+    return l;
+}
+
+header_function
+List_Node* list_Remove (List_Node *l)
+{
+    if (l == NULL) return NULL;
+    if (l == l->next) return NULL;
+
+    List_Node *removee = l->next;
+    List_Node *successor = removee->next;
+
+    l->next = successor;
+    successor->prev = l;
+
+    removee->next = NULL;
+    removee->prev = NULL;
+
+    return removee;
 }
 
 /* ****************************************************************************

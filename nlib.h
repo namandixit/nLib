@@ -1025,7 +1025,7 @@ MEMORY_ALLOCATOR(memUser)
 
         case Memory_Allocator_Mode_REALLOC: {
             if (old_ptr == NULL) {
-                void *result = memCustom(MemAllocMode_ALLOC, size, NULL, m);
+                void *result = memUser(Memory_Allocator_Mode_ALLOC, size, NULL, m);
                 return result;
             }
 

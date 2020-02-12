@@ -8,5 +8,8 @@
 int main (void)
 {
     sbufUnitTest();
+    htUnitTest();
+    internUnitTest();
+
     return 0;
 }

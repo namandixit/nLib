@@ -20,6 +20,13 @@
 #  else
 #   define COMPILER_MSVC
 #  endif
+# elif defined (__GNUC__)
+#  if defined(__clang__)
+#   define COMPILER_CLANG
+#   define COMPILER_CLANG_WITH_GCC
+#  else
+#   define COMPILER_GCC
+#  endif
 # elif defined(__clang__)
 #  define COMPILER_CLANG
 # else
@@ -40,7 +47,7 @@
 #  elif defined(_M_X64)
 #   define ARCH_X64
 #  endif
-# elif defined(COMPILER_CLANG)
+# elif defined(COMPILER_CLANG) || defined(COMPILER_GCC)
 #  if defined(__i386__)
 #   define ARCH_X86
 #  elif defined(__x86_64__)
@@ -48,7 +55,7 @@
 #  endif
 # endif
 
-# if !defined(ARCH_X86) && !defined(ARCH_X64)
+# if !defined(ARCH_X64)  // && !defined(ARCH_X86)
 #  error Architecture not supported
 # endif
 
@@ -60,7 +67,7 @@
 #  endif
 # endif
 
-# if defined(COMPILER_CLANG)
+# if defined(COMPILER_CLANG) || defined(COMPILER_GCC)
 #  if (__STDC_VERSION__ == 199409)
 #   define LANGUAGE_C89
 #  elif (__STDC_VERSION__ == 199901)
@@ -72,7 +79,18 @@
 #  endif
 # endif
 
-
+# if defined(OS_WINDOWS)
+#  define ENDIAN_BIG
+# else
+#  include <endian.h>
+#  if __BYTE_ORDER == __LITTLE_ENDIAN
+#   define ENDIAN_LITTLE
+#  elif __BYTE_ORDER == __BIG_ENDIAN
+#   define ENDIAN_BIG
+#  else
+#   error Can not determine endianness
+#  endif
+# endif
 
 /* ===========================
  * Standard C Headers Includes

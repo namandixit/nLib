@@ -1428,666 +1428,235 @@ void sbufUnitTest (void)
 
 
 /* ==========================
- * Pointer-Pointer Hash Map
- */
-
-typedef struct Hashmap {
-    struct HashmapKeys {
-        U64  hash;
-        Uptr key;
-    } *keys;
-
-    Uptr *values;
-
-    Memory_Allocator_Function *allocator;
-
-    Size total_slots, filled_slots;
-
-    U64 a, b, m; /* Hashing constants */
-
-    U64 r; /* Last random number */
-} Hashmap;
-
-typedef enum HM_Flag {
-    HM_Flag_EMPTY,
-    HM_Flag_FILLED,
-    HM_Flag_VACATED, // Previously filled
-} HM_Flag;
-
-
-/* API ---------------------------------------------------
- * Hashmap hmCreate  (MemAllocator allocator,
- *                    Size min_slots);
- * void    hmDelete  (Hashmap hm);
- * void*   hmInsert  (Hashmap *hm, void *key, void *value);
- * Uptr    hmInsertI (Hashmap *hm, Uptr key, Uptr value);
- * void*   hmLookup  (Hashmap *hm, void *key);
- * Uptr    hmLookupI (Hashmap *hm, Uptr key);
- * void*   hmRemove  (Hashmap *hm, void *key);
- * Uptr    hmRemoveI (Hashmap *hm, Uptr key);
- */
-
-
-#define hm_GetFlag(hash) ((hash) >> 62)
-#define hm_GetHash(hash) ((hash) & 0x3FFFFFFFFFFFFFFFULL)
-#define hm_SetFlag(hash, flag) (hm_GetHash(hash) | (((U64)(flag)) << 62))
-
-/*
- * https://en.wikipedia.org/wiki/Universal_hashing#Avoiding_modular_arithmetic
-
- * w is number of bits in machine word (64 in our case)
- * s is the number of buckets/bins (slots in the hash table) to which the
- *   universe of hashable objects is to be mapped
- * m is log2(s) (=> m = 2^s) and is equal to the number of bits in the final hash
- * a is a random odd positive integer < 2^w (fitting in w bits)
- * b is a random non-negative integer < 2^(w-m) (fitting in (w-m) bits)
+ * Interning
  *
- * r is the last random number generated and is just an implementation detail.
+ * Char* internString (Intern_String *is, Char *str)
  */
 
-header_function
-void hm_UpdateConstants (Hashmap *hm)
-{
-    hm->m = hm->m + 1;
-    hm->total_slots = 1ULL << (hm->m);
+#define INTERN_EQUALITY(func_name) B32 func_name (void *a, void *b, Size b_index)
+typedef INTERN_EQUALITY(Intern_Equality_Function);
 
-    do {
-        hm->r = u64Rand(hm->r);
-        hm->a = hm->r;
-    } while ((hm->a & 0x01) != 0x01); // Make sure that hm.a is odd
-
-    hm->r = u64Rand(hm->r);
-    // b should be (64 - m) bits long
-    hm->b = hm->r >> hm->m;
-}
+typedef struct Intern {
+    struct Intern_List {
+        Size *indices;
+        U8 *secondary_hashes;
+    } lists[256];
+} Intern;
 
 header_function
-U64 hm_Hash (Hashmap *hm, Uptr key)
+B32 internCheck (Intern *it, U8 hash1, U8 hash2,
+                 void *datum, void *data, Intern_Equality_Function *eqf,
+                 Size *result)
 {
-    U64 result =  ((hm->a * key) + hm->b) & (0xFFFFFFFFFFFFFFFFULL >> (64 - hm->m));
-    return result;
-}
-
-header_function
-Hashmap hmCreate (Memory_Allocator_Function allocator,
-                  Size min_slots)
-{
-    Hashmap hm = {0};
-
-    if (allocator == NULL) {
-        hm.allocator = memDefaultAllocator;
-    }
-
-    hm.m = u64Log2(max(min_slots, 4)); // Log of closest lower power of two
-
-    // This will make m log of closest upper power of two
-    hm_UpdateConstants(&hm);
-
-    hm.keys   = hm.allocator(MemAllocMode_ALLOC,
-                             (hm.total_slots) * sizeof(*(hm.keys)),
-                             NULL, MEM_ALLOCATOR_USER_DATA);
-    hm.values = hm.allocator(MemAllocMode_ALLOC,
-                             (hm.total_slots) * sizeof(*(hm.values)),
-                             NULL, MEM_ALLOCATOR_USER_DATA);
-
-    // For NULL keys
-    hm.keys[0].hash = hm_SetFlag(hm.keys[0].hash, HM_Flag_FILLED);
-    hm.filled_slots = 1;
-
-    return hm;
-}
-
-header_function
-void hmDelete (Hashmap hm)
-{
-    hm.allocator(MemAllocMode_DEALLOC, 0, hm.keys,   NULL);
-    hm.allocator(MemAllocMode_DEALLOC, 0, hm.values, NULL);
-}
-
-header_function
-Size hm_LinearProbeSearch (Hashmap *hm, Uptr key)
-{
-    if (key == 0) return 0;
-
-    U64 hash = hm_Hash(hm, key);
-    U64 hash_real = hm_GetHash(hash);
-
-    Size index = 0, i = 0;
-    B32 found = false;
-
-    for (i = 0; !found && (i < hm->total_slots); ++i) {
-        index = (hash_real + i) % (hm->total_slots);
-
-        HM_Flag flag = hm_GetFlag(hm->keys[index].hash);
-        if ((flag == HM_Flag_FILLED) &&
-            (hm->keys[index].key == key)) {
-            found = true;
-        } else if (flag == HM_Flag_VACATED) {
-            continue;
-        } else if (flag == HM_Flag_EMPTY) {
-            break;
-        }
-    }
-
-    if (i == hm->total_slots) {
-        index = 0;
-    }
-
-    Size result = (found ? index : 0);
-
-    return result;
-}
-
-header_function
-Uptr hm_LinearProbeInsertion (Hashmap *hm,
-                              U64 hash, Uptr key, Uptr value)
-{
-    Uptr result_value = value;
-
-    for (Size i = 0; i < hm->total_slots; ++i) {
-        Size index = (hash + i) % (hm->total_slots);
-        HM_Flag flag  = hm_GetFlag(hm->keys[index].hash);
-
-        B32 fill_now = false;
-        switch (flag) {
-            case HM_Flag_FILLED: {
-                if (hm->keys[index].key == key) {
-                    result_value = hm->values[index];
-                    fill_now = true;
+    if (it->lists[hash1].secondary_hashes != NULL) {
+        // Our data has probably been inserted already.
+        // (or atleast some data with same hash has been inserted :)
+        for (Size i = 0; i < sbufElemin(it->lists[hash1].secondary_hashes); i++) {
+            Size index = it->lists[hash1].indices[i];
+            if ((it->lists[hash1].secondary_hashes[i] == hash2) && eqf(datum, data, index)) {
+                // This is our data, return it
+                if (result != NULL) {
+                    *result = index;
                 }
-            } break;
-            case HM_Flag_VACATED:
-            case HM_Flag_EMPTY: {
-                fill_now = true;
-            } break;
-        }
-
-        if (fill_now) {
-            hm->keys[index].key = key;
-            hm->values[index] = value;
-            hm->keys[index].hash = hm_SetFlag(hash, HM_Flag_FILLED);
-            break;
-        }
-    }
-
-    return result_value;
-}
-
-header_function
-Uptr hmInsertI (Hashmap *hm, Uptr key, Uptr value)
-{
-    if ((key == 0) || (value == 0)) return 0;
-
-    if ((2U * (hm->filled_slots)) > (hm->total_slots)) {
-        Size total_slots = hm->total_slots;
-        struct HashmapKeys *keys   = hm->keys;
-        Uptr *values = hm->values;
-
-        hm_UpdateConstants(hm);
-
-        hm->keys   = (hm->allocator)(MemAllocMode_ALLOC,
-                                     sizeof(*(hm->keys)) * hm->total_slots,
-                                     NULL, MEM_ALLOCATOR_USER_DATA);
-        hm->values = (hm->allocator)(MemAllocMode_ALLOC,
-                                     sizeof(*(hm->values)) * hm->total_slots,
-                                     NULL, MEM_ALLOCATOR_USER_DATA);
-
-        // For NULL keys
-        hm->keys[0].hash = hm_SetFlag(hm->keys[0].hash, HM_Flag_FILLED);
-
-        for (Size i = 1; i < total_slots; ++i) {
-            U64 hash_i_old = keys[i].hash;
-            Uptr key_i     = keys[i].key;
-            Uptr value_i   = values[i];
-            HM_Flag flag_i   = hm_GetFlag(hash_i_old);
-            U64 hash_i_new = hm_Hash(hm, key_i);
-            if (flag_i == HM_Flag_FILLED) {
-                hm_LinearProbeInsertion(hm, hash_i_new, key_i, value_i);
+                return true;
             }
         }
 
-        (hm->allocator)(MemAllocMode_DEALLOC, 0, keys,   MEM_ALLOCATOR_USER_DATA);
-        (hm->allocator)(MemAllocMode_DEALLOC, 0, values, MEM_ALLOCATOR_USER_DATA);
+        return false;
+    } else {
+        return false;
     }
-
-    U64 hash = hm_Hash(hm, key);
-
-    Uptr result_value = hm_LinearProbeInsertion(hm, hash, key, value);
-    hm->filled_slots += 1;
-
-    return result_value;
 }
 
-# if defined(COMPILER_CLANG)
-#  pragma clang diagnostic push
-#   pragma clang diagnostic ignored "-Wbad-function-cast"
-# endif
-
 header_function
-void* hmInsert (Hashmap *hm, void *key, void *value)
+void internData (Intern *it, U8 hash1, U8 hash2, Size index)
 {
-    void *result_value = (void*)hmInsertI(hm, (Uptr)key, (Uptr)value);
-    return result_value;
+    sbufAdd(it->lists[hash1].secondary_hashes, hash2);
+    sbufAdd(it->lists[hash1].indices, index);
 }
 
 header_function
-Uptr hmLookupI (Hashmap *hm, Uptr key)
-{
-    Size location = hm_LinearProbeSearch(hm, key);
-    Uptr result_value = hm->values[location];
-
-    return result_value;
-}
-
-header_function
-void* hmLookup (Hashmap *hm, void *key)
-{
-    void *result_value = (void*)hmLookupI(hm, (Uptr)key);
-    return result_value;
-}
-
-header_function
-Uptr hmRemoveI (Hashmap *hm, Uptr key)
-{
-    Size location = hm_LinearProbeSearch(hm, key);
-
-    Uptr result_value = 0;
-    if (location != 0) {
-        U64 hash = hm->keys[location].hash;
-        hm->keys[location].hash = hm_SetFlag(hash, HM_Flag_VACATED);
-        hm->filled_slots -= 1;
-        result_value = hm->values[location];
-    }
-
-    return result_value;
-}
-
-header_function
-void* hmRemove (Hashmap *hm, void *key)
-{
-    void *result_value = (void*)hmRemoveI(hm, (Uptr)key);
-    return result_value;
-}
-
-# if defined(COMPILER_CLANG)
-#  pragma clang diagnostic pop
-# endif
-
-header_function
-void hmUnitTest (void)
-{
-    Hashmap hm = hmCreate(memDefaultAllocator, 1);
-
-    /* No Entries */
-    utTest(hmLookup(&hm, (void*)0) == NULL);
-    utTest(hmLookup(&hm, (void*)1) == NULL);
-    utTest(hmLookup(&hm, (void*)2) == NULL);
-
-    /* Insertion Test */
-    Size f0 = hm.filled_slots;
-
-    hmInsert(&hm, (void*)1, (void*)1);
-    utTest(hm.filled_slots == (f0 + 1));
-    utTest(hmLookup(&hm, (void*)0) == NULL);
-    utTest(hmLookup(&hm, (void*)1) == (void*)1);
-    utTest(hmLookup(&hm, (void*)2) == NULL);
-
-    hmInsert(&hm, (void*)2, (void*)42);
-    utTest(hm.filled_slots == (f0 + 2));
-    utTest(hmLookup(&hm, (void*)0) == NULL);
-    utTest(hmLookup(&hm, (void*)1) == (void*)1);
-    utTest(hmLookup(&hm, (void*)2) == (void*)42);
-
-    /* Duplicate Key */
-    void *v1 = hmInsert(&hm, (void*)2, (void*)24);
-    utTest(v1 == (void*)42);
-    utTest(hmLookup(&hm, (void*)0) == NULL);
-    utTest(hmLookup(&hm, (void*)1) == (void*)1);
-    utTest(hmLookup(&hm, (void*)2) == (void*)24);
-
-    /* Removal Test */
-    void *v2 = hmRemove(&hm, (void*)2);
-    utTest(v2 == (void*)24);
-    utTest(hmLookup(&hm, (void*)2) == NULL);
-
-    void *v3 = hmRemove(&hm, (void*)1);
-    utTest(v3 == (void*)1);
-    utTest(hmLookup(&hm, (void*)1) == NULL);
-
-    /* NULL Check */
-    Size f1 = hm.filled_slots;
-    hmInsert(&hm, (void*)0, (void*)1);
-    utTest(hm.filled_slots == f1);
-    utTest(hmLookup(&hm, (void*)0) == (void*)0);
-
-    Size f2 = hm.filled_slots;
-    hmRemove(&hm, (void*)0);
-    utTest(hm.filled_slots == f2);
-    utTest(hmLookup(&hm, (void*)0) == (void*)0);
-
-    /* Expansion Test */
-    hmInsert(&hm, (void*)3, (void*)33);
-    utTest(hmLookup(&hm, (void*)3) == (void*)33);
-
-    hmInsert(&hm, (void*)4, (void*)44);
-    utTest(hmLookup(&hm, (void*)4) == (void*)44);
-
-    hmInsert(&hm, (void*)5, (void*)55);
-    utTest(hmLookup(&hm, (void*)5) == (void*)55);
-
-    hmInsert(&hm, (void*)6, (void*)66);
-    utTest(hmLookup(&hm, (void*)6) == (void*)66);
-
-    hmInsert(&hm, (void*)7, (void*)77);
-    utTest(hmLookup(&hm, (void*)7) == (void*)77);
-
-    hmInsert(&hm, (void*)8, (void*)88);
-    utTest(hmLookup(&hm, (void*)8) == (void*)88);
-
-    hmInsert(&hm, (void*)9, (void*)99);
-    utTest(hmLookup(&hm, (void*)9) == (void*)99);
-
-    /* Removal after Expansion */
-
-    hmRemove(&hm, (void*)3);
-    utTest(hmLookup(&hm, (void*)3) == NULL);
-
-    hmRemove(&hm, (void*)4);
-    utTest(hmLookup(&hm, (void*)4) == NULL);
-
-    hmRemove(&hm, (void*)5);
-    utTest(hmLookup(&hm, (void*)5) == NULL);
-
-    hmRemove(&hm, (void*)6);
-    utTest(hmLookup(&hm, (void*)6) == NULL);
-
-    hmRemove(&hm, (void*)7);
-    utTest(hmLookup(&hm, (void*)7) == NULL);
-
-    hmRemove(&hm, (void*)8);
-    utTest(hmLookup(&hm, (void*)8) == NULL);
-
-    hmRemove(&hm, (void*)9);
-    utTest(hmLookup(&hm, (void*)9) == NULL);
-
-    hmDelete(hm);
-
-    return;
-}
-
-/* ==========================
- * Text Interning
- */
-
-/* API ----------------------------------------------------
- * Char* internBuffer (InternTable *it, Char *start, Char *end)
- * Char* internString (InternTable *it, Char *str)
- */
-
-// TODO(naman): Replace all the Char* with Txt after implementing a proper string type
-
-typedef struct {
-    Size string_index;
-    Size string_length;
-    Size child_index;
-    B32 used;
-    B32 has_child;
-} InternElem;
-
-typedef struct {
-    InternElem base_elems[256];
-
-    InternElem *more_elems;
-    Size more_elem_count;
-    Size more_elem_next_entry;
-
-    Char *strings;
-    Size strings_size;
-    Size strings_next_index;
-} InternTable;
-
-header_function
-InternTable internCreate (void)
-{
-    InternTable i = {0};
-
-    i.strings_size = 1024;
-    i.strings = memAlloc(i.strings_size);
-
-    return i;
-}
-
-header_function
-Char *intern_StringInsert (InternTable *it, InternElem *elems, Size index,
-                           Char *start, Size string_len)
-{
-    elems[index].used = true;
-    elems[index].string_index = it->strings_next_index;
-    elems[index].string_length = string_len;
-
-    if (it->strings_next_index + string_len > it->strings_size) {
-        it->strings_size = string_len + (2 * it->strings_size);
-        it->strings = memRealloc(it->strings, it->strings_size);
-    }
-
-    memcpy(&(it->strings[it->strings_next_index]), start, string_len);
-    it->strings[it->strings_next_index + string_len] = '\0';
-    it->strings_next_index = it->strings_next_index + string_len + 1;
-
-    Char *result = &(it->strings[elems[index].string_index]);
-    return result;
-}
-
-header_function
-U8 intern_PearsonHash (Char *string, Size len)
+U8 internStringPearsonHash (void *buffer, Size len, B32 which)
 {
     // NOTE(naman): Pearson's hash for 8-bit hashing
     // https://en.wikipedia.org/wiki/Pearson_hashing
-    persistent_value U8 hash_lookup_table[256] = {
-        // 0-255 shuffled in any (random) order suffices
-        98,    6,   85, 150,  36,  23, 112, 164, 135, 207, 169,   5,  26,  64, 165, 219, // 01
-        61,   20,   68,  89, 130,  63,  52, 102,  24, 229, 132, 245,  80, 216, 195, 115, // 02
-        90,  168,  156, 203, 177, 120,   2, 190, 188,   7, 100, 185, 174, 243, 162,  10, // 03
-        237,  18,  253, 225,   8, 208, 172, 244, 255, 126, 101,  79, 145, 235, 228, 121, // 04
-        123, 251,   67, 250, 161,   0, 107,  97, 241, 111, 181,  82, 249,  33,  69,  55, // 05
-        59,  153,   29,   9, 213, 167,  84,  93,  30,  46, 94,   75, 151, 114,  73, 222, // 06
-        197,  96,  210,  45,  16, 227, 248, 202,  51, 152, 252, 125,  81, 206, 215, 186, // 07
-        39,  158,  178, 187, 131, 136,   1,  49,  50,  17, 141,  91,  47, 129,  60,  99, // 08
-        154,  35,   86, 171, 105,  34,  38, 200, 147,  58,  77, 118, 173, 246,  76, 254, // 09
-        133, 232,  196, 144, 198, 124,  53,   4, 108,  74, 223, 234, 134, 230, 157, 139, // 10
-        189, 205,  199, 128, 176,  19, 211, 236, 127, 192, 231,  70, 233,  88, 146,  44, // 11
-        183, 201,   22,  83,  13, 214, 116, 109, 159,  32,  95, 226, 140, 220,  57,  12, // 12
-        221,  31,  209, 182, 143,  92, 149, 184, 148,  62, 113,  65,  37,  27, 106, 166, // 13
-        3,    14,  204,  72,  21,  41,  56,  66,  28, 193,  40, 217,  25,  54, 179, 117, // 14
-        238,  87,  240, 155, 180, 170, 242, 212, 191, 163,  78, 218, 137, 194, 175, 110, // 15
-        43,  119,  224,  71, 122, 142,  42, 160, 104,  48, 247, 103,  15,  11, 138, 239, // 16
-    };
+    persistent_value U8 hash_lookup_table1[256] =
+        {
+         // 0-255 shuffled in any (random) order suffices
+         98,    6,   85, 150,  36,  23, 112, 164, 135, 207, 169,   5,  26,  64, 165, 219, // 01
+         61,   20,   68,  89, 130,  63,  52, 102,  24, 229, 132, 245,  80, 216, 195, 115, // 02
+         90,  168,  156, 203, 177, 120,   2, 190, 188,   7, 100, 185, 174, 243, 162,  10, // 03
+         237,  18,  253, 225,   8, 208, 172, 244, 255, 126, 101,  79, 145, 235, 228, 121, // 04
+         123, 251,   67, 250, 161,   0, 107,  97, 241, 111, 181,  82, 249,  33,  69,  55, // 05
+         59,  153,   29,   9, 213, 167,  84,  93,  30,  46, 94,   75, 151, 114,  73, 222, // 06
+         197,  96,  210,  45,  16, 227, 248, 202,  51, 152, 252, 125,  81, 206, 215, 186, // 07
+         39,  158,  178, 187, 131, 136,   1,  49,  50,  17, 141,  91,  47, 129,  60,  99, // 08
+         154,  35,   86, 171, 105,  34,  38, 200, 147,  58,  77, 118, 173, 246,  76, 254, // 09
+         133, 232,  196, 144, 198, 124,  53,   4, 108,  74, 223, 234, 134, 230, 157, 139, // 10
+         189, 205,  199, 128, 176,  19, 211, 236, 127, 192, 231,  70, 233,  88, 146,  44, // 11
+         183, 201,   22,  83,  13, 214, 116, 109, 159,  32,  95, 226, 140, 220,  57,  12, // 12
+         221,  31,  209, 182, 143,  92, 149, 184, 148,  62, 113,  65,  37,  27, 106, 166, // 13
+         3,    14,  204,  72,  21,  41,  56,  66,  28, 193,  40, 217,  25,  54, 179, 117, // 14
+         238,  87,  240, 155, 180, 170, 242, 212, 191, 163,  78, 218, 137, 194, 175, 110, // 15
+         43,  119,  224,  71, 122, 142,  42, 160, 104,  48, 247, 103,  15,  11, 138, 239, // 16
+        };
+
+    persistent_value U8 hash_lookup_table2[256] =
+        {
+         251, 175, 119, 215,  81,  14,  79, 191, 103,  49, 181, 143, 186, 157,   0, 232, // 01
+         31,   32,  55,  60, 152,  58,  17, 237, 174,  70, 160, 144, 220,  90,  57, 223, // 02
+         59,    3,  18, 140, 111, 166, 203, 196, 134, 243, 124,  95, 222, 179, 197,  65, // 03
+         180,  48,  36,  15, 107,  46, 233, 130, 165,  30, 123, 161, 209,  23,  97,  16, // 04
+         40,   91, 219,  61, 100,  10, 210, 109, 250, 127,  22, 138,  29, 108, 244,  67, // 05
+         207,   9, 178, 204,  74,  98, 126, 249, 167, 116,  34,  77, 193, 200, 121,   5, // 06
+         20,  113,  71,  35, 128,  13, 182,  94,  25, 226, 227, 199,  75,  27,  41, 245, // 07
+         230, 224,  43, 225, 177,  26, 155, 150, 212, 142, 218, 115, 241,  73,  88, 105, // 08
+         39,  114,  62, 255, 192, 201, 145, 214, 168, 158, 221, 148, 154, 122,  12,  84, // 09
+         82,  163,  44, 139, 228, 236, 205, 242, 217,  11, 187, 146, 159,  64,  86, 239, // 10
+         195,  42, 106, 198, 118, 112, 184, 172,  87,   2, 173, 117, 176, 229, 247, 253, // 11
+         137, 185,  99, 164, 102, 147,  45,  66, 231,  52, 141, 211, 194, 206, 246, 238, // 12
+         56,  110,  78, 248,  63, 240, 189,  93,  92,  51,  53, 183,  19, 171,  72,  50, // 13
+         33,  104, 101,  69,   8, 252,  83, 120,  76, 135,  85,  54, 202, 125, 188, 213, // 14
+         96,  235, 136, 208, 162, 129, 190, 132, 156,  38,  47,   1,   7, 254,  24,   4, // 15
+         216, 131,  89,  21,  28, 133,  37, 153, 149,  80, 170,  68,   6, 169, 234, 151, // 16
+        };
+
+    Char *string = buffer;
 
     U8 hash = (U8)len;
     for (Size i = 0; i < len; i++) {
-        hash = hash_lookup_table[hash ^ string[i]];
+        if (which == true) {
+            hash = hash_lookup_table1[hash ^ string[i]];
+        } else {
+            hash = hash_lookup_table2[hash ^ string[i]];
+        }
     }
 
     return hash;
 }
 
-// Intern a non-zero terminated string
-//     start points to the first character.
-//     end points to the character after the last character.
+typedef struct Intern_String {
+    Intern intern;
+    Char *strings;
+} Intern_String;
+
 header_function
-Char * internStringBuffer (InternTable *it, Char *start, Char *end)
+INTERN_EQUALITY(internStringEquality) {
+    Char *sa = a;
+    Char *sb = (Char *)b + b_index;
+    B32 result = (strcmp(sa, sb) == 0);
+    return result;
+}
+
+header_function
+Char *internString (Intern_String *is, Char *str)
 {
-    Size len = (Size)(Dptr)(end - start); // Length of string
+    U8 hash1 = internStringPearsonHash(str, strlen(str), true);
+    U8 hash2 = internStringPearsonHash(str, strlen(str), false);
 
-    U8 base_index = intern_PearsonHash(start, len);
+    Size index = 0;
 
-    if (it->base_elems[base_index].used) {
-        // Our string has probably been inserted already.
-        // (or atleast some string with same hash has been inserted :)
-        Char *value = &(it->strings[it->base_elems[base_index].string_index]);
-
-        if ((it->base_elems[base_index].string_length == len) &&
-            (strncmp(value, start, len) == 0)) {
-            // This is our string, return it
-            return value;
-        }
-
-        // That wasn't our string, keep searching for it...
-        // Perhaps our string lies deeper in a rabbit hole?
-        if (it->base_elems[base_index].has_child) {
-            // More strings with same hash have been added, our string might be one of them!
-            Size i = it->base_elems[base_index].child_index;
-
-            do {
-                value = &(it->strings[it->more_elems[i].string_index]);
-                if ((it->more_elems[i].string_length == len) &&
-                    (strncmp(value, start, len) == 0)) {
-                    // Found it, this is our string. Return it
-                    return value;
-                }
-
-                i = it->more_elems[i].child_index;
-            } while (it->more_elems[i].has_child);
-
-
-            // No, it wasn't.
-            // That means our string hasn't been added yet.
-            // So, let's add it!!! (and return it)
-            if (it->more_elem_next_entry == it->more_elem_count) {
-                it->more_elem_count = 2 * it->more_elem_count;
-                it->more_elems = memRealloc(it->more_elems,
-                                               sizeof(*(it->more_elems)) * it->more_elem_count);
-            }
-
-            Size entry_index = it->more_elem_next_entry;
-            it->more_elem_next_entry += 1;
-
-            it->more_elems[i].has_child = true;
-            it->more_elems[i].child_index = entry_index;
-
-
-            Char *result = intern_StringInsert(it, it->more_elems, entry_index, start, len);
-            return result;
-        } else {
-            // Base didn't have a child, so we'll make it adopt our string by necessary force.
-            if (it->more_elems != NULL) {
-                // Though a rabbit hole exists, our string is not yet in it.
-                // So by gods, we are going to shove it right in.
-                if (it->more_elem_next_entry == it->more_elem_count) {
-                    it->more_elem_count = 2 * (it->more_elem_count);
-                    it->more_elems = memRealloc(it->more_elems,
-                                                   sizeof(*(it->more_elems)) *
-                                                   it->more_elem_count);
-                }
-
-                Size entry_index = it->more_elem_next_entry;
-                it->more_elem_next_entry += 1;
-
-                it->base_elems[base_index].has_child = true;
-                it->base_elems[base_index].child_index = entry_index;
-
-                Char *result = intern_StringInsert(it, it->more_elems, entry_index, start, len);
-                return result;
-            } else {
-                // There is no rabbit hole to begin with, there never was! :(
-                // But we, the brave earthlings, are going to make one. Or die trying.
-                it->more_elem_count = 256;
-                it->more_elems = memRealloc(it->more_elems,
-                                               sizeof(*(it->more_elems)) * it->more_elem_count);
-
-                // And now let's put in the element and return it.
-                Size entry_index = 0;
-                it->more_elem_next_entry = 1;
-
-                it->base_elems[base_index].has_child = true;
-                it->base_elems[base_index].child_index = entry_index;
-
-                Char *result = intern_StringInsert(it, it->more_elems, entry_index, start, len);
-                return result;
-            }
-        }
+    if (internCheck(&is->intern, hash1, hash2, str, is->strings, &internStringEquality, &index)) {
+        Char *result = is->strings + index;
+        return result;
     } else {
-        // The string is a lie.
-        // Tyler Durden never existed.
-        // God is dead.
-        // E.g., string has not been inserted before, insert it and return a pointer to it.
-        Char *result = intern_StringInsert(it, it->base_elems, base_index, start, len);
+        Size index_new = sbufElemin(is->strings);
+        for (Char *s = str; s[0] != '\0'; s++) {
+            sbufAdd(is->strings, s[0]);
+        }
+        sbufAdd(is->strings, '\0');
+        internData(&is->intern, hash1, hash2, index_new);
+        Char *result = is->strings + index_new;
         return result;
     }
 }
 
-// Intern a non-zero terminated string
-//     start points to the first character.
-//     end points to the character after the last character.
 header_function
-Char * internCheckStringBuffer (InternTable *it, Char *start, Char *end)
+Char *internStringCheck (Intern_String *is, Char *str)
 {
-    Size len = (Size)(Dptr)(end - start); // Length of string
+    U8 hash1 = internStringPearsonHash(str, strlen(str), true);
+    U8 hash2 = internStringPearsonHash(str, strlen(str), false);
 
-    U8 base_index = intern_PearsonHash(start, len);
+    Size index = 0;
 
-    if (it->base_elems[base_index].used) {
-        // Our string has probably been inserted already.
-        // (or atleast some string with same hash has been inserted :)
-        Char *value = &(it->strings[it->base_elems[base_index].string_index]);
-
-        if ((it->base_elems[base_index].string_length == len) &&
-            (strncmp(value, start, len) == 0)) {
-            // This is our string, return it
-            return value;
-        }
-
-        // That wasn't our string, keep searching for it...
-        // Perhaps our string lies deeper in a rabbit hole?
-        if (it->base_elems[base_index].has_child) {
-            // More strings with same hash have been added, our string might be one of them!
-            Size i = it->base_elems[base_index].child_index;
-
-            do {
-                value = &(it->strings[it->more_elems[i].string_index]);
-                if ((it->more_elems[i].string_length == len) &&
-                    (strncmp(value, start, len) == 0)) {
-                    // Found it, this is our string. Return it
-                    return value;
-                }
-
-                i = it->more_elems[i].child_index;
-            } while (it->more_elems[i].has_child);
-
-
-            // No, it wasn't.
-            // That means our string hasn't been added yet.
-            return NULL;
-        } else {
-            // Base didn't have a child, so that's that.
-            return NULL;
-        }
+    if (internCheck(&is->intern, hash1, hash2, str, is->strings, &internStringEquality, &index)) {
+        Char *result = is->strings + index;
+        return result;
     } else {
-        // The string is a lie.
-        // Tyler Durden never existed.
-        // God is dead.
         return NULL;
     }
 }
 
-// Intern a zero-terminated C-string
+typedef struct Intern_Integer {
+    Intern intern;
+    U64 *integers;
+} Intern_Integer;
+
 header_function
-Char* internString (InternTable *it, Char *str)
+INTERN_EQUALITY(internIntegerEquality) {
+    U64 ia = ((U64*)a)[0];
+    U64 ib = ((U64*)b)[b_index];
+
+    B32 result = (ia == ib);
+    return result;
+}
+
+// SEE(naman): https://stackoverflow.com/a/8546542
+header_function
+U8 internIntegerHash8Bit (U64 key, B32 which)
 {
-    Size len = strlen(str);
-    Char *result = internStringBuffer(it, str, str + len);
+    U8 result = 0;
+    U64 q = 0;
+
+    // NOTE(naman): Both q are prime.
+    if (which == true) {
+        q = 33149;
+    } else {
+        q = 146519;
+    }
+
+    Byte *b = (Byte*)(&key);
+    for (Size i = 0; i < sizeof(key); i++) {
+        result += (U8)((U64)(b[i]) * q);
+    }
 
     return result;
 }
 
-// Check if a zero-terminated C-string has already been interned
 header_function
-Char* internCheckString (InternTable *it, Char *str)
+U64 internInteger (Intern_Integer *ii, U64 num)
 {
-    Size len = strlen(str);
-    Char *result = internCheckStringBuffer(it, str, str + len);
+    U8 hash1 = internIntegerHash8Bit(num, true);
+    U8 hash2 = internIntegerHash8Bit(num, false);
 
-    return result;
+    U64 num_copy = num; // Just in case
+    Size index = 0;
+
+    if (internCheck(&ii->intern, hash1, hash2,
+                    &num_copy, ii->integers, &internIntegerEquality, &index)) {
+        return num;
+    } else {
+        sbufAdd(ii->integers, num);
+        internData(&ii->intern, hash1, hash2, sbufElemin(ii->integers));
+        return num;
+    }
+}
+
+header_function
+U64 internIntegerCheck (Intern_Integer *ii, U64 num)
+{
+    U8 hash1 = internIntegerHash8Bit(num, true);
+    U8 hash2 = internIntegerHash8Bit(num, false);
+
+    U64 num_copy = num; // Just in case
+    Size index = 0;
+
+    if (internCheck(&ii->intern, hash1, hash2,
+                    &num_copy, ii->integers, &internIntegerEquality, &index)) {
+        return num;
+    } else {
+        return false;
+    }
 }
 
 header_function
@@ -2096,20 +1665,20 @@ void internUnitTest (void)
     Char x[] = "Hello";
     Char y[] = "Hello";
 
-    InternTable intern_table = internCreate();
+    Intern_String is = {0};
 
     utTest(x != y);
 
-    Char *y_interned = internString(&intern_table, y);
-    Char *x_interned = internString(&intern_table, x);
+    Char *y_interned = internString(&is, y);
+    Char *x_interned = internString(&is, x);
     utTest(x_interned == y_interned);
 
     Char z[] = "World";
-    Char *z_interned = internString(&intern_table, z);
+    Char *z_interned = internString(&is, z);
     utTest(x_interned != z_interned);
 
     Char p[] = "Hello!!";
-    Char *p_interned = internString(&intern_table, p);
+    Char *p_interned = internString(&is, p);
     utTest(x_interned != p_interned);
 
     // TODO(naman): Write tests to see what happens if two strings with same hash are interned.
@@ -2118,77 +1687,374 @@ void internUnitTest (void)
 }
 
 /* ==========================
- * Intrusive Linked List
+ * Hashing Infrastructure
  */
 
-/* API ----------------------------------------------------
- * List* listInsert (List *list, List_Node *node)
- * List_Node* listRemove (List *list)
- */
+// TODO(naman): Add hash collision detection
 
-typedef struct List_Node {
-  struct List_Node* next;
-  struct List_Node* prev;
-} List_Node;
-
-typedef List_Node List;
-
-# define listInsert(l, ln) ((l) = list_Insert(l, ln))
-# define listRemove(l) (list_Remove(l))
-
+// FNV-1a
 header_function
-List_Node* list_Insert (List_Node *l, List_Node *ln)
+U64 hashString (Char *str)
 {
-    if (l == NULL) {
-        l = memAlloc(sizeof(*l));
-        l->prev = l;
-        l->next = l;
+    U64 hash = 0xCBF29CE484222325ULL; // FNV_offset_basis
+    for (Size i = 0; str[i] != '\0'; i++) {
+        hash = hash ^ (U64)str[i];
+        hash = hash * 0x100000001B3ULL; // FNV_prime
     }
 
-    List_Node *next = l->next;
-
-    l->next = ln;
-
-    ln->next = next;
-    ln->prev = l;
-
-    next->prev = ln;
-
-    return l;
+    return hash;
 }
 
+// splitmix64 (xoshiro.di.unimi.it/splitmix64.c)
 header_function
-List_Node* list_Remove (List_Node *l)
+U64 hashInteger(U64 x)
 {
-    if (l == NULL) return NULL;
-    if (l == l->next) return NULL;
-
-    List_Node *removee = l->next;
-    List_Node *successor = removee->next;
-
-    l->next = successor;
-    successor->prev = l;
-
-    removee->next = NULL;
-    removee->prev = NULL;
-
-    return removee;
+    x ^= x >> 30;
+    x *= 0xBF58476D1CE4E5B9ULL;
+    x ^= x >> 27;
+    x *= 0x94D049BB133111EBULL;
+    x ^= x >> 31;
+    return x;
 }
 
-/* ****************************************************************************
- * UNIT TESTS FOR EVERYTHING IN THIS FILE *************************************
+/* Universal Hashing: https://en.wikipedia.org/wiki/Universal_hashing#Avoiding_modular_arithmetic
+ *
+ * NOTE(naman): Implementation notes
+ * w is number of bits in machine word (64 in our case)
+ * s is the number of buckets/bins (slots in the hash table) to which the
+ *   universe of hashable objects is to be mapped
+ * m is log2(s) (=> m = 2^s) and is equal to the number of bits in the final hash
+ * a is a random odd positive integer < 2^w (fitting in w bits)
+ * b is a random non-negative integer < 2^(w-m) (fitting in (w-m) bits)
+ * SEE(naman): https://en.wikipedia.org/wiki/Universal_hashing#Avoiding_modular_arithmetic
+ *
+ * r is the last random number generated and is just an implementation detail.
  */
 
+typedef struct Hash_Universal {
+    U64 a, b, m; /* Hashing constants */
+
+    U64 r; /* Last random number for Universal Hashing */
+} Hash_Universal;
+
 header_function
-void nlibUnitTest (void)
+void hashUniversalConstantsUpdate (Hash_Universal *h)
 {
-    sbufUnitTest();
-    hmUnitTest();
-    internUnitTest();
+    do {
+        h->r = u64Rand(h->r);
+        h->a = h->r;
+    } while ((h->a > 0) && ((h->a & 0x01) != 0x01)); // Make sure that 'a' is odd
+
+    h->r = u64Rand(h->r);
+    // b should be (64 - m) bits long
+    h->b = h->r & (0xFFFFFFFFFFFFFFFFULL >> h->m);
+}
+
+header_function
+U64 hashUniversal (Hash_Universal h, U64 key)
+{
+    // NOTE(naman): Remember that we don't want 64-bit hashes, we want hashes < 2^m (s)
+    U64 result =  ((h.a * key) + h.b) >> (64 - h.m);
+    return result;
+}
+
+
+/* ==============
+ * Hash Table
+ */
+
+/* API ---------------------------------------------------
+ * NOTE(naman): Zero key and value are considered invalid.
+ *
+ * Hash_Table htCreate (Size min_slots);
+ * void       htDelete (Hash_Table ht);
+ * U64        htInsert (Hash_Table *ht, U64 key, U64 value);
+ * U64        htLookup (Hash_Table *ht, U64 key);
+ * U64        htRemove (Hash_Table *ht, U64 key);
+ *
+ * Hash_Table htCreateWithAlloc (Size min_slots,
+ *                               Memory_Allocator_Function *allocator, void *allocator_data);
+ */
+
+typedef struct Hash_Table {
+    Hash_Universal univ;
+    Memory_Allocator_Function *allocator;
+    void *allocator_data;
+    U64 *keys;
+    U64 *values;
+    Size slot_count;
+    Size slot_filled;
+} Hash_Table;
+
+header_function
+Hash_Table htCreateWithAlloc (Size slots_atleast,
+                              Memory_Allocator_Function *allocator, void *allocator_data)
+{
+    Hash_Table ht = {0};
+
+    ht.univ.m = u64Log2(max(slots_atleast, 1U)); // Log of closest lower power of two
+
+    // This will make m log of closest upper power of two
+    ht.univ.m = ht.univ.m + 1;
+    ht.slot_count = 1ULL << (ht.univ.m);
+    hashUniversalConstantsUpdate(&ht.univ);
+
+    if (allocator != NULL) {
+        ht.allocator = allocator;
+        ht.allocator_data = allocator_data;
+    } else {
+        ht.allocator = memDefaultAllocator;
+        ht.allocator_data = memDefaultAllocatorData;
+    }
+
+    ht.keys     = ht.allocator(Memory_Allocator_Mode_ALLOC,
+                               (ht.slot_count) * sizeof(*(ht.keys)), NULL,
+                               ht.allocator_data);
+    ht.values   = ht.allocator(Memory_Allocator_Mode_ALLOC,
+                               (ht.slot_count) * sizeof(*(ht.values)), NULL,
+                               ht.allocator_data);
+
+    return ht;
+}
+
+header_function
+Hash_Table htCreate (Size slots_atleast)
+{
+    Hash_Table ht = htCreateWithAlloc(slots_atleast, NULL, NULL);
+
+    return ht;
+}
+
+header_function
+void htDelete (Hash_Table ht)
+{
+    ht.allocator(Memory_Allocator_Mode_DEALLOC, 0, ht.keys,   NULL);
+    ht.allocator(Memory_Allocator_Mode_DEALLOC, 0, ht.values, NULL);
+}
+
+header_function
+B32 ht_LinearProbeSearch (Hash_Table *ht, U64 key, Size *value)
+{
+    Size index = 0;
+    B32 found = false;
+
+    for (Size i = 0; !found && (i < ht->slot_count); ++i) {
+        index = (key + i) % (ht->slot_count);
+        if (ht->keys[index] == key) {
+            found = true;
+            break;
+        }
+    }
+
+    *value = index;
+
+    return found;
+}
+
+header_function
+U64 ht_LinearProbeInsertion (Hash_Table *ht,
+                             U64 hash, U64 key, U64 value)
+{
+    U64 result_value = value;
+
+    for (Size i = 0; i < ht->slot_count; ++i) {
+        Size index = (hash + i) % (ht->slot_count);
+
+        if ((ht->keys[index] == key) || (ht->values[index] == 0))  {
+            result_value = ht->values[index];
+            ht->keys[index] = key;
+            ht->values[index] = value;
+            break;
+        }
+    }
+
+    return result_value;
+}
+
+header_function
+U64 htInsert (Hash_Table *ht, U64 key, U64 value)
+{
+    if ((key == 0) || (value == 0)) return 0;
+
+    // FIXME(naman): Use number of collisions as the parameter for resizing
+    if ((2U * (ht->slot_filled)) > (ht->slot_count)) {
+        Size slot_count_prev = ht->slot_count;
+        U64 *keys   = ht->keys;
+        U64 *values = ht->values;
+
+        ht->univ.m = ht->univ.m + 1;
+        ht->slot_count = 1ULL << (ht->univ.m);
+        hashUniversalConstantsUpdate(&(ht->univ));
+
+        ht->keys   = ht->allocator(Memory_Allocator_Mode_ALLOC,
+                                   sizeof(*(ht->keys)) * ht->slot_count,
+                                   NULL, ht->allocator_data);
+        ht->values = ht->allocator(Memory_Allocator_Mode_ALLOC,
+                                   sizeof(*(ht->values)) * ht->slot_count,
+                                   NULL, ht->allocator_data);
+
+        for (Size i = 0; i < slot_count_prev; ++i) {
+            U64 key_i     = keys[i];
+            U64 value_i   = values[i];
+
+            if (value_i != 0) {
+                U64 hash_new = hashUniversal(ht->univ, key_i);
+                ht_LinearProbeInsertion(ht, hash_new, key_i, value_i);
+            }
+        }
+
+        ht->allocator(Memory_Allocator_Mode_DEALLOC, 0, keys,   ht->allocator_data);
+        ht->allocator(Memory_Allocator_Mode_DEALLOC, 0, values, ht->allocator_data);
+    }
+
+    U64 hash = hashUniversal(ht->univ, key);
+
+    U64 result_value = ht_LinearProbeInsertion(ht, hash, key, value);
+    if (result_value == 0) {
+        ht->slot_filled++;
+    }
+
+    return result_value;
+}
+
+header_function
+U64 htLookup (Hash_Table *ht, U64 key)
+{
+    if (key == 0) return 0;
+
+    Size location = 0;
+    U64 result_value = 0;
+
+    if (ht_LinearProbeSearch(ht, key, &location)) {
+        result_value = ht->values[location];
+    }
+
+    return result_value;
+}
+
+header_function
+U64 htRemove (Hash_Table *ht, U64 key)
+{
+    if (key == 0) return 0;
+
+    Size location = 0;
+    U64 result_value = 0;
+
+    if (ht_LinearProbeSearch(ht, key, &location)) {
+        result_value = ht->values[location];
+    }
+
+    if (result_value != 0) {
+        ht->values[location] = 0;
+        ht->keys[location] = 0;
+        ht->slot_filled -= 1;
+    }
+
+    return result_value;
+}
+
+header_function
+void htUnitTest (void)
+{
+    Hash_Table ht = htCreate(0);
+
+    /* No Entries */
+    utTest(htLookup(&ht, 0) == 0);
+    utTest(htLookup(&ht, 1) == 0);
+    utTest(htLookup(&ht, 2) == 0);
+
+    /* Insertion Test */
+    Size f0 = ht.slot_filled;
+
+    htInsert(&ht, 1, 1);
+    utTest(ht.slot_filled == (f0 + 1));
+    utTest(htLookup(&ht, 0) == 0);
+    utTest(htLookup(&ht, 1) == 1);
+    fflush(stdout);
+    utTest(htLookup(&ht, 2) == 0);
+
+    htInsert(&ht, 2, 42);
+    utTest(ht.slot_filled == (f0 + 2));
+    utTest(htLookup(&ht, 0) == 0);
+    utTest(htLookup(&ht, 1) == 1);
+    utTest(htLookup(&ht, 2) == 42);
+
+    /* Duplicate Key */
+    U64 v1 = htInsert(&ht, 2, 24);
+    utTest(v1 == 42);
+    utTest(htLookup(&ht, 0) == 0);
+    utTest(htLookup(&ht, 1) == 1);
+    utTest(htLookup(&ht, 2) == 24);
+
+    /* Removal Test */
+    U64 v2 = htRemove(&ht, 2);
+    utTest(v2 == 24);
+    utTest(htLookup(&ht, 2) == 0);
+
+    U64 v3 = htRemove(&ht, 1);
+    utTest(v3 == 1);
+    utTest(htLookup(&ht, 1) == 0);
+
+    /* NULL Check */
+    Size f1 = ht.slot_filled;
+    htInsert(&ht, 0, 1);
+    utTest(ht.slot_filled == f1);
+    utTest(htLookup(&ht, 0) == 0);
+
+    Size f2 = ht.slot_filled;
+    htRemove(&ht, 0);
+    utTest(ht.slot_filled == f2);
+    utTest(htLookup(&ht, 0) == 0);
+
+    /* Expansion Test */
+    htInsert(&ht, 3, 33);
+    utTest(htLookup(&ht, 3) == 33);
+
+    htInsert(&ht, 4, 44);
+    utTest(htLookup(&ht, 4) == 44);
+
+    htInsert(&ht, 5, 55);
+    utTest(htLookup(&ht, 5) == 55);
+
+    htInsert(&ht, 6, 66);
+    utTest(htLookup(&ht, 6) == 66);
+
+    htInsert(&ht, 7, 77);
+    utTest(htLookup(&ht, 7) == 77);
+
+    htInsert(&ht, 8, 88);
+    utTest(htLookup(&ht, 8) == 88);
+
+    htInsert(&ht, 9, 99);
+    utTest(htLookup(&ht, 9) == 99);
+
+    /* Removal after Expansion */
+
+    htRemove(&ht, 3);
+    utTest(htLookup(&ht, 3) == 0);
+
+    htRemove(&ht, 4);
+    utTest(htLookup(&ht, 4) == 0);
+
+    htRemove(&ht, 5);
+    utTest(htLookup(&ht, 5) == 0);
+
+    htRemove(&ht, 6);
+    utTest(htLookup(&ht, 6) == 0);
+
+    htRemove(&ht, 7);
+    utTest(htLookup(&ht, 7) == 0);
+
+    htRemove(&ht, 8);
+    utTest(htLookup(&ht, 8) == 0);
+
+    htRemove(&ht, 9);
+    utTest(htLookup(&ht, 9) == 0);
+
+    htDelete(ht);
 
     return;
 }
-
 
 #define NLIB_H_INCLUDE_GUARD
 #endif // NLIB_H_INCLUDE_GUARD

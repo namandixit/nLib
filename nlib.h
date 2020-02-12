@@ -100,7 +100,7 @@
    (done to maintain backwards compatibility). If you do prevent CRT from inclusion, do
    the following from the code:
 
-   1. Run memCustomCreate()
+   1. Run memUserCreate()
 */
 
 # if defined(COMPILER_MSVC)
@@ -280,7 +280,15 @@ typedef union {
 } max_align_t;
 #  endif
 
-# elif defined(COMPILER_CLANG)
+#  if defined(LANGUAGE_C11)
+#   include <threads.h>
+#  else
+#   define thread_local __declspec( thread )
+#  endif
+
+#  define swap_endian(x) _byteswap_ulong(x)
+
+# elif defined(COMPILER_CLANG) || defined(COMPILER_GCC)
 
 #  define max(a, b)                             \
     ({ __typeof__ (a) _a = (a);                 \
@@ -294,15 +302,15 @@ typedef union {
 #  if defined(LANGUAGE_C11)
 #   include <stdalign.h>
 #  else
-#    pragma clang diagnostic push
-#    pragma clang diagnostic ignored "-Wreserved-id-macro"
-#    define _Alignof __alignof__
-#    define alignof _Alignof
-#    define __alignof_is_defined 1
-#    define _Alignas(a) __attribute__ ((aligned (a)))
-#    define alignas _Alignas
-#    define __alignas_is_defined 1
-#    pragma clang diagnostic pop
+#   pragma clang diagnostic push
+#   pragma clang diagnostic ignored "-Wreserved-id-macro"
+#   define _Alignof __alignof__
+#   define alignof _Alignof
+#   define __alignof_is_defined 1
+#   define _Alignas(a) __attribute__ ((aligned (a)))
+#   define alignas _Alignas
+#   define __alignas_is_defined 1
+#   pragma clang diagnostic pop
 
 /* Malloc Alignment: https://msdn.microsoft.com/en-us/library/ycsb6wwf.aspx
  */
@@ -319,8 +327,16 @@ typedef union {
     alignas(16) struct { F64 a, b; } f;
 } max_align_t;
 #   endif
-
 #  endif
+
+#  if defined(LANGUAGE_C11)
+#   include <threads.h>
+#  else
+#   define thread_local __thread
+#  endif
+
+#  define swap_endian(x) __builtin_bswap32(x)
+
 # endif
 
 /* =======================
@@ -576,7 +592,7 @@ void ut_Test (B32 cond,
  */
 
 /* ===============================
- * Custom Memory Allocator Helpers
+ * User Memory Allocator Helpers
  */
 
 #define MEM_MAX_ALIGN_MINUS_ONE (alignof(max_align_t) - 1u)
@@ -600,13 +616,13 @@ void ut_Test (B32 cond,
 #   pragma clang diagnostic ignored "-Wcast-align"
 # endif
 
-typedef enum MemAllocMode {
-    MemAllocMode_NONE,
-    MemAllocMode_CREATE,
-    MemAllocMode_ALLOC,
-    MemAllocMode_REALLOC,
-    MemAllocMode_DEALLOC,
-    MemAllocMode_DEALLOC_ALL,
+typedef enum Memory_Allocator_Mode {
+    Memory_Allocator_Mode_NONE,
+    Memory_Allocator_Mode_CREATE,
+    Memory_Allocator_Mode_ALLOC,
+    Memory_Allocator_Mode_REALLOC,
+    Memory_Allocator_Mode_DEALLOC,
+    Memory_Allocator_Mode_DEALLOC_ALL,
 } Memory_Allocator_Mode;
 
 # define MEMORY_ALLOCATOR(allocator)               \
@@ -616,24 +632,24 @@ typedef enum MemAllocMode {
 typedef MEMORY_ALLOCATOR(Memory_Allocator_Function);
 
 /* =============================
- * Custom Purpose Memory Allocator
+ * General Purpose User Memory Allocator
  */
 
-typedef struct Memory_Custom_Buddy Memory_Custom_Buddy;
+typedef struct Memory_User_Buddy Memory_User_Buddy;
 
-typedef struct Memory_Custom {
-    Memory_Custom_Buddy *b;
+typedef struct Memory_User {
+    Memory_User_Buddy *b;
     Byte *base;
     Size total;
     Size filled;
-} Memory_Custom;
+} Memory_User;
 
-struct Memory_Custom_Buddy {
+struct Memory_User_Buddy {
     Byte *free_bits;
     Byte *split_bits;
 
-    struct Memory_Custom_Buddy *prev;
-    struct Memory_Custom_Buddy *next;
+    struct Memory_User_Buddy *prev;
+    struct Memory_User_Buddy *next;
 
     Byte *arena;
     Size arena_size;
@@ -684,14 +700,14 @@ struct Memory_Custom_Buddy {
     (((index) - 1) / 2)
 
 header_function
-Memory_Custom_Buddy memcb_Init (Byte* arena, Size arena_size, Size leaf_size)
+Memory_User_Buddy memcb_Init (Byte* arena, Size arena_size, Size leaf_size)
 {
     Size leaf_count  = arena_size / leaf_size;
     U8 level_max   = (U8)u64Log2(leaf_count);
     U8 level_count = level_max + 1;
     Size block_count  = (1 << level_count) - 1; // 2ⁿ⁺¹ - 1 where n is level_max (sum of GP)
 
-    Memory_Custom_Buddy buddy = {0};
+    Memory_User_Buddy buddy = {0};
     buddy.arena = arena;
     buddy.arena_size = arena_size;
     buddy.leaf_size = leaf_size;
@@ -704,7 +720,7 @@ Memory_Custom_Buddy memcb_Init (Byte* arena, Size arena_size, Size leaf_size)
 }
 
 header_function
-void* memcb_GetFreeBlockAtLevel (Memory_Custom_Buddy *buddy, Size level)
+void* memcb_GetFreeBlockAtLevel (Memory_User_Buddy *buddy, Size level)
 {
     Byte *found_block = NULL;
     Size level_current = level;
@@ -766,7 +782,7 @@ void* memcb_GetFreeBlockAtLevel (Memory_Custom_Buddy *buddy, Size level)
 }
 
 header_function
-void* memcb_Alloc (Memory_Custom_Buddy *bbuddy, Size size)
+void* memcb_Alloc (Memory_User_Buddy *bbuddy, Size size)
 {
     Size size_real = size;
 
@@ -794,7 +810,7 @@ void* memcb_Alloc (Memory_Custom_Buddy *bbuddy, Size size)
 }
 
 header_function
-Byte* memcb_MergeBuddies (Memory_Custom_Buddy *buddy, Byte *block, Size level)
+Byte* memcb_MergeBuddies (Memory_User_Buddy *buddy, Byte *block, Size level)
 {
     if (level == 0) return NULL;
 
@@ -830,7 +846,7 @@ Byte* memcb_MergeBuddies (Memory_Custom_Buddy *buddy, Byte *block, Size level)
 }
 
 header_function
-void memcb_ReleaseBlockAtLevel (Memory_Custom_Buddy *buddy, Byte *ptr, Size level)
+void memcb_ReleaseBlockAtLevel (Memory_User_Buddy *buddy, Byte *ptr, Size level)
 {
     memSetBit(buddy->free_bits, memcb_GlobalIndexOfBlock(buddy, ptr, level));
 
@@ -847,7 +863,7 @@ void memcb_ReleaseBlockAtLevel (Memory_Custom_Buddy *buddy, Byte *ptr, Size leve
 }
 
 header_function
-void memcb_Dealloc (Memory_Custom_Buddy *buddy, void *ptr)
+void memcb_Dealloc (Memory_User_Buddy *buddy, void *ptr)
 {
     if (ptr == NULL || buddy == NULL) return;
 
@@ -878,7 +894,7 @@ void memcb_Dealloc (Memory_Custom_Buddy *buddy, void *ptr)
 }
 
 header_function
-void* memcb_GetMemory (Memory_Custom *m, Size size)
+void* memcb_GetMemory (Memory_User *m, Size size)
 {
     if ((m->filled + size) > m->total) {
         fprintf(stderr, "Memory full: Total = %lu, Filled = %lu\n", m->total, m->filled);
@@ -893,31 +909,31 @@ void* memcb_GetMemory (Memory_Custom *m, Size size)
     return result;
 }
 
-# define memCustomCreate(m, base, size)    memCustom(MemAllocMode_CREATE,  size, base, m)
-# define memCustomAlloc(m, size)           memCustom(MemAllocMode_ALLOC,   size, NULL, m)
-# define memCustomRealloc(m, ptr, size)    memCustom(MemAllocMode_REALLOC, size, ptr,  m)
-# define memCustomDealloc(m, ptr)          memCustom(MemAllocMode_DEALLOC, 0,    ptr,  m)
+# define memUserCreate(m, base, size)    memUser(Memory_Allocator_Mode_CREATE,  size, base, m)
+# define memUserAlloc(m, size)           memUser(Memory_Allocator_Mode_ALLOC,   size, NULL, m)
+# define memUserRealloc(m, ptr, size)    memUser(Memory_Allocator_Mode_REALLOC, size, ptr,  m)
+# define memUserDealloc(m, ptr)          memUser(Memory_Allocator_Mode_DEALLOC, 0,    ptr,  m)
 
 header_function
-MEMORY_ALLOCATOR(memCustom)
+MEMORY_ALLOCATOR(memUser)
 {
-    Memory_Custom *m = data;
+    Memory_User *m = data;
 
     switch (mode) {
-        case MemAllocMode_CREATE: {
+        case Memory_Allocator_Mode_CREATE: {
             m->total = size;
             m->base = old_ptr;
             m->filled = 0;
             m->b = NULL;
         } break;
 
-        case MemAllocMode_ALLOC: {
+        case Memory_Allocator_Mode_ALLOC: {
             if (size == 0) return NULL;
             size = u64NextPowerOf2(size);
 
             void *mem = NULL;
 
-            for (Memory_Custom_Buddy *b = m->b; b != NULL; b = b->next) {
+            for (Memory_User_Buddy *b = m->b; b != NULL; b = b->next) {
                 if ((size >= b->leaf_size) && (size <= b->arena_size)) {
                     mem = memcb_Alloc(b, size);
                     if (mem != NULL) break;
@@ -930,8 +946,8 @@ MEMORY_ALLOCATOR(memCustom)
                 Size leaf_size = size;
                 Size arena_size = 1 << (u64Log2(size) + 5);
 
-                Memory_Custom_Buddy *buddy = memcb_GetMemory(m, sizeof(*buddy));
-                *buddy = (Memory_Custom_Buddy){0};
+                Memory_User_Buddy *buddy = memcb_GetMemory(m, sizeof(*buddy));
+                *buddy = (Memory_User_Buddy){0};
 
                 Byte *arena = memcb_GetMemory(m, arena_size);
 
@@ -962,20 +978,20 @@ MEMORY_ALLOCATOR(memCustom)
             return mem;
         } break;
 
-        case MemAllocMode_REALLOC: {
+        case Memory_Allocator_Mode_REALLOC: {
             if (old_ptr == NULL) {
                 void *result = memCustom(MemAllocMode_ALLOC, size, NULL, m);
                 return result;
             }
 
             if (size == 0) {
-                memCustom(MemAllocMode_DEALLOC, 0, old_ptr, m);
+                memUser(Memory_Allocator_Mode_DEALLOC, 0, old_ptr, m);
                 return NULL;
             }
 
-            Memory_Custom_Buddy *buddy = NULL;
+            Memory_User_Buddy *buddy = NULL;
 
-            for (Memory_Custom_Buddy *b = m->b; b != NULL; b = b->next) {
+            for (Memory_User_Buddy *b = m->b; b != NULL; b = b->next) {
                 if (((Byte*)old_ptr > (Byte*)&(b->arena)) && ((Byte*)old_ptr < (((Byte*)&(b->arena)) + b->arena_size))) {
                     buddy = b;
                     break;
@@ -1055,17 +1071,17 @@ MEMORY_ALLOCATOR(memCustom)
             }
 
             if (!reallocated) {
-                new_ptr = memCustom(MemAllocMode_ALLOC, size, NULL, m);
+                new_ptr = memUser(Memory_Allocator_Mode_ALLOC, size, NULL, m);
                 if (new_ptr == NULL) return NULL;
                 memcpy(new_ptr, old_ptr, old_size);
-                memCustom(MemAllocMode_DEALLOC, 0, old_ptr,  m);
+                memUser(Memory_Allocator_Mode_DEALLOC, 0, old_ptr,  m);
             }
 
             return new_ptr;
         } break;
 
-        case MemAllocMode_DEALLOC: {
-            for (Memory_Custom_Buddy *b = m->b; b != NULL; b = b->next) {
+        case Memory_Allocator_Mode_DEALLOC: {
+            for (Memory_User_Buddy *b = m->b; b != NULL; b = b->next) {
                 if (((Byte*)old_ptr > (Byte*)&(b->arena)) && ((Byte*)old_ptr < (((Byte*)&(b->arena)) + b->arena_size))) {
                     memcb_Dealloc(b, old_ptr);
                     break;
@@ -1075,11 +1091,11 @@ MEMORY_ALLOCATOR(memCustom)
             return NULL;
         } break;
 
-        case MemAllocMode_DEALLOC_ALL: {
+        case Memory_Allocator_Mode_DEALLOC_ALL: {
             // TODO(naman): Maybe we should use a off-the-shelf malloc that allows this?
         } break;
 
-        case MemAllocMode_NONE: {
+        case Memory_Allocator_Mode_NONE: {
             breakpoint();
         } break;
     }
@@ -1097,20 +1113,20 @@ struct MemCRT_Header {
     Size size;
 };
 
-#  define memCRTAlloc(size)        memCRT(MemAllocMode_ALLOC,   size, NULL, NULL)
-#  define memCRTRealloc(ptr, size) memCRT(MemAllocMode_REALLOC, size, ptr,  NULL)
-#  define memCRTDealloc(ptr)       memCRT(MemAllocMode_DEALLOC, 0,    ptr,  NULL)
+#  define memCRTAlloc(size)        memCRT(Memory_Allocator_Mode_ALLOC,   size, NULL, NULL)
+#  define memCRTRealloc(ptr, size) memCRT(Memory_Allocator_Mode_REALLOC, size, ptr,  NULL)
+#  define memCRTDealloc(ptr)       memCRT(Memory_Allocator_Mode_DEALLOC, 0,    ptr,  NULL)
 
 header_function
 MEMORY_ALLOCATOR(memCRT)
 {
     unused_variable(data);
     switch (mode) {
-        case MemAllocMode_CREATE: {
+        case Memory_Allocator_Mode_CREATE: {
             // NOTE(naman): Not needed for now
         } break;
 
-        case MemAllocMode_ALLOC: {
+        case Memory_Allocator_Mode_ALLOC: {
             Size memory_size = memAlignUp(size);
             Size header_size = memAlignUp(sizeof(struct MemCRT_Header));
             Size total_size = memory_size + header_size;
@@ -1126,7 +1142,7 @@ MEMORY_ALLOCATOR(memCRT)
             return result;
         } break;
 
-        case MemAllocMode_REALLOC: {
+        case Memory_Allocator_Mode_REALLOC: {
             Size memory_size = memAlignUp(size);
             Size header_size = memAlignUp(sizeof(struct MemCRT_Header));
             Size total_size = memory_size + header_size;
@@ -1154,7 +1170,7 @@ MEMORY_ALLOCATOR(memCRT)
             return result;
         } break;
 
-        case MemAllocMode_DEALLOC: {
+        case Memory_Allocator_Mode_DEALLOC: {
             if (old_ptr == NULL) {
                 return NULL;
             }
@@ -1164,11 +1180,11 @@ MEMORY_ALLOCATOR(memCRT)
             free(mem);
         } break;
 
-        case MemAllocMode_DEALLOC_ALL: {
+        case Memory_Allocator_Mode_DEALLOC_ALL: {
             // TODO(naman): Maybe we should use a off-the-shelf malloc that allows this?
         } break;
 
-        case MemAllocMode_NONE: {
+        case Memory_Allocator_Mode_NONE: {
             breakpoint();
         } break;
     }
@@ -1179,253 +1195,18 @@ MEMORY_ALLOCATOR(memCRT)
 # endif
 
 # if !defined(NLIB_EXCLUDE_CRT)
-#  define MEM_ALLOCATOR_USER_DATA  NULL
-#  define memDefaultAllocator   memCRT
-#  define memAlloc(size)        memCRTAlloc(size)
-#  define memRealloc(ptr, size) memCRTRealloc(ptr, size)
-#  define memDealloc(ptr)       memCRTDealloc(ptr)
+global_variable thread_local Memory_Allocator_Function *memDefaultAllocator = &memCRT;
+global_variable thread_local void *memDefaultAllocatorData = NULL;
+#  define memAlloc(size)          memCRTAlloc(size)
+#  define memRealloc(ptr, size)   memCRTRealloc(ptr, size)
+#  define memDealloc(ptr)         memCRTDealloc(ptr)
 # else
-global_variable Memory_Custom *global_memory_custom;
-#  define MEM_ALLOCATOR_USER_DATA global_memory_custom
-#  define memDefaultAllocator     memCustom
-#  define memAlloc(size)          memCustomAlloc(global_memory_custom, size)
-#  define memRealloc(ptr, size)   memCustomRealloc(global_memory_custom, ptr, size)
-#  define memDealloc(ptr)         memCustomDealloc(global_memory_custom, ptr)
+global_variable thread_local Memory_Allocator_Function *memDefaultAllocator = &memUser;
+global_variable thread_local Memory_User *memDefaultAllocatorData = NULL;
+#  define memAlloc(size)          memUserAlloc(memDefaultAllocatorData, size)
+#  define memRealloc(ptr, size)   memUserRealloc(memDefaultAllocatorData, ptr, size)
+#  define memDealloc(ptr)         memUserDealloc(memDefaultAllocatorData, ptr)
 # endif
-
-/* =============================
- * Arena Memory Allocator
- */
-
-typedef struct {
-    Size len;
-    Size cap;
-    void *previous;
-    void *next;
-    Byte memory[];
-} MemArena;
-
-# define memArenaCreate(cap)       memArena(MemAllocMode_CREATE,     cap,  NULL, NULL)
-# define memArenaAlloc(data, size) memArena(MemAllocMode_ALLOC,      size, NULL, data)
-# define memArenaDeallocAll(data)  memArena(MemAllocMode_DEALLOC_ALL, 0,   NULL, data)
-
-header_function
-MEMORY_ALLOCATOR(memArena)
-{
-    unused_variable(old_ptr);
-
-    switch (mode) {
-        case MemAllocMode_CREATE: {
-            Size memory_size = memAlignUp(size);
-            MemArena *arena = memAlloc(sizeof(*arena) + memory_size);
-
-            arena->len = 0;
-            arena->cap = memory_size;
-            arena->previous = NULL;
-            arena->next = NULL;
-
-            return arena;
-        } break;
-
-        case MemAllocMode_ALLOC: {
-            Size memory_size = memAlignUp(size);
-
-            MemArena *arena = data;
-
-            while (true) {
-                if ((arena->len + memory_size) <= (arena->cap)) {
-                    break;
-                } else if (arena->next == NULL) {
-                    Size arena_size = (arena->cap > memory_size) ? arena->cap : memory_size;
-                    MemArena *next = memAlloc(sizeof(*next) + arena_size);
-
-                    arena->next = next;
-
-                    next->len = 0;
-                    next->cap = arena_size;
-                    next->previous = arena;
-                    next->next = NULL;
-
-                    arena = next;
-
-                    break;
-                } else {
-                    arena = arena->next;
-                }
-            }
-
-            // NOTE(naman): At this point, `arena` holds the arena which has enough space for
-            // the memory allocation
-            void *result = &(arena->memory[arena->len]);
-            arena->len = arena->len + memory_size;
-
-            return result;
-        } break;
-
-        case MemAllocMode_REALLOC: {
-            // NOTE(naman): Not supported
-        } break;
-
-        case MemAllocMode_DEALLOC: {
-            // NOTE(naman): Not supported
-        } break;
-
-        case MemAllocMode_DEALLOC_ALL: {
-            MemArena *arena = data;
-
-            while (arena != NULL) {
-                MemArena *child = arena->next;
-                memDealloc(arena);
-                arena = child;
-            }
-        } break;
-
-        case MemAllocMode_NONE: {
-            breakpoint();
-        } break;
-    }
-
-    return NULL;
-}
-
-/* =============================
- * Tree Memory Allocator
- */
-
-struct MemTree_Header {
-    void *child;
-    void *parent;
-    void *next;
-    void *previous;
-};
-
-# define memTree_GetHeader(ptr) ((struct MemTree_Header*)               \
-                                 ((Byte*)(ptr) - memAlignUp(sizeof(struct MemTree_Header))))
-
-# define memTreeAlloc(size, parent) memTree(MemAllocMode_ALLOC,   size, NULL, parent)
-# define memTreeDealloc(ptr)        memTree(MemAllocMode_DEALLOC, 0,    ptr,  NULL)
-
-header_function
-void memTree_DeallocRecursive (void *node)
-{
-    struct MemTree_Header *node_header = memTree_GetHeader(node);
-    void *child = node_header->child;
-
-    if (child != NULL) {
-        void *now = child;
-
-        while (now != NULL) {
-            struct MemTree_Header *now_header = memTree_GetHeader(now);
-            void *sibling = now_header->next;
-            memTree_DeallocRecursive(now);
-            node_header->child = sibling; // To prevent dangling pointers
-            now = sibling;
-        }
-    }
-
-    claim(node_header->child == NULL);
-
-    if (node_header->previous != NULL) {
-        struct MemTree_Header *previous_header = memTree_GetHeader(node_header->previous);
-        previous_header->next = node_header->next;
-    }
-
-    if (node_header->next != NULL) {
-        struct MemTree_Header *next_header = memTree_GetHeader(node_header->next);
-        next_header->previous = node_header->previous;
-    }
-
-    if (node_header->parent != NULL) {
-        struct MemTree_Header *parent_header = memTree_GetHeader(node_header->parent);
-        parent_header->child = node_header->next;
-    }
-
-    memDealloc(node_header);
-
-    return;
-}
-
-header_function
-MEMORY_ALLOCATOR(memTree)
-{
-    switch (mode) {
-        case MemAllocMode_CREATE: {
-            // NOTE(naman): Not supported
-        } break;
-        case MemAllocMode_ALLOC: {
-            void *parent = data;
-
-            Size requested_size = size;
-            Size allocated_size = memAlignUp(requested_size);
-
-            Size header_size = sizeof(struct MemTree_Header);
-            Size aligned_header_size = memAlignUp(header_size);
-
-            Size total_size = allocated_size + aligned_header_size;
-
-            void *mem = memAlloc(total_size);
-
-            void *result = (Byte*)mem + aligned_header_size;
-
-            struct MemTree_Header *header = mem;
-            header->parent = parent;
-            header->child = NULL;
-            header->next = NULL;
-            header->previous = NULL;
-
-            if (parent == NULL) {
-                return result;
-            }
-
-            struct MemTree_Header *parent_header = memTree_GetHeader(parent);
-
-            if (parent_header->child == NULL) {
-                parent_header->child = result;
-                return result;
-            }
-
-            void *first_child = parent_header->child;
-            struct MemTree_Header *first_child_header = memTree_GetHeader(first_child);
-
-            void *last_sibling = first_child;
-            void *sibling = first_child_header->next;
-
-            while (sibling != NULL) {
-                struct MemTree_Header *sibling_header = memTree_GetHeader(sibling);
-                last_sibling = sibling;
-                sibling = sibling_header->next;
-            }
-
-            struct MemTree_Header *last_sibling_header = memTree_GetHeader(last_sibling);
-            last_sibling_header->next = result;
-            header->previous = last_sibling;
-
-            return result;
-        } break;
-
-        case MemAllocMode_REALLOC: {
-            // TODO(naman): Just allocate a new node and patch-up the the pointers?
-        } break;
-
-        case MemAllocMode_DEALLOC: {
-            if (old_ptr == NULL) {
-                return NULL;
-            }
-
-            memTree_DeallocRecursive(old_ptr);
-
-            return NULL;
-        } break;
-
-        case MemAllocMode_DEALLOC_ALL: {
-            // TODO(naman): Should we somehow save the top level parent in the header?
-        } break;
-
-        case MemAllocMode_NONE: break;
-    }
-
-    return NULL;
-}
 
 # if defined(COMPILER_CLANG)
 #  pragma clang diagnostic pop

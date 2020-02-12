@@ -386,9 +386,10 @@ void reportDebug(Char *format, ...)
 #   define breakpoint() __debugbreak()
 #   define quit() breakpoint()
 #  else
-#   define report(...)
-#   define reportv(...)
+#   define report(...)      fprintf(stderr, __VA_ARGS__)
+#   define reportv(format, va_list) vfprintf(stderr, format, va_list)
 #   define quit() abort()
+#   define breakpoint() do{report("Fired breakpoint in release code, quitting...\n");quit();}while(0)
 #  endif
 
 # elif defined(OS_LINUX)
@@ -399,9 +400,10 @@ void reportDebug(Char *format, ...)
 #   define breakpoint() __asm__ volatile("int $0x03")
 #   define quit() breakpoint()
 #  else
-#   define report(format, ...)
-#   define reportv(format, va_list)
+#   define report(...)      fprintf(stderr, __VA_ARGS__)
+#   define reportv(format, va_list) vfprintf(stderr, format, va_list)
 #   define quit() abort()
+#   define breakpoint() do{report("Fired breakpoint in release code, quitting...\n");quit();}while(0)
 #  endif
 
 # endif

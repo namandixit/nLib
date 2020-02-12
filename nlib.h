@@ -1310,9 +1310,8 @@ typedef struct Sbuf_Header {
 
 #define sbufPrint(sb, ...) ((sb) = sbuf_Print((sb), __VA_ARGS__))
 
-#define sbufUnsortedRemove(sb, i, z) (((sb)[(i)] = (sb)[sbuf_Len(sb) - 1]), \
-                                      ((sb)[sbuf_Len(sb) - 1] = (z)),   \
-                                      ((sbuf_GetHeader(sb)->len)--))
+#define sbufUnsortedRemove(sb, i) (((sb)[(i)] = (sb)[sbuf_Len(sb) - 1]), \
+                                   ((sbuf_GetHeader(sb)->len)--))
 
 # if defined(COMPILER_CLANG)
 #  pragma clang diagnostic push
@@ -1325,7 +1324,7 @@ void* sbuf_Grow (void *buf, Size elem_size)
     if ((sbuf_Len(buf) + 1) <= sbuf_Cap(buf)) {
         return buf;
     } else {
-        Size new_cap = max(2 * sbuf_Cap(buf), 4);
+        Size new_cap = max(2 * sbuf_Cap(buf), 4U);
 
         Size new_size = (new_cap * elem_size) + sizeof(Sbuf_Header);
 
@@ -1425,6 +1424,8 @@ void sbufUnitTest (void)
 # if defined(COMPILER_CLANG)
 #  pragma clang diagnostic pop
 # endif
+
+
 
 /* ==========================
  * Pointer-Pointer Hash Map

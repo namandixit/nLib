@@ -574,6 +574,49 @@ void claim_ (B32 cond,
 }
 
 /* ===================
+ * String Functions
+ */
+
+header_function
+B32 strequal (Char *str1, Char *str2)
+{
+    B32 result = (strcmp(str1, str2) == 0);
+    return result;
+}
+
+header_function
+Size strprefix(Char *str, Char *pre)
+{
+    Size lenpre = strlen(pre);
+    Size lenstr = strlen(str);
+
+    if (lenstr < lenpre) {
+        return 0;
+    } else {
+        if (memcmp(pre, str, lenpre) == 0) {
+            return lenpre;
+        } else {
+            return 0;
+        }
+    }
+}
+
+header_function
+B32 strsuffix (Char *str, Char *suf)
+{
+    Char *string = strrchr(str, suf[0]);
+    B32 result = false;
+
+    if(string != NULL) {
+        if (strcmp(string, suf) == 0) {
+            result = true;
+        }
+    }
+
+    return result;
+}
+
+/* ===================
  * Unit Test Framework
  */
 

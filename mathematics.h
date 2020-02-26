@@ -111,7 +111,7 @@ U64 mathLog2U64(U64 x)
 header_function
 U32 mathLog2U32(U32 x)
 {
-    U32 result = 32 - ((U64)__builtin_clz(x) + 1);
+    U32 result = (U32)(32 - ((U64)__builtin_clz(x) + 1));
     return result;
 }
 

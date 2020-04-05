@@ -672,6 +672,7 @@ typedef enum Memory_Allocator_Mode {
     Memory_Allocator_Mode_REALLOC,
     Memory_Allocator_Mode_DEALLOC,
     Memory_Allocator_Mode_DEALLOC_ALL,
+    Memory_Allocator_Mode_SIZE,
 } Memory_Allocator_Mode;
 
 # define MEMORY_ALLOCATOR(allocator)               \
@@ -1144,6 +1145,10 @@ MEMORY_ALLOCATOR(memUser)
             // TODO(naman): Maybe we should use a off-the-shelf malloc that allows this?
         } break;
 
+        case Memory_Allocator_Mode_SIZE: {
+            // TODO(naman): Implement this
+        } break;
+
         case Memory_Allocator_Mode_NONE: {
             breakpoint();
         } break;
@@ -1165,6 +1170,7 @@ struct MemCRT_Header {
 #  define memCRTAlloc(size)        memCRT(Memory_Allocator_Mode_ALLOC,   size, NULL, NULL)
 #  define memCRTRealloc(ptr, size) memCRT(Memory_Allocator_Mode_REALLOC, size, ptr,  NULL)
 #  define memCRTDealloc(ptr)       memCRT(Memory_Allocator_Mode_DEALLOC, 0,    ptr,  NULL)
+#  define memCRTSize(ptr)          memCRT(Memory_Allocator_Mode_SIZE,    0,    ptr,  NULL)
 
 header_function
 MEMORY_ALLOCATOR(memCRT)
@@ -1233,6 +1239,12 @@ MEMORY_ALLOCATOR(memCRT)
             // TODO(naman): Maybe we should use a off-the-shelf malloc that allows this?
         } break;
 
+        case Memory_Allocator_Mode_SIZE: {
+            struct MemCRT_Header *header = (void*)((Byte*)old_ptr - sizeof(*header));
+
+            return &header->size;
+        } break;
+
         case Memory_Allocator_Mode_NONE: {
             breakpoint();
         } break;
@@ -1249,12 +1261,14 @@ global_variable thread_local void *memDefaultAllocatorData = NULL;
 #  define memAlloc(size)          memCRTAlloc(size)
 #  define memRealloc(ptr, size)   memCRTRealloc(ptr, size)
 #  define memDealloc(ptr)         memCRTDealloc(ptr)
+#  define memSize(ptr)            *(Size*)memCRTSize(ptr)
 # else
 global_variable thread_local Memory_Allocator_Function *memDefaultAllocator = &memUser;
 global_variable thread_local Memory_User *memDefaultAllocatorData = NULL;
 #  define memAlloc(size)          memUserAlloc(memDefaultAllocatorData, size)
 #  define memRealloc(ptr, size)   memUserRealloc(memDefaultAllocatorData, ptr, size)
 #  define memDealloc(ptr)         memUserDealloc(memDefaultAllocatorData, ptr)
+#  define memSize(ptr)            *(Size*)memUserSize(memDefaultAllocatorData, ptr)
 # endif
 
 # if defined(COMPILER_CLANG)

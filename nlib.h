@@ -1298,6 +1298,7 @@ global_variable thread_local Memory_User *memDefaultAllocatorData = NULL;
 typedef struct Sbuf_Header {
     Size cap; // NOTE(naman): Maximum number of elements that can be stored
     Size len; // NOTE(naman): Count of elements actually stored
+    void *userdata;
     Byte buf[];
 } Sbuf_Header;
 

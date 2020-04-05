@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+
+if [ -z ${BuildPlatform+x} ]; then
+    BuildPlatform=linux
+fi
+
+if [ -z ${BuildArchitecture+x} ]; then
+    BuildArchitecture=x64
+fi
+
+ProjectRoot="$( cd "$(dirname "$0")" ; pwd -P)" # Directory in which the script is located
+cd ${ProjectRoot}
+echo "Entering directory \`$(pwd)'"
+
+
+# .....................................................................
+# BUILD
+# `````````````````````````````````````````````````````````````````````
+
+Compiler="clang"
+
+Source=${ProjectRoot}/test.c
+Target=test.${BuildPlatform}.${BuildArchitecture}
+TargetPath="${Target}"
+
+if [ -f "${TargetPath}" ]; then
+    rm "${TargetPath}"
+fi
+
+# NOTE(naman): The RUNPATH is not set for the game.so file. Instead, it is set so that any user
+# may drop libGL.so or such in the directory to inject custom code for modding.
+
+# For Address Sanitizer: -fsanitize=address -fno-omit-frame-pointer
+#     Memory Sanitizer : -fsanitize=memory -fno-optimize-sibling-calls -fno-omit-frame-pointer -fsanitize-memory-track-origins
+
+
+CompilerFlags="-iquote ${ProjectRoot}/../../include \
+               -g3 -O0 -fno-strict-aliasing -fwrapv -msse2 \
+               "
+LanguageFlags="--std=c11 -DBUILD_INTERNAL -DBUILD_SLOW -DBUILD_DEBUG \
+               -DBUILD_NUMBER=${NEW_BUILD_NUMBER}                    \
+               -D_POSIX_C_SOURCE=200809L -D_DEFAULT_SOURCE"
+WarningFlags="-Weverything -Wpedantic -pedantic-errors -Werror \
+              -Wno-c++98-compat \
+              "
+LinkerFlags="-o ${TargetPath} \
+             -static-libgcc \
+             -Wl,-rpath=\${ORIGIN} -Wl,-z,origin -Wl,--enable-new-dtags \
+             "
+
+${Compiler} ${CompilerFlags} ${LanguageFlags} ${WarningFlags} \
+            ${Source} \
+            ${LinkerFlags}

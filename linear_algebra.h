@@ -17,7 +17,7 @@ typedef union {
 } Vec2;
 
 header_function
-Vec2 vec2New (F32 x, F32 y)
+Vec2 vec2 (F32 x, F32 y)
 {
     Vec2 result = {0};
     result.x = x;
@@ -29,34 +29,34 @@ Vec2 vec2New (F32 x, F32 y)
 header_function
 Vec2 vec2Invert (Vec2 v)
 {
-    return vec2New(-v.x, -v.y);
+    return vec2(-v.x, -v.y);
 }
 
 header_function
 Vec2 vec2Add (Vec2 v, Vec2 u)
 {
-    return vec2New(v.x + u.x,
+    return vec2(v.x + u.x,
                    v.y + u.y);
 }
 
 header_function
 Vec2 vec2Sub (Vec2 v, Vec2 u)
 {
-    return vec2New(v.x - u.x,
+    return vec2(v.x - u.x,
                    v.y - u.y);
 }
 
 header_function
 Vec2 vec2Mul (Vec2 v, Vec2 u)
 {
-    return vec2New(v.x * u.x,
+    return vec2(v.x * u.x,
                    v.y * u.y);
 }
 
 header_function
 Vec2 vec2Scale (Vec2 v, F32 r)
 {
-    return vec2New(v.x * r,
+    return vec2(v.x * r,
                    v.y * r);
 }
 
@@ -70,7 +70,7 @@ F32 vec2Dot (Vec2 v, Vec2 u)
 header_function
 Vec2 vec2Lerp (Vec2 v, Vec2 u, F32 factor)
 {
-    return vec2New(v.x + factor * (u.x - v.x),
+    return vec2(v.x + factor * (u.x - v.x),
                    v.y + factor * (u.y - v.y));
 }
 
@@ -95,10 +95,10 @@ Vec2 vec2Norm (Vec2 v)
     // NOTE(naman): An exact comparison with zero is what we want.
     if (mag != 0.0f) {
         F32 inv_mag = 1.0f / mag;
-        return vec2New(v.x * inv_mag,
+        return vec2(v.x * inv_mag,
                        v.y * inv_mag);
     } else {
-        return vec2New(0.0f, 0.0f);
+        return vec2(0.0f, 0.0f);
     }
 }
 
@@ -107,28 +107,28 @@ Vec2 vec2Norm (Vec2 v)
 
 typedef union {
     struct {
-        F32 x, y, z, _pad;
+        F32 x, y, z;
     };
     alignas(16) Byte alignment[16];
 } Vec3;
 
 header_function
-Vec3 vec3New (F32 x, F32 y, F32 z)
+Vec3 vec3 (F32 x, F32 y, F32 z)
 {
-    Vec3 result = {x, y, z};
+    Vec3 result = {.x = x, .y = y, .z = z};
     return result;
 }
 
 header_function
 Vec3 vec3Invert (Vec3 v)
 {
-    return vec3New(-v.x, -v.y, -v.z);
+    return vec3(-v.x, -v.y, -v.z);
 }
 
 header_function
 Vec3 vec3Add (Vec3 v, Vec3 u)
 {
-    return vec3New(v.x + u.x,
+    return vec3(v.x + u.x,
                    v.y + u.y,
                    v.z + u.z);
 }
@@ -136,7 +136,7 @@ Vec3 vec3Add (Vec3 v, Vec3 u)
 header_function
 Vec3 vec3Sub (Vec3 v, Vec3 u)
 {
-    return vec3New(v.x - u.x,
+    return vec3(v.x - u.x,
                    v.y - u.y,
                    v.z - u.z);
 }
@@ -144,7 +144,7 @@ Vec3 vec3Sub (Vec3 v, Vec3 u)
 header_function
 Vec3 vec3Mul (Vec3 v, Vec3 u)
 {
-    return vec3New(v.x * u.x,
+    return vec3(v.x * u.x,
                    v.y * u.y,
                    v.z * u.z);
 }
@@ -152,7 +152,7 @@ Vec3 vec3Mul (Vec3 v, Vec3 u)
 header_function
 Vec3 vec3Scale (Vec3 v, F32 r)
 {
-    return vec3New(v.x * r,
+    return vec3(v.x * r,
                    v.y * r,
                    v.z * r);
 }
@@ -168,7 +168,7 @@ F32 vec3Dot (Vec3 v, Vec3 u)
 header_function
 Vec3 vec3Cross (Vec3 v, Vec3 u)
 {
-    return vec3New((v.y * u.z) - (v.z * u.y),
+    return vec3((v.y * u.z) - (v.z * u.y),
                    (v.z * u.x) - (v.x * u.z),
                    (v.x * u.y) - (v.y * u.x));
 }
@@ -176,7 +176,7 @@ Vec3 vec3Cross (Vec3 v, Vec3 u)
 header_function
 Vec3 vec3Lerp (Vec3 v, Vec3 u, F32 factor)
 {
-    return vec3New(v.x + factor * (u.x - v.x),
+    return vec3(v.x + factor * (u.x - v.x),
                    v.y + factor * (u.y - v.y),
                    v.z + factor * (u.z - v.z));
 }
@@ -204,11 +204,11 @@ Vec3 vec3Norm (Vec3 v)
     // NOTE(naman): An exact comparison with zero is what we want.
     if (mag != 0.0f) {
         F32 inv_mag = 1.0f/mag;
-        return vec3New(v.x * inv_mag,
+        return vec3(v.x * inv_mag,
                        v.y * inv_mag,
                        v.z * inv_mag);
     } else {
-        return vec3New(0.0f, 0.0f, 0.0f);
+        return vec3(0.0f, 0.0f, 0.0f);
     }
 }
 
@@ -224,7 +224,7 @@ typedef union {
 header_function
 Quat quatNew (F32 r, F32 i, F32 j, F32 k)
 {
-    return (Quat){r, i, j, k};
+    return (Quat){.r = r, .i = i, .j = j, .k = k};
 }
 
 static inline

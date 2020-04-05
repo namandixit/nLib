@@ -10,6 +10,6 @@ int main (void)
     sbufUnitTest();
     htUnitTest();
     internUnitTest();
-
+    mapUnitTest();
     return 0;
 }

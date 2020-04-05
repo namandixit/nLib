@@ -639,7 +639,7 @@ void ut_Test (B32 cond,
 /* ****************************************************************************
  * MEMORY ALLOCATORS **********************************************************
  */
-
+// FIXME(naman): Custom Memory Allocator is buggy, fix it. (see game.c in viscera)
 /* ===============================
  * User Memory Allocator Helpers
  */
@@ -813,15 +813,15 @@ void* memcb_GetFreeBlockAtLevel (Memory_User_Buddy *buddy, Size level)
             memSetBit(buddy->free_bits,
                      memcb_GlobalIndexOfBlock(buddy, found_block, lvl));
             memSetBit(buddy->free_bits,
-                     memcb_GlobalIndexOfBlock(buddy, found_block_sibiling, lvl));
+                      memcb_GlobalIndexOfBlock(buddy, found_block_sibiling, lvl));
             memResetBit(buddy->free_bits,
-                       memcb_IndexOfParent(memcb_GlobalIndexOfBlock(buddy,
-                                                                                        found_block,
-                                                                                        lvl)));
+                        memcb_IndexOfParent(memcb_GlobalIndexOfBlock(buddy,
+                                                                     found_block,
+                                                                     lvl)));
             memSetBit(buddy->split_bits,
-                     memcb_IndexOfParent(memcb_GlobalIndexOfBlock(buddy,
-                                                                                      found_block,
-                                                                                      lvl)));
+                      memcb_IndexOfParent(memcb_GlobalIndexOfBlock(buddy,
+                                                                   found_block,
+                                                                   lvl)));
         }
 
         memResetBit(buddy->free_bits,

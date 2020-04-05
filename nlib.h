@@ -2078,5 +2078,142 @@ void htUnitTest (void)
     return;
 }
 
+/* ==============
+ * Map
+ */
+
+/* API ----------------------------------------
+ * void  mapInsert     (T *ptr, U64 key, T value)
+ * void  mapRemove     (T *ptr, U64 key)
+ * B32   mapExists     (T *ptr, U64 key)
+ * T*    mapLookup     (T *ptr, U64 key)
+ * void  mapDelete     (T *ptr)
+ */
+
+typedef struct Map_Userdata {
+    Hash_Table table;
+    Size *free_list;
+} Map_Userdata;
+
+#define mapInsert(_map, _key, _value) do {                              \
+        Sbuf_Header *shdr = NULL;                                       \
+        if ((_map) == NULL) {                                           \
+            (_map) = sbuf_Grow((_map),                                  \
+                               sizeof(*(_map)));                        \
+            shdr = sbuf_GetHeader(_map);                                \
+            (shdr->len)++;                                              \
+            shdr->userdata = memAlloc(sizeof(Map_Userdata));            \
+            ((Map_Userdata*)shdr->userdata)->table = htCreate(0);       \
+        } else {                                                        \
+            shdr = sbuf_GetHeader((_map));                              \
+        }                                                               \
+                                                                        \
+        Size insertion_index = 0;                                       \
+                                                                        \
+        if ((_key) != 0) {                                              \
+            if (sbufElemin(((Map_Userdata*)shdr->userdata)->free_list) > 0) { \
+                (_map)[((Map_Userdata*)shdr->userdata)->free_list[0]] = (_value); \
+                insertion_index = ((Map_Userdata*)shdr->userdata)->free_list[0]; \
+                sbufUnsortedRemove(((Map_Userdata*)shdr->userdata)->free_list, 0); \
+            } else {                                                    \
+                sbufAdd((_map), (_value));                              \
+                insertion_index = sbufElemin((_map)) - 1;               \
+            }                                                           \
+                                                                        \
+            htInsert(&((Map_Userdata*)shdr->userdata)->table, (_key), insertion_index); \
+        }                                                               \
+    } while (0)
+
+header_function
+B32 mapExists (void *map, U64 key) {
+    if (map != NULL) {
+        Sbuf_Header *shdr = sbuf_GetHeader(map);
+        Size index = htLookup(&((Map_Userdata*)shdr->userdata)->table, key);
+        if (index != 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+#define mapLookup(_map, _key) ((_map)[(htLookup(&((Map_Userdata*)(sbuf_GetHeader(_map))->userdata)->table, \
+                                                (_key)))])
+#define mapGetRef(_map, _key) (&mapLookup((_map), (_key)))
+
+#define mapRemove(_map, _key) do {                                      \
+        if ((_map) != NULL) {                                           \
+            Sbuf_Header *shdr = sbuf_GetHeader(_map);                   \
+            Size index = htLookup(&((Map_Userdata*)shdr->userdata)->table, \
+                                  (_key));                              \
+            sbufAdd(((Map_Userdata*)shdr->userdata)->free_list, index); \
+            htRemove(&((Map_Userdata*)shdr->userdata)->table, (_key));  \
+        }                                                               \
+    } while (0)
+
+header_function
+void mapUnitTest (void)
+{
+    F32 *fm = NULL;
+
+    /* No Entries */
+    utTest(mapExists(fm, 0) == false);
+    utTest(mapExists(fm, 1) == false);
+    utTest(mapExists(fm, 2) == false);
+
+    /* Insertion Test */
+
+    mapInsert(fm, 1, 1.0f);
+
+    Sbuf_Header *fmsh = sbuf_GetHeader(fm);
+    Map_Userdata *fmu = fmsh->userdata;
+    Size fh0 = fmu->table.slot_filled - 1;
+    Size fs0 = sbufElemin(fm) - 1;
+
+    utTest(fmu->table.slot_filled == (fh0 + 1));
+    utTest(sbufElemin(fm) == (fs0 + 1));
+    utTest(mapExists(fm, 0) == false);
+    utTest(mapExists(fm, 1) == true);
+    utTest(mapLookup(fm, 1) == 1.0f);
+    utTest(mapExists(fm, 2) == false);
+
+    mapInsert(fm, 2, 42.0f);
+    utTest(fmu->table.slot_filled == (fh0 + 2));
+    utTest(sbufElemin(fm) == (fs0 + 2));
+    utTest(mapExists(fm, 0) == false);
+    utTest(mapExists(fm, 1) == true);
+    utTest(mapLookup(fm, 1) == 1.0f);
+    utTest(mapExists(fm, 2) == true);
+    utTest(mapLookup(fm, 2) == 42.0f);
+
+    /* Duplicate Key */
+    mapInsert(fm, 2, 24.0f);
+    utTest(mapLookup(fm, 1) == 1.0f);
+    utTest(mapLookup(fm, 2) == 24.0f);
+
+    /* Removal Test */
+    mapRemove(fm, 2);
+    utTest(mapExists(fm, 2) == false);
+
+    mapRemove(fm, 1);
+    utTest(mapExists(fm, 1) == false);
+
+    /* NULL Check */
+    Size fh1 = fmu->table.slot_filled;
+    Size fs1 = sbufElemin(fm);
+    mapInsert(fm, 0, 13.0f);
+    utTest(fmu->table.slot_filled == fh1);
+    utTest(sbufElemin(fm) == fs1);
+    utTest(mapExists(fm, 0) == false);
+
+    Size fh2 = fmu->table.slot_filled;
+    Size fs2 = sbufElemin(fm);
+    mapRemove(fm, 0);
+    utTest(fmu->table.slot_filled == fh2);
+    utTest(sbufElemin(fm) == fs2);
+    utTest(mapExists(fm, 0) == false);
+
+    return;
+}
+
 #define NLIB_H_INCLUDE_GUARD
 #endif // NLIB_H_INCLUDE_GUARD

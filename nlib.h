@@ -1720,6 +1720,7 @@ U64 hashString (Char *str)
         hash = hash * 0x100000001B3ULL; // FNV_prime
     }
 
+    claim(hash != 0);
     return hash;
 }
 
@@ -1732,6 +1733,8 @@ U64 hashInteger(U64 x)
     x ^= x >> 27;
     x *= 0x94D049BB133111EBULL;
     x ^= x >> 31;
+
+    claim(x != 0);
     return x;
 }
 

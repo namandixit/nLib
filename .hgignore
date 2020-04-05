@@ -1,4 +1,3 @@
 syntax: glob
 
-stb/**
-a.out
+test.linux.x64

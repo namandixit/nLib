@@ -2191,11 +2191,15 @@ void mapUnitTest (void)
     utTest(mapLookup(fm, 2) == 24.0f);
 
     /* Removal Test */
+    Size fh_r = fmu->table.slot_filled;
+
     mapRemove(fm, 2);
     utTest(mapExists(fm, 2) == false);
+    utTest(fmu->table.slot_filled == fh_r - 1);
 
     mapRemove(fm, 1);
     utTest(mapExists(fm, 1) == false);
+    utTest(fmu->table.slot_filled == fh_r - 2);
 
     /* NULL Check */
     Size fh1 = fmu->table.slot_filled;

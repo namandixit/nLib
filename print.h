@@ -7,33 +7,29 @@
 
 typedef enum Print_Flags {
     Print_Flags_LEFT_JUSTIFIED = 1u << 0,
-    Print_Flags_LEADING_PLUS = 1u << 1,
-    Print_Flags_LEADING_SPACE = 1u << 2,
-    Print_Flags_LEADING_ZERO = 1u << 4,
-    Print_Flags_INTMAX = 1u << 5,
-    Print_Flags_NEGATIVE = 1u << 7,
+    Print_Flags_LEADING_PLUS   = 1u << 1,
+    Print_Flags_LEADING_ZERO   = 1u << 2,
+    Print_Flags_INTMAX         = 1u << 3,
+    Print_Flags_NEGATIVE       = 1u << 4,
 } Print_Flags;
 
 header_function
-Size vsprintfcb (Char *buffer, Char *format, va_list va)
+Size vsnprint (Char *buffer, Char *format, va_list va)
 {
-    Sint tlen = 0;
     Char *fmt = format;
     Char *buf = buffer;
 
     while (true) {
-        Uint field_width = 0;
-        Uint precision = 0;
-        Sint tz;
+        Sint field_width = 0;
+        Sint precision = -1;
+        Sint trailing_zeroes = 0;
         U32 flags = 0;
-
-        fw = 0;
-        pr = -1;
-        tz = 0;
 
         // Copy everything up to the next % (or end of string)
         while ((fmt[0] != '%') && (fmt[0] != '\0')) {
-            buf[0] = fmt[0];
+            if (buffer != NULL) {
+                buf[0] = fmt[0];
+            }
             fmt++;
             buf++;
         }
@@ -56,16 +52,11 @@ Size vsprintfcb (Char *buffer, Char *format, va_list va)
                         fmt++;
                         continue;
                     } break;
-                    case ' ': { // if we have leading space
-                        flags |= Print_Flags_LEADING_SPACE;
-                        fmt++;
-                        continue;
-                    } break;
                     case '0': { // if we have leading zero
-                        flags |= Print_Flags_LEADINGZERO;
+                        flags |= Print_Flags_LEADING_ZERO;
                         fmt++;
                         goto flags_done;
-                    };
+                    } break;
                     default: {
                         goto flags_done;
                     } break;
@@ -74,8 +65,8 @@ Size vsprintfcb (Char *buffer, Char *format, va_list va)
         flags_done:
 
             // get the field width
-            if (f[0] == '*') {
-                field_width = va_arg(va, Uint);
+            if (fmt[0] == '*') {
+                field_width = va_arg(va, Sint);
                 fmt++;
             } else {
                 while ((fmt[0] >= '0') && (fmt[0] <= '9')) {
@@ -88,7 +79,7 @@ Size vsprintfcb (Char *buffer, Char *format, va_list va)
             if (fmt[0] == '.') {
                 fmt++;
                 if (fmt[0] == '*') {
-                    precision = va_arg(va, Uint);
+                    precision = va_arg(va, Sint);
                     fmt++;
                 } else {
                     precision = 0;
@@ -117,32 +108,44 @@ Size vsprintfcb (Char *buffer, Char *format, va_list va)
                 } break;
             }
 
-#define PRINT_SIZE 512 // big enough for e308 (with commas) or e-307
+#define PRINT_SIZE 512ULL // big enough for e308 (with commas) or e-307
             Char num_str[PRINT_SIZE];
             Char *str = NULL;
+
+            Char head_str[8] = {0};
+            Size head_index = 0;
+
+//            Char tail_str[8] = {0};
+//            Size tail_index = 0;
+
             Size len = 0;
 
             switch (fmt[0]) { // handle each replacement
                 case 's': { // string
                     // get the string
-                    s = va_arg(va, Char*);
-                    if (s == NULL)
-                        s = "null";
+                    str = va_arg(va, Char*);
+                    if (str == NULL)
+                        str = "null";
                     // get the length
-                    while (s[len] != '\0') {
+                    while (str[len] != '\0') {
                         len++;
                     }
 
                     // clamp to precision
-                    if (len > precision)
-                        len = precision;
+                    // Since precision inits at -1, if none was mentioned, this will not execute
+                    if (len > (Size)precision) {
+                        len = (Size)precision;
+                    }
+
+                    precision = 0;
                 } break;
 
                 case 'c': { // char
                     // get the character
-                    s = num_str + PRINT_SIZE - 1;
-                    *s = (Char)va_arg(va, Sint);
+                    str = num_str + PRINT_SIZE - 1;
+                    *str = (Char)va_arg(va, Sint);
                     len = 1;
+                    precision = 0;
                 } break;
 
                 case 'n': { // weird write-bytes specifier
@@ -175,7 +178,11 @@ Size vsprintfcb (Char *buffer, Char *format, va_list va)
                         }
                     }
 
-                    len = ((num_str + PRINT_SIZE) - str);
+                    len = (((Uptr)num_str + PRINT_SIZE) - (Uptr)str);
+
+                    if (precision < 0) {
+                        precision = 0;
+                    }
                 } break;
 
                 case 'o': { // octal
@@ -212,7 +219,115 @@ Size vsprintfcb (Char *buffer, Char *format, va_list va)
                         }
                     }
 
-                    len = ((num_str + PRINT_SIZE) - str);
+                    len = (((Uptr)num_str + PRINT_SIZE) - (Uptr)str);
+
+                    if (precision < 0) {
+                        precision = 0;
+                    }
+                } break;
+
+                case 'X':
+                case 'x': { // hex
+                    B32 upper = (fmt[0] == 'X') ? true : false;
+
+                    U64 num = 0;
+                    if (flags & Print_Flags_INTMAX) {
+                        num = va_arg(va, U64);
+                    } else {
+                        num = va_arg(va, U32);
+                    }
+
+                    U64 num_dec = num;
+                    str = num_str + PRINT_SIZE;
+
+                    while (true) {
+                        U64 n = num_dec & 0xf;
+                        num_dec = num_dec >> 4;
+
+                        str--;
+                        switch (n) {
+                            case 0x0: *str = '0'; break;
+                            case 0x1: *str = '1'; break;
+                            case 0x2: *str = '2'; break;
+                            case 0x3: *str = '3'; break;
+                            case 0x4: *str = '4'; break;
+                            case 0x5: *str = '5'; break;
+                            case 0x6: *str = '6'; break;
+                            case 0x7: *str = '7'; break;
+                            case 0x8: *str = '8'; break;
+                            case 0x9: *str = '9'; break;
+                            case 0xA: *str = upper ? 'A' : 'a'; break;
+                            case 0xB: *str = upper ? 'B' : 'b'; break;
+                            case 0xC: *str = upper ? 'C' : 'c'; break;
+                            case 0xD: *str = upper ? 'D' : 'd'; break;
+                            case 0xE: *str = upper ? 'E' : 'e'; break;
+                            case 0xF: *str = upper ? 'F' : 'f'; break;
+                        }
+
+                        if ((num_dec != 0) || (((num_str + PRINT_SIZE) - str) < precision)) {
+                            continue;
+                        } else {
+                            break;
+                        }
+                    }
+
+                    len = (((Uptr)num_str + PRINT_SIZE) - (Uptr)str);
+
+                    if (precision < 0) {
+                        precision = 0;
+                    }
+                } break;
+
+                case 'u':
+                case 'd': { // integer
+                    // get the integer and abs it
+                    U64 num = 0;
+                    if (flags & Print_Flags_INTMAX) {
+                        S64 i64 = va_arg(va, S64);
+                        num = (U64)i64;
+                        if ((fmt[0] != 'u') && (i64 < 0)) {
+                            num = (U64)-i64;
+                            flags |= Print_Flags_NEGATIVE;
+                        }
+                    } else {
+                        S32 i = va_arg(va, S32);
+                        num = (U32)i;
+                        if ((fmt[0] != 'u') && (i < 0)) {
+                            num = (U32)-i;
+                            flags |= Print_Flags_NEGATIVE;
+                        }
+                    }
+
+                    // convert to string
+                    str = num_str + PRINT_SIZE;
+                    len = 0;
+
+                    U64 num_dec = num;
+
+                    while (num_dec) {
+                        str--;
+                        *str = (Char)(num_dec % 10) + '0';
+                        num_dec /= 10;
+                    }
+
+                    // get the length that we copied
+                    len = (((Uptr)num_str + PRINT_SIZE) - (Uptr)str);
+
+                    if (len == 0) {
+                        --str;
+                        *str = '0';
+                        len = 1;
+                    }
+
+                    if (flags & Print_Flags_NEGATIVE) {
+                        head_str[head_index++] = '-';
+                    } else if (flags & Print_Flags_LEADING_PLUS) {
+                        head_str[head_index++] = '+';
+                    }
+
+                    if (precision < 0) {
+                        precision = 0;
+                    }
                 } break;
 
                 case 'p': { // pointer
@@ -260,117 +375,7 @@ Size vsprintfcb (Char *buffer, Char *format, va_list va)
                         }
                     }
 
-                    len = ((num_str + PRINT_SIZE) - str);
-                } break
-                    // fall through - to X
-
-                case 'X':
-                case 'x': { // hex
-                    B32 upper = (f[0] == 'X') ? true : false;
-
-                    U64 num = 0;
-                    if (flags & Print_Flags_INTMAX) {
-                        num = va_arg(va, U64);
-                    } else {
-                        num = va_arg(va, U32);
-                    }
-
-                    U64 num_dec = num;
-                    str = num_str + PRINT_SIZE;
-
-                    while (true) {
-                        U64 n = num_dec & 0xf;
-                        num_dec = num_dec >> 4;
-
-                        str--;
-                        switch (n) {
-                            case 0x0: *str = '0'; break;
-                            case 0x1: *str = '1'; break;
-                            case 0x2: *str = '2'; break;
-                            case 0x3: *str = '3'; break;
-                            case 0x4: *str = '4'; break;
-                            case 0x5: *str = '5'; break;
-                            case 0x6: *str = '6'; break;
-                            case 0x7: *str = '7'; break;
-                            case 0x8: *str = '8'; break;
-                            case 0x9: *str = '9'; break;
-                            case 0xA: *str = upper ? 'A' : 'a'; break;
-                            case 0xB: *str = upper ? 'B' : 'b'; break;
-                            case 0xC: *str = upper ? 'C' : 'c'; break;
-                            case 0xD: *str = upper ? 'D' : 'd'; break;
-                            case 0xE: *str = upper ? 'E' : 'e'; break;
-                            case 0xF: *str = upper ? 'F' : 'f'; break;
-                        }
-
-                        if ((num_dec != 0) || (((num_str + PRINT_SIZE) - str) < precision)) {
-                            continue;
-                        } else {
-                            break;
-                        }
-                    }
-
-                    len = ((num_str + PRINT_SIZE) - str);
-                } break;
-
-                case 'u':
-                case 'd': { // integer
-                    // get the integer and abs it
-                    U64 num = 0;
-                    if (flags & Print_Flags_INTMAX) {
-                        S64 i64 = va_arg(va, S64);
-                        num = (U64)i64;
-                        if ((fmt[0] != 'u') && (i64 < 0)) {
-                            num = (U64)-i64;
-                            flags |= Print_Flags_NEGATIVE;
-                        }
-                    } else {
-                        S32 i = va_arg(va, S32);
-                        num = (U32)i;
-                        if ((fmt[0] != 'u') && (i < 0)) {
-                            n64 = (U32)-i;
-                            flags |= Print_Flags_NEGATIVE;
-                        }
-                    }
-
-                    // convert to string
-                    str = num_str + PRINT_SIZE;
-                    len = 0;
-
-                    U64 num_dec = num;
-                    U32 n = 0;
-
-                    while (num_dec) {
-                        str--;
-                        *s = (Char)(num_dec % 10) + '0';
-                        num_dec /= 10;
-                    }
-
-                    // get the length that we copied
-                    len = ((num_str + PRINT_SIZE) - str);
-
-                    if (len == 0) {
-                        --str;
-                        *str = '0';
-                        len = 1;
-                    }
-
-                    if (flags & Print_Flags_NEGATIVE) {
-                        str--;
-                        *str = '-';
-                        len++;
-                    } else if (flags & Print_Flags_LEADING_SPACE) {
-                        str--;
-                        *str = ' ';
-                        len++;
-                    } else if (flags & Print_Flags_LEADING_PLUS) {
-                        str--;
-                        *str = '+';
-                        len++;
-                    }
-
-                    if (precision < 0) {
-                        precision = 0;
-                    }
+                    len = (((Uptr)num_str + PRINT_SIZE) - (Uptr)str);
                 } break;
 
                 default: { // unknown, just copy code
@@ -380,17 +385,22 @@ Size vsprintfcb (Char *buffer, Char *format, va_list va)
                 } break;
             }
 
+            Size head_size = head_index;
+            head_index = 0;
+//            Size tail_size = tail_index;
+//            tail_index = 0;
+
             // get field_width=leading/trailing space, precision=leading zeros
-            if (precision < len) {
-                precision = len;
+            if ((Size)precision < len) {
+                precision = (Sint)len;
             }
 
-            U32 n = precision; // TODO(naman): + tz (related to floats)
-            if (field_width < n) {
-                field_width = n;
+            Sint zeros_head_tail = precision; // TODO(naman): + trailing_zeroes (related to floats)
+            if (field_width < zeros_head_tail) {
+                field_width = zeros_head_tail;
             }
 
-            field_width -= n;
+            field_width -= zeros_head_tail;
             precision -= len;
 
             // handle right justify and leading zeros
@@ -401,182 +411,114 @@ Size vsprintfcb (Char *buffer, Char *format, va_list va)
                 }
             }
 
-            // copy the spaces and/or zeros
+            // copy leading spaces
             if (field_width + precision) {
-                S32 i = 0;
-                U32 c = 0;
-
                 // copy leading spaces (or when doing %8.4d stuff)
-                if ((flags & Print_Flags_LEFT_JUSTIFIED) == 0)
-                    while (field_width > 0) {
-                        stbsp__cb_buf_clamp(i, fw);
-                        fw -= i;
-                        while (i) {
-                            if ((((stbsp__uintptr)bf) & 3) == 0)
-                                break;
-                            *bf++ = ' ';
-                            --i;
+                if ((flags & Print_Flags_LEFT_JUSTIFIED) == 0) {
+                    for (Size j = 0; j < (Size)field_width; j++) {
+                        if (buffer != NULL) {
+                            buf[0] = ' ';
                         }
-                        while (i >= 4) {
-                            *(stbsp__uint32 *)bf = 0x20202020;
-                            bf += 4;
-                            i -= 4;
-                        }
-                        while (i) {
-                            *bf++ = ' ';
-                            --i;
-                        }
-                        stbsp__chk_cb_buf(1);
+                        buf++;
                     }
+                }
 
-                // copy leader
-                sn = lead + 1;
-                while (lead[0]) {
-                    stbsp__cb_buf_clamp(i, lead[0]);
-                    lead[0] -= (char)i;
-                    while (i) {
-                        *bf++ = *sn++;
-                        --i;
+                // copy the head
+                {
+                    for (Size j = 0; j < head_size; j++) {
+                        if (buffer != NULL) {
+                            buf[0] = head_str[head_index++];
+                        }
+                        buf++;
                     }
-                    stbsp__chk_cb_buf(1);
                 }
 
                 // copy leading zeros
-                c = cs >> 24;
-                cs &= 0xffffff;
-                cs = (fl & Print_Flags_THOUSAND_COMMA) ? ((stbsp__uint32)(c - ((pr + cs) % (c + 1)))) : 0;
-                while (pr > 0) {
-                    stbsp__cb_buf_clamp(i, pr);
-                    pr -= i;
-                    if ((fl & Print_Flags_THOUSAND_COMMA) == 0) {
-                        while (i) {
-                            if ((((stbsp__uintptr)bf) & 3) == 0)
-                                break;
-                            *bf++ = '0';
-                            --i;
+                // TODO(naman): What is this doing?
+                /* U32 c = 0; */
+                /* c = cs >> 24; */
+                /* cs &= 0xffffff; */
+                /* cs = (fl & Print_Flags_THOUSAND_COMMA) ? ((stbsp__uint32)(c - ((pr + cs) % (c + 1)))) : 0; */
+                {
+                    for (Size j = 0; j < (Size)precision; j++) {
+                        if (buffer != NULL) {
+                            buf[0] = '0';
                         }
-                        while (i >= 4) {
-                            *(stbsp__uint32 *)bf = 0x30303030;
-                            bf += 4;
-                            i -= 4;
-                        }
+                        buf++;
                     }
-                    while (i) {
-                        if ((fl & Print_Flags_THOUSAND_COMMA) && (cs++ == c)) {
-                            cs = 0;
-                            *bf++ = stbsp__comma;
-                        } else
-                            *bf++ = '0';
-                        --i;
-                    }
-                    stbsp__chk_cb_buf(1);
                 }
             }
 
-            // copy leader if there is still one
-            sn = lead + 1;
-            while (lead[0]) {
-                stbsp__int32 i;
-                stbsp__cb_buf_clamp(i, lead[0]);
-                lead[0] -= (char)i;
-                while (i) {
-                    *bf++ = *sn++;
-                    --i;
+            // copy the head
+            {
+                if (head_index < head_size) {
+                    for (Size j = 0; j < (head_size - head_index); j++) {
+                        if (buffer != NULL) {
+                            buf[0] = head_str[head_index++];
+                        }
+                        buf++;
+                    }
                 }
-                stbsp__chk_cb_buf(1);
             }
 
             // copy the string
-            n = l;
-            while (n) {
-                stbsp__int32 i;
-                stbsp__cb_buf_clamp(i, n);
-                n -= i;
-                Print_Flags_UNALIGNED(while (i >= 4) {
-                        *(stbsp__uint32 *)bf = *(stbsp__uint32 *)s;
-                        bf += 4;
-                        s += 4;
-                        i -= 4;
-                    })
-                    while (i) {
-                        *bf++ = *s++;
-                        --i;
+            {
+                for (Size j = 0; j < len; j++) {
+                    if (buffer != NULL) {
+                        buf[0] = str[0];
                     }
-                stbsp__chk_cb_buf(1);
+                    buf++;
+                    str++;
+                }
             }
 
-            // copy trailing zeros
-            while (tz) {
-                stbsp__int32 i;
-                stbsp__cb_buf_clamp(i, tz);
-                tz -= i;
-                while (i) {
-                    if ((((stbsp__uintptr)bf) & 3) == 0)
-                        break;
-                    *bf++ = '0';
-                    --i;
+            // copy trailing zeroes
+            {
+                for (Size j = 0; j < (Size)trailing_zeroes; j++) {
+                    if (buffer != NULL) {
+                        buf[0] = '0';
+                    }
+                    buf++;
                 }
-                while (i >= 4) {
-                    *(stbsp__uint32 *)bf = 0x30303030;
-                    bf += 4;
-                    i -= 4;
-                }
-                while (i) {
-                    *bf++ = '0';
-                    --i;
-                }
-                stbsp__chk_cb_buf(1);
-            }
-
-            // copy tail if there is one
-            sn = tail + 1;
-            while (tail[0]) {
-                stbsp__int32 i;
-                stbsp__cb_buf_clamp(i, tail[0]);
-                tail[0] -= (char)i;
-                while (i) {
-                    *bf++ = *sn++;
-                    --i;
-                }
-                stbsp__chk_cb_buf(1);
             }
 
             // handle the left justify
-            if (fl & Print_Flags_LEFTJUST)
-                if (fw > 0) {
-                    while (fw) {
-                        stbsp__int32 i;
-                        stbsp__cb_buf_clamp(i, fw);
-                        fw -= i;
-                        while (i) {
-                            if ((((stbsp__uintptr)bf) & 3) == 0)
-                                break;
-                            *bf++ = ' ';
-                            --i;
+            if (flags & Print_Flags_LEFT_JUSTIFIED)
+                if (field_width > 0) {
+                    for (Size j = 0; j < (Size)field_width; j++) {
+                        if (buffer != NULL) {
+                            buf[0] = ' ';
                         }
-                        while (i >= 4) {
-                            *(stbsp__uint32 *)bf = 0x20202020;
-                            bf += 4;
-                            i -= 4;
-                        }
-                        while (i--)
-                            *bf++ = ' ';
-                        stbsp__chk_cb_buf(1);
+                        buf++;
                     }
                 }
 
-            ++f;
+            fmt++;
+        } else if (fmt[0] =='\0') {
+            break;
         }
     }
-endfmt:
 
-    if (!callback)
-        *bf = 0;
-    else
-        stbsp__flush_cb();
+    return (Size)(Uptr)(buf - buffer);
+}
 
-done:
-    return tlen + (int)(bf - buf);
+header_function
+Size print (Char *format, ...)
+{
+    va_list ap;
+
+    va_start(ap, format);
+    Size buffer_size = vsnprint(NULL, format, ap);
+    va_end(ap);
+
+    Char *buffer = memAlloc(buffer_size + 1);
+
+    va_start(ap, format);
+    vsnprint(buffer, format, ap);
+    printf("%s", buffer);
+    va_end(ap);
+
+    return buffer_size;
 }
 
 #define SPRINTF_H_INCLUDE_GUARD

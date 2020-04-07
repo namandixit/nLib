@@ -123,18 +123,9 @@
 # include <stddef.h>
 # include <errno.h>
 
-#include <stdatomic.h>
-# include <stdio.h>
-# include <string.h>
-
-# if !defined(NLIB_EXCLUDE_CRT)
-#  include <stdlib.h>
-# endif
-
 /* ===========================
  * Misc C Headers Includes
  */
-
 
 /* ===========================
  * Platform Headers Includes
@@ -168,7 +159,11 @@
 #  endif
 
 # elif defined(OS_LINUX)
-// ...
+
+#  include <stdio.h>
+#  include <stdlib.h>
+#  include <math.h>
+#  include <stdatomic.h>
 
 # endif
 
@@ -280,28 +275,44 @@ typedef union {
 } max_align_t;
 #  endif
 
-#  if defined(LANGUAGE_C11)
-#   include <threads.h>
-#  else
-#   define thread_local __declspec( thread )
-#  endif
+#  define thread_local __declspec( thread )
 
 #  define swap_endian(x) _byteswap_ulong(x)
 
 # elif defined(COMPILER_CLANG) || defined(COMPILER_GCC)
 
-// Creates shadowing issues if used like max(min(), min()), etc.
-/* #  define max(a, b)                             \ */
-/*     ({ __typeof__ (a) _a = (a);                 \ */
-/*         __typeof__ (b) _b = (b);                \ */
-/*         _a > _b ? _a : _b; }) */
-/* #  define min(a, b)                             \ */
-/*     ({ __typeof__ (a) _a = (a);                 \ */
-/*         __typeof__ (b) _b = (b);                \ */
-/*         _a < _b ? _a : _b; }) */
+#  if defined(COMPILER_CLANG)
+#   pragma clang diagnostic ignored "-Wgnu-statement-expression"
+#  endif
 
-#define max(a, b) (a > b ? a : b)
-#define min(a, b) (a < b ? a : b)
+#   if defined(COMPILER_GCC)
+#    pragma GCC diagnostic push
+#    pragma GCC diagnostic ignored "-Wpedantic"
+#   endif
+
+#  define max__paste(a, b) a##b
+#  define max__impl(a, b, l) ({                         \
+            __typeof__(a) max__paste(__a, l) = (a);     \
+            __typeof__(b) max__paste(__b, l) = (b);     \
+            max__paste(__a, l) > max__paste(__b, l) ?   \
+                max__paste(__a, l) :                    \
+                max__paste(__b, l);                     \
+        })
+#  define max(a, b) max__impl(a, b, __COUNTER__)
+
+#  define min__paste(a, b) a##b
+#  define min__impl(a, b, l) ({                         \
+            __typeof__(a) min__paste(__a, l) = (a);     \
+            __typeof__(b) min__paste(__b, l) = (b);     \
+            min__paste(__a, l) < min__paste(__b, l) ?   \
+                min__paste(__a, l) :                    \
+                min__paste(__b, l);                     \
+        })
+#  define min(a, b) min__impl(a, b, __COUNTER__)
+
+#   if defined(COMPILER_GCC)
+#    pragma GCC diagnostic pop
+#   endif
 
 #  if defined(LANGUAGE_C11)
 #   include <stdalign.h>
@@ -316,10 +327,10 @@ typedef union {
 #   define __alignas_is_defined 1
 #   pragma clang diagnostic pop
 
-/* Malloc Alignment: https://msdn.microsoft.com/en-us/library/ycsb6wwf.aspx
- */
+  /* Malloc Alignment: https://msdn.microsoft.com/en-us/library/ycsb6wwf.aspx
+   */
 #   if defined(ARCH_x86)
-// Alignment is 8 bytes
+  // Alignment is 8 bytes
 typedef union {
     alignas(8) Byte alignment[8];
     F64 a;
@@ -333,82 +344,9 @@ typedef union {
 #   endif
 #  endif
 
-#  if defined(LANGUAGE_C11)
-#   include <threads.h>
-#  else
-#   define thread_local __thread
-#  endif
+#  define thread_local __thread
 
 #  define swap_endian(x) __builtin_bswap32(x)
-
-# endif
-
-/* =======================
- * Other nlib libraries
- */
-
-# include "unicode.h"
-
-
-/* =======================
- * OS Specific Hacks
- */
-
-# if defined(OS_WINDOWS)
-
-header_function
-void reportDebugV(Char *format, va_list ap)
-{
-    Char buffer[2048] = {0};
-
-    stbsp_vsnprintf(buffer, 2048, format, ap);
-    buffer[2047] = '\0';
-
-    LPWSTR wcstr = unicodeWin32UTF16FromUTF8(buffer);
-    OutputDebugStringW(wcstr);
-    unicodeWin32UTF16Dealloc(wcstr);
-
-    return;
-}
-
-header_function
-void reportDebug(Char *format, ...)
-{
-    va_list ap;
-
-    va_start(ap, format);
-    reportDebugV(format, ap);
-    va_end(ap);
-
-    return;
-}
-
-
-#  if defined(BUILD_INTERNAL)
-#   define report(...)  reportDebug(__VA_ARGS__)
-#   define reportv(...) reportDebugV(__VA_ARGS__)
-#   define breakpoint() __debugbreak()
-#   define quit() breakpoint()
-#  else
-#   define report(...)      fprintf(stderr, __VA_ARGS__)
-#   define reportv(format, va_list) vfprintf(stderr, format, va_list)
-#   define quit() abort()
-#   define breakpoint() do{report("Fired breakpoint in release code, quitting...\n");quit();}while(0)
-#  endif
-
-# elif defined(OS_LINUX)
-
-#  if defined(BUILD_INTERNAL)
-#   define report(...)      fprintf(stderr, __VA_ARGS__)
-#   define reportv(format, va_list) vfprintf(stderr, format, va_list)
-#   define breakpoint() __asm__ volatile("int $0x03")
-#   define quit() breakpoint()
-#  else
-#   define report(...)      fprintf(stderr, __VA_ARGS__)
-#   define reportv(format, va_list) vfprintf(stderr, format, va_list)
-#   define quit() abort()
-#   define breakpoint() do{report("Fired breakpoint in release code, quitting...\n");quit();}while(0)
-#  endif
 
 # endif
 
@@ -552,11 +490,44 @@ U64 u64NextPowerOf2 (U64 x)
     return result;
 }
 
-
-
-/* ****************************************************************************
- * LIBRARIES ******************************************************************
+/* ===================
+ * Logging
  */
+
+# if defined(OS_WINDOWS)
+
+#  if defined(BUILD_INTERNAL)
+#   define report(...)              printDebugOutput(__VA_ARGS__)
+#   define reportv(format, va_list) printDebugOutput(format, va_list)
+#  else
+#   define report(...)              err(stderr, __VA_ARGS__)
+#   define reportv(format, va_list) err(stderr, format, va_list)
+#  endif
+
+# elif defined(OS_LINUX)
+
+#  if defined(BUILD_INTERNAL)
+#   define report(...)              err(__VA_ARGS__)
+#   define reportv(format, va_list) err(format, va_list)
+#  else
+#   define report(...)              err(__VA_ARGS__)
+#   define reportv(format, va_list) err(format, va_list)
+#  endif
+
+# endif
+
+/* =======================
+ * Other nlib libraries
+ */
+
+# include "nlib_memory.h"
+# include "nlib_print.h"
+# include "nlib_debug.h"
+# include "nlib_color.h"
+# include "nlib_maths.h"
+# include "nlib_color.h"
+# include "nlib_unicode.h"
+# include "nlib_string.h"
 
 /* ==============
  * Claim (assert)
@@ -578,49 +549,6 @@ void claim_ (B32 cond,
 }
 
 /* ===================
- * String Functions
- */
-
-header_function
-B32 strequal (Char *str1, Char *str2)
-{
-    B32 result = (strcmp(str1, str2) == 0);
-    return result;
-}
-
-header_function
-Size strprefix(Char *str, Char *pre)
-{
-    Size lenpre = strlen(pre);
-    Size lenstr = strlen(str);
-
-    if (lenstr < lenpre) {
-        return 0;
-    } else {
-        if (memcmp(pre, str, lenpre) == 0) {
-            return lenpre;
-        } else {
-            return 0;
-        }
-    }
-}
-
-header_function
-B32 strsuffix (Char *str, Char *suf)
-{
-    Char *string = strrchr(str, suf[0]);
-    B32 result = false;
-
-    if(string != NULL) {
-        if (strcmp(string, suf) == 0) {
-            result = true;
-        }
-    }
-
-    return result;
-}
-
-/* ===================
  * Unit Test Framework
  */
 
@@ -635,646 +563,6 @@ void ut_Test (B32 cond,
         quit();
     }
 }
-
-/* ****************************************************************************
- * MEMORY ALLOCATORS **********************************************************
- */
-// FIXME(naman): Custom Memory Allocator is buggy, fix it. (see game.c in viscera)
-/* ===============================
- * User Memory Allocator Helpers
- */
-
-#define MEM_MAX_ALIGN_MINUS_ONE (alignof(max_align_t) - 1u)
-#define memAlignUp(p) (((p) + MEM_MAX_ALIGN_MINUS_ONE) & (~ MEM_MAX_ALIGN_MINUS_ONE))
-#define memAlignDown(p) (memAlignUp((p) - MEM_MAX_ALIGN_MINUS_ONE))
-
-#define memBytesFromBits(b) (((b)+(CHAR_BIT-1))/(CHAR_BIT))
-
-#define memSetBit(array, index)                                 \
-    ((array)[(index)/CHAR_BIT] |= (1U << ((index)%CHAR_BIT)))
-#define memResetBit(array, index)                               \
-    ((array)[(index)/CHAR_BIT] &= ~(1U << ((index)%CHAR_BIT)))
-#define memToggleBit(array, index)                              \
-    ((array)[(index)/CHAR_BIT] ^= ~(1U << ((index)%CHAR_BIT)))
-#define memTestBit(array, index)                                \
-    ((array)[(index)/CHAR_BIT] & (1U << ((index)%CHAR_BIT)))
-
-
-# if defined(COMPILER_CLANG)
-#  pragma clang diagnostic push
-#   pragma clang diagnostic ignored "-Wcast-align"
-# endif
-
-typedef enum Memory_Allocator_Mode {
-    Memory_Allocator_Mode_NONE,
-    Memory_Allocator_Mode_CREATE,
-    Memory_Allocator_Mode_ALLOC,
-    Memory_Allocator_Mode_REALLOC,
-    Memory_Allocator_Mode_DEALLOC,
-    Memory_Allocator_Mode_DEALLOC_ALL,
-    Memory_Allocator_Mode_SIZE,
-} Memory_Allocator_Mode;
-
-# define MEMORY_ALLOCATOR(allocator)               \
-    void* allocator(Memory_Allocator_Mode mode,          \
-                    Size size, void* old_ptr,   \
-                    void *data)
-typedef MEMORY_ALLOCATOR(Memory_Allocator_Function);
-
-/* =============================
- * General Purpose User Memory Allocator
- */
-
-typedef struct Memory_User_Buddy Memory_User_Buddy;
-
-typedef struct Memory_User {
-    Memory_User_Buddy *b;
-    Byte *base;
-    Size total;
-    Size filled;
-} Memory_User;
-
-struct Memory_User_Buddy {
-    Byte *free_bits;
-    Byte *split_bits;
-
-    struct Memory_User_Buddy *prev;
-    struct Memory_User_Buddy *next;
-
-    Byte *arena;
-    Size arena_size;
-    Size leaf_size;
-    Size leaf_count;
-    Size block_count;
-    U8 level_max;
-    U8 level_count;
-
-    Byte _pad1[6];
-};
-
-/*
-  -------------------------------------------------------------------
-  L:0 |                                0                             |
-  -------------------------------------------------------------------
-  L:1 |               1                |              2              |
-  -------------------------------------------------------------------
-  L:2 |       3       |       4        |       5      |       6      |
-  -------------------------------------------------------------------
-  L:3 |   7   |   8   |   9   |   10   |  11   |  12  |  13   |  14  |
-  -------------------------------------------------------------------
-*/
-
-#define memcb_CountOfBlocksAtLevel(level) (1u << (level))
-#define memcb_SizeOfBlocksAtLevel(b, level)                     \
-    (((b)->arena_size)/memcb_CountOfBlocksAtLevel(level))
-#define memcb_IndexOfBlockInLevel(b, ptr, level) /* Zero based */       \
-    ((Uptr)((ptr) - (b)->arena) / memcb_SizeOfBlocksAtLevel(b, level))
-#define memcb_IndexOfLeaf(b, ptr) /* Zero based */      \
-    ((Uptr)((ptr) - ((b)->arena)) / ((b)->leaf_size))
-#define memcb_PointerToBlockInLevel(b, index, level)                    \
-    (((index) * memcb_SizeOfBlocksAtLevel(b, level)) + (b)->arena)
-#define memcb_PreviousBlockInLevel(b, ptr, level)       \
-    ((void*)(((Byte*)ptr) - memcb_SizeOfBlocksAtLevel(b, level)))
-#define memcb_NextBlockInLevel(b, ptr, level)           \
-    ((void*)(((Byte*)ptr) + memcb_SizeOfBlocksAtLevel(b, level)))
-#define memcb_BlocksBeforeThisLevel(level)                              \
-    ((1 << (level)) - 1) /* Using sum of GP, blocks before level n are (2ⁿ - 1) */
-#define memcb_GlobalIndexOfBlock(b, ptr, level) \
-    (memcb_BlocksBeforeThisLevel(level) +       \
-     memcb_IndexOfBlockInLevel(b, ptr, level))
-#define memcb_IndexOfFirstChild(index)          \
-    ((2 * (index)) + 1)
-#define memcb_IndexOfSecondChild(index)         \
-    ((2 * (index)) + 2)
-#define memcb_IndexOfParent(index)              \
-    (((index) - 1) / 2)
-
-header_function
-Memory_User_Buddy memcb_Init (Byte* arena, Size arena_size, Size leaf_size)
-{
-    Size leaf_count  = arena_size / leaf_size;
-    U8 level_max   = (U8)u64Log2(leaf_count);
-    U8 level_count = level_max + 1;
-    Size block_count  = (1 << level_count) - 1; // 2ⁿ⁺¹ - 1 where n is level_max (sum of GP)
-
-    Memory_User_Buddy buddy = {0};
-    buddy.arena = arena;
-    buddy.arena_size = arena_size;
-    buddy.leaf_size = leaf_size;
-    buddy.leaf_count = leaf_count;
-    buddy.level_max = level_max;
-    buddy.level_count = level_count;
-    buddy.block_count = block_count;
-
-    return buddy;
-}
-
-header_function
-void* memcb_GetFreeBlockAtLevel (Memory_User_Buddy *buddy, Size level)
-{
-    Byte *found_block = NULL;
-    Size level_current = level;
-
-    do {
-        if (level_current == 0) {
-            if (memTestBit(buddy->free_bits, 0)) {
-                found_block = buddy->arena;
-            }
-            break;
-        }
-
-        Size free_bits_begin = memcb_GlobalIndexOfBlock(buddy,
-                                                        buddy->arena,
-                                                        level_current);
-        Size free_bits_end = free_bits_begin + memcb_CountOfBlocksAtLevel(level_current);
-
-        for (Size bi = free_bits_begin; bi < free_bits_end; bi = bi + 1) {
-            if (memTestBit(buddy->free_bits, bi)) {
-                found_block = (buddy->arena +
-                               (memcb_SizeOfBlocksAtLevel(buddy,
-                                                                    level_current) *
-                                (bi - memcb_BlocksBeforeThisLevel(level_current))));
-                break;
-            }
-        }
-
-        if (level_current == 0) {
-            break;
-        } else if (found_block == NULL) {
-            level_current--;
-        }
-    } while (found_block == NULL);
-
-    if (found_block != NULL) {
-        for (Size lvl = level_current + 1; lvl <= level; lvl++) {
-            Byte *found_block_sibiling = (found_block +
-                                          memcb_SizeOfBlocksAtLevel(buddy, lvl));
-
-            memSetBit(buddy->free_bits,
-                     memcb_GlobalIndexOfBlock(buddy, found_block, lvl));
-            memSetBit(buddy->free_bits,
-                      memcb_GlobalIndexOfBlock(buddy, found_block_sibiling, lvl));
-            memResetBit(buddy->free_bits,
-                        memcb_IndexOfParent(memcb_GlobalIndexOfBlock(buddy,
-                                                                     found_block,
-                                                                     lvl)));
-            memSetBit(buddy->split_bits,
-                      memcb_IndexOfParent(memcb_GlobalIndexOfBlock(buddy,
-                                                                   found_block,
-                                                                   lvl)));
-        }
-
-        memResetBit(buddy->free_bits,
-                   memcb_GlobalIndexOfBlock(buddy, found_block, level));
-    }
-
-    return found_block;
-}
-
-header_function
-void* memcb_Alloc (Memory_User_Buddy *bbuddy, Size size)
-{
-    Size size_real = size;
-
-    if (size_real == 0 || bbuddy == NULL) {
-        return NULL;
-    }
-
-    if (size_real < bbuddy->leaf_size) {
-        size_real = bbuddy->leaf_size;
-    }
-
-    if (size_real > bbuddy->arena_size) {
-        return NULL;
-    }
-
-    Size total_size = u64NextPowerOf2(size_real);
-
-    // "inverse" because it is taking smallest block as level 0
-    U8 inverse_level = (U8)u64Log2(total_size/(bbuddy->leaf_size));
-    U8 level = bbuddy->level_max - inverse_level; // Actually, largest block is level 0
-
-    Byte *m = memcb_GetFreeBlockAtLevel(bbuddy, level);
-
-    return m;
-}
-
-header_function
-Byte* memcb_MergeBuddies (Memory_User_Buddy *buddy, Byte *block, Size level)
-{
-    if (level == 0) return NULL;
-
-    Byte *result = NULL;
-
-    Size local_index  = memcb_IndexOfBlockInLevel(buddy, block, level);
-
-    Byte *parent_block = NULL; // the pointer to the merged blocks (if they get merged)
-    Byte *buddy_block = NULL; // pointer to buddy block
-
-    if (local_index % 2 == 1) { // odd = merge with previous block
-        buddy_block = memcb_PreviousBlockInLevel(buddy, block, level);
-        parent_block = buddy_block;
-    } else { // even = merge with next block
-        buddy_block = memcb_NextBlockInLevel(buddy, block, level);
-        parent_block = block;
-    }
-
-    Size block_global_index = memcb_GlobalIndexOfBlock(buddy, block, level);
-    Size buddy_global_index = memcb_GlobalIndexOfBlock(buddy, buddy_block, level);
-    Size parent_global_index = memcb_GlobalIndexOfBlock(buddy, parent_block, level - 1);
-
-    if (memTestBit(buddy->free_bits, buddy_global_index)) { // Buddy is also free
-        memResetBit(buddy->free_bits, buddy_global_index);
-        memResetBit(buddy->free_bits, block_global_index);
-        memSetBit(buddy->free_bits, parent_global_index);
-        memResetBit(buddy->split_bits, parent_global_index);
-
-        result = parent_block;
-    }
-
-    return result;
-}
-
-header_function
-void memcb_ReleaseBlockAtLevel (Memory_User_Buddy *buddy, Byte *ptr, Size level)
-{
-    memSetBit(buddy->free_bits, memcb_GlobalIndexOfBlock(buddy, ptr, level));
-
-    Size merge_level = level;
-    Byte *merge_ptr = ptr;
-
-    while (merge_level > 0) {
-        merge_ptr = memcb_MergeBuddies(buddy, merge_ptr, merge_level);
-        if (merge_ptr == NULL) break;
-        merge_level--;
-    }
-
-    return;
-}
-
-header_function
-void memcb_Dealloc (Memory_User_Buddy *buddy, void *ptr)
-{
-    if (ptr == NULL || buddy == NULL) return;
-
-     U8 level_min = buddy->level_max; //The real level will never be zero since we already
-                                      // made a bunch of allocations at that level manually during init.
-
-     while ((level_min < buddy->level_count) && (level_min > 0)) {
-         if (memcb_IndexOfBlockInLevel(buddy, (Byte*)ptr, level_min) % 2 == 1) break;
-         level_min--;
-     }
-
-    U8 level = buddy->level_max;
-    while ((level >= level_min) && (level <= buddy->level_max)) {
-        if (level == 0) {
-            break;
-        } else if (memTestBit(buddy->split_bits,
-                             memcb_IndexOfParent(memcb_GlobalIndexOfBlock(buddy,
-                                                                          (Byte*)ptr,
-                                                                          level)))) {
-            break;
-        }
-        level--;
-    }
-
-    memcb_ReleaseBlockAtLevel(buddy, ptr, level);
-
-    return;
-}
-
-header_function
-void* memcb_GetMemory (Memory_User *m, Size size)
-{
-    if ((m->filled + size) > m->total) {
-        fprintf(stderr, "Memory full: Total = %lu, Filled = %lu\n", m->total, m->filled);
-        fflush(stdout);
-        return NULL;
-    }
-
-    void *result = m->base + m->filled;
-
-    m->filled += size;
-
-    return result;
-}
-
-# define memUserCreate(m, base, size)    memUser(Memory_Allocator_Mode_CREATE,  size, base, m)
-# define memUserAlloc(m, size)           memUser(Memory_Allocator_Mode_ALLOC,   size, NULL, m)
-# define memUserRealloc(m, ptr, size)    memUser(Memory_Allocator_Mode_REALLOC, size, ptr,  m)
-# define memUserDealloc(m, ptr)          memUser(Memory_Allocator_Mode_DEALLOC, 0,    ptr,  m)
-
-header_function
-MEMORY_ALLOCATOR(memUser)
-{
-    Memory_User *m = data;
-
-    switch (mode) {
-        case Memory_Allocator_Mode_CREATE: {
-            m->total = size;
-            m->base = old_ptr;
-            m->filled = 0;
-            m->b = NULL;
-        } break;
-
-        case Memory_Allocator_Mode_ALLOC: {
-            if (size == 0) return NULL;
-            size = u64NextPowerOf2(size);
-
-            void *mem = NULL;
-
-            for (Memory_User_Buddy *b = m->b; b != NULL; b = b->next) {
-                if ((size >= b->leaf_size) && (size <= b->arena_size)) {
-                    mem = memcb_Alloc(b, size);
-                    if (mem != NULL) break;
-                } else {
-                    continue;
-                }
-            }
-
-            if (mem == NULL) {
-                Size leaf_size = size;
-                Size arena_size = 1 << (u64Log2(size) + 5);
-
-                Memory_User_Buddy *buddy = memcb_GetMemory(m, sizeof(*buddy));
-                *buddy = (Memory_User_Buddy){0};
-
-                Byte *arena = memcb_GetMemory(m, arena_size);
-
-                *buddy = memcb_Init(arena, arena_size, leaf_size);
-
-                Size size_of_free_bits = memBytesFromBits(buddy->block_count);
-                Size size_of_split_bits = memBytesFromBits(buddy->block_count - buddy->leaf_count);
-                Size total_size = memAlignUp(size_of_free_bits + size_of_split_bits);
-
-                Byte *overhead = memcb_GetMemory(m, total_size);
-                memset(overhead, 0, total_size);
-
-                buddy->free_bits = overhead;
-                buddy->split_bits = overhead + size_of_free_bits;
-                memSetBit(buddy->free_bits, 0);
-
-                if (m->b != NULL) {
-                    m->b->prev = buddy;
-                }
-
-                buddy->next = m->b;
-                m->b = buddy;
-
-                mem = memcb_Alloc(buddy, size);
-            }
-
-            if (mem == NULL) breakpoint();
-            return mem;
-        } break;
-
-        case Memory_Allocator_Mode_REALLOC: {
-            if (old_ptr == NULL) {
-                void *result = memUser(Memory_Allocator_Mode_ALLOC, size, NULL, m);
-                return result;
-            }
-
-            if (size == 0) {
-                memUser(Memory_Allocator_Mode_DEALLOC, 0, old_ptr, m);
-                return NULL;
-            }
-
-            Memory_User_Buddy *buddy = NULL;
-
-            for (Memory_User_Buddy *b = m->b; b != NULL; b = b->next) {
-                if (((Byte*)old_ptr > (Byte*)&(b->arena)) && ((Byte*)old_ptr < (((Byte*)&(b->arena)) + b->arena_size))) {
-                    buddy = b;
-                    break;
-                }
-            }
-
-            if (buddy == NULL) return NULL;
-
-            U8 level_min = buddy->level_max; // The real level will never be zero since we already
-            // made a bunch of allocations at that level manually during init.
-
-            while ((level_min < buddy->level_count) && (level_min > 0)) {
-                if (memcb_IndexOfBlockInLevel(buddy, (Byte*)old_ptr, level_min) % 2 == 1) break;
-                level_min--;
-            }
-
-            U8 level = buddy->level_max;
-            while ((level >= level_min) && (level <= buddy->level_max)) {
-                if (level == 0) {
-                    break;
-                } else if (memTestBit(buddy->split_bits,
-                                     memcb_IndexOfParent(memcb_GlobalIndexOfBlock(buddy, (Byte*)old_ptr, level)))) {
-                    break;
-                }
-                level--;
-            }
-
-            Size old_size = memcb_SizeOfBlocksAtLevel(buddy, level);
-            if (old_size > size) {
-                return old_ptr;
-            }
-
-            if (size < (2 * old_size)) {
-                size = 2 * old_size;
-            }
-
-            B32 reallocated = false;
-            Byte *new_ptr = NULL;
-
-            if (level != 0) {
-                Size local_index  = memcb_IndexOfBlockInLevel(buddy, (Byte*)old_ptr, level);
-
-                Byte *parent_ptr = NULL; // the pointer to the merged blocks (if they get merged)
-                Byte *buddy_ptr = NULL; // pointer to buddy block
-
-                if (local_index % 2 == 0) {
-                    buddy_ptr = memcb_NextBlockInLevel(buddy, old_ptr, level);
-                    parent_ptr = old_ptr;
-
-                    Size buddy_global_index = memcb_GlobalIndexOfBlock(buddy, buddy_ptr, level);
-                    Size parent_global_index = memcb_GlobalIndexOfBlock(buddy, parent_ptr, level - 1);
-
-                    if (memTestBit(buddy->free_bits, buddy_global_index)) {
-                        memResetBit(buddy->free_bits, buddy_global_index);
-                        memResetBit(buddy->split_bits, parent_global_index);
-
-                        reallocated = true;
-                        new_ptr = old_ptr;
-                    }
-                } else {
-                    buddy_ptr = memcb_PreviousBlockInLevel(buddy, old_ptr, level);
-                    parent_ptr = buddy_ptr;
-
-                    Size buddy_global_index = memcb_GlobalIndexOfBlock(buddy, buddy_ptr, level);
-                    Size parent_global_index = memcb_GlobalIndexOfBlock(buddy, parent_ptr, level - 1);
-
-                    if (memTestBit(buddy->free_bits, buddy_global_index)) {
-                        memcpy(buddy_ptr, old_ptr, old_size);
-
-                        memResetBit(buddy->free_bits, buddy_global_index);
-                        memResetBit(buddy->split_bits, parent_global_index);
-
-                        reallocated = true;
-                        new_ptr = old_ptr;
-                    }
-                }
-            }
-
-            if (!reallocated) {
-                new_ptr = memUser(Memory_Allocator_Mode_ALLOC, size, NULL, m);
-                if (new_ptr == NULL) return NULL;
-                memcpy(new_ptr, old_ptr, old_size);
-                memUser(Memory_Allocator_Mode_DEALLOC, 0, old_ptr,  m);
-            }
-
-            return new_ptr;
-        } break;
-
-        case Memory_Allocator_Mode_DEALLOC: {
-            for (Memory_User_Buddy *b = m->b; b != NULL; b = b->next) {
-                if (((Byte*)old_ptr > (Byte*)&(b->arena)) && ((Byte*)old_ptr < (((Byte*)&(b->arena)) + b->arena_size))) {
-                    memcb_Dealloc(b, old_ptr);
-                    break;
-                }
-            }
-
-            return NULL;
-        } break;
-
-        case Memory_Allocator_Mode_DEALLOC_ALL: {
-            // TODO(naman): Maybe we should use a off-the-shelf malloc that allows this?
-        } break;
-
-        case Memory_Allocator_Mode_SIZE: {
-            // TODO(naman): Implement this
-        } break;
-
-        case Memory_Allocator_Mode_NONE: {
-            breakpoint();
-        } break;
-    }
-
-    return NULL;
-}
-
-/* =============================
- * stdlib Memory Allocator
- */
-
-# if !defined(NLIB_EXCLUDE_CRT)
-
-struct MemCRT_Header {
-    Size size;
-};
-
-#  define memCRTAlloc(size)        memCRT(Memory_Allocator_Mode_ALLOC,   size, NULL, NULL)
-#  define memCRTRealloc(ptr, size) memCRT(Memory_Allocator_Mode_REALLOC, size, ptr,  NULL)
-#  define memCRTDealloc(ptr)       memCRT(Memory_Allocator_Mode_DEALLOC, 0,    ptr,  NULL)
-#  define memCRTSize(ptr)          memCRT(Memory_Allocator_Mode_SIZE,    0,    ptr,  NULL)
-
-header_function
-MEMORY_ALLOCATOR(memCRT)
-{
-    unused_variable(data);
-    switch (mode) {
-        case Memory_Allocator_Mode_CREATE: {
-            // NOTE(naman): Not needed for now
-        } break;
-
-        case Memory_Allocator_Mode_ALLOC: {
-            Size memory_size = memAlignUp(size);
-            Size header_size = memAlignUp(sizeof(struct MemCRT_Header));
-            Size total_size = memory_size + header_size;
-
-            Byte *mem = malloc(total_size);
-            memset(mem, 0, total_size);
-
-            struct MemCRT_Header *header = (struct MemCRT_Header *)mem;
-            header->size = memory_size;
-
-            Byte *result = mem + header_size;
-
-            return result;
-        } break;
-
-        case Memory_Allocator_Mode_REALLOC: {
-            Size memory_size = memAlignUp(size);
-            Size header_size = memAlignUp(sizeof(struct MemCRT_Header));
-            Size total_size = memory_size + header_size;
-
-            Byte *mem = malloc(total_size);
-
-            struct MemCRT_Header *header = (struct MemCRT_Header *)mem;
-            header->size = memory_size;
-
-            Byte *result = mem + header_size;
-
-            if (old_ptr != NULL) {
-                Byte *previous_mem = (Byte*)old_ptr - header_size;
-                struct MemCRT_Header *previous_header = (struct MemCRT_Header *)previous_mem;
-                Size previous_size = previous_header->size;
-
-                memcpy(result, old_ptr, previous_size);
-                memset(result + previous_size, 0, memory_size - previous_size);
-
-                memCRTDealloc(old_ptr);
-            } else {
-                memset(result, 0, memory_size);
-            }
-
-            return result;
-        } break;
-
-        case Memory_Allocator_Mode_DEALLOC: {
-            if (old_ptr == NULL) {
-                return NULL;
-            }
-
-            Size header_size = memAlignUp(sizeof(struct MemCRT_Header));
-            Byte *mem = (Byte*)old_ptr - header_size;
-            free(mem);
-        } break;
-
-        case Memory_Allocator_Mode_DEALLOC_ALL: {
-            // TODO(naman): Maybe we should use a off-the-shelf malloc that allows this?
-        } break;
-
-        case Memory_Allocator_Mode_SIZE: {
-            struct MemCRT_Header *header = (void*)((Byte*)old_ptr - sizeof(*header));
-
-            return &header->size;
-        } break;
-
-        case Memory_Allocator_Mode_NONE: {
-            breakpoint();
-        } break;
-    }
-
-    return NULL;
-}
-
-# endif
-
-# if !defined(NLIB_EXCLUDE_CRT)
-global_variable thread_local Memory_Allocator_Function *memDefaultAllocator = &memCRT;
-global_variable thread_local void *memDefaultAllocatorData = NULL;
-#  define memAlloc(size)          memCRTAlloc(size)
-#  define memRealloc(ptr, size)   memCRTRealloc(ptr, size)
-#  define memDealloc(ptr)         memCRTDealloc(ptr)
-#  define memSize(ptr)            *(Size*)memCRTSize(ptr)
-# else
-global_variable thread_local Memory_Allocator_Function *memDefaultAllocator = &memUser;
-global_variable thread_local Memory_User *memDefaultAllocatorData = NULL;
-#  define memAlloc(size)          memUserAlloc(memDefaultAllocatorData, size)
-#  define memRealloc(ptr, size)   memUserRealloc(memDefaultAllocatorData, ptr, size)
-#  define memDealloc(ptr)         memUserDealloc(memDefaultAllocatorData, ptr)
-#  define memSize(ptr)            *(Size*)memUserSize(memDefaultAllocatorData, ptr)
-# endif
-
-# if defined(COMPILER_CLANG)
-#  pragma clang diagnostic pop
-# endif
-
 
 /* ****************************************************************************
  * DATA STRUCTURES ******************************************************************
@@ -1311,7 +599,7 @@ typedef struct Sbuf_Header {
                                (sb)[sbuf_Len(sb)] = (__VA_ARGS__),      \
                                ((sbuf_GetHeader(sb))->len)++)
 # define sbufDelete(sb)       ((sb) ?                                   \
-                               (memDealloc(sbuf_GetHeader(sb)), (sb) = NULL) : \
+                               (nlib_Dealloc(sbuf_GetHeader(sb)), (sb) = NULL) : \
                                0)
 # define sbufClear(sb)        ((sb) ?                                   \
                                (memset((sb), 0, sbufSizeof(sb)),        \
@@ -1350,9 +638,11 @@ void* sbuf_Grow (void *buf, Size elem_size)
         Sbuf_Header *new_header = NULL;
 
         if (buf != NULL) {
-            new_header = memRealloc(sbuf_GetHeader(buf), new_size);
+            new_header = nlib_Realloc(sbuf_GetHeader(buf), new_size);
         } else {
-            new_header = memAlloc(new_size);
+            new_header = nlib_Malloc(new_size);
+            *new_header = (Sbuf_Header){.len = 0,
+                                        .userdata = NULL};
         }
 
         new_header->cap = new_cap;
@@ -1371,9 +661,12 @@ void* sbuf_Resize (void *buf, Size elem_count, Size elem_size)
     Sbuf_Header *new_header = NULL;
 
     if (buf != NULL) {
-        new_header = memRealloc(sbuf_GetHeader(buf), new_size);
+        new_header = nlib_Realloc(sbuf_GetHeader(buf), new_size);
     } else {
-        new_header = memAlloc(new_size);
+        new_header = nlib_Malloc(new_size);
+        *new_header = (Sbuf_Header){.cap = 0,
+                                    .len = 0,
+                                    .userdata = NULL};
     }
 
     new_header->cap = new_cap;
@@ -1386,38 +679,35 @@ void* sbuf_Resize (void *buf, Size elem_count, Size elem_size)
 #   pragma clang diagnostic ignored "-Wformat-nonliteral"
 # endif
 header_function
-Char* sbuf_Print(Char *buf, const Char *fmt, ...)
+Char* sbuf_Print(Char *buf, Char *fmt, ...)
 {
-    // TODO(naman): Replace with stbsp_vsnprintf once the following bug is taken care of:
-    // https://github.com/nothings/stb/issues/612
     va_list args;
 
     va_start(args, fmt);
-    size_t cap = sbufMaxElemin(buf) - sbufElemin(buf);
-    int n = 1 + vsnprintf(sbufEnd(buf), cap, fmt, args);
+    Size size = printString(NULL, fmt, args);
     va_end(args);
 
-    if ((Size)n > cap) {
-        sbufResize(buf, (Size)n + sbufElemin(buf));
-        size_t new_cap = sbufMaxElemin(buf) - sbufElemin(buf);
+    sbufResize(buf, sbufElemin(buf) + size);
+
     va_start(args, fmt);
-        n = 1 + vsnprintf(sbufEnd(buf), new_cap, fmt, args);
+    printString(sbufEnd(buf), fmt, args);
     va_end(args);
-    }
 
-    sbuf_GetHeader(buf)->len += ((Size)n - 1);
+    sbuf_GetHeader(buf)->len += (size - 1);
     return buf;
 }
 # if defined(COMPILER_CLANG)
 #  pragma clang diagnostic pop
 # endif
 
+# if defined(NLIB_TESTS)
 header_function
 void sbufUnitTest (void)
 {
     S32 *buf = NULL;
 
     sbufAdd(buf, 42);
+
     utTest(buf != NULL);
 
     sbufAdd(buf, 1234);
@@ -1439,6 +729,7 @@ void sbufUnitTest (void)
 
     utTest(strcmp(stream, "Hello, World!\nStill here? 420\nGO AWAY!!!\n") == 0);
 }
+# endif
 
 # if defined(COMPILER_CLANG)
 #  pragma clang diagnostic pop
@@ -1501,43 +792,43 @@ U8 internStringPearsonHash (void *buffer, Size len, B32 which)
     // https://en.wikipedia.org/wiki/Pearson_hashing
     persistent_value U8 hash_lookup_table1[256] =
         {
-         // 0-255 shuffled in any (random) order suffices
-         98,    6,   85, 150,  36,  23, 112, 164, 135, 207, 169,   5,  26,  64, 165, 219, // 01
-         61,   20,   68,  89, 130,  63,  52, 102,  24, 229, 132, 245,  80, 216, 195, 115, // 02
-         90,  168,  156, 203, 177, 120,   2, 190, 188,   7, 100, 185, 174, 243, 162,  10, // 03
-         237,  18,  253, 225,   8, 208, 172, 244, 255, 126, 101,  79, 145, 235, 228, 121, // 04
-         123, 251,   67, 250, 161,   0, 107,  97, 241, 111, 181,  82, 249,  33,  69,  55, // 05
-         59,  153,   29,   9, 213, 167,  84,  93,  30,  46, 94,   75, 151, 114,  73, 222, // 06
-         197,  96,  210,  45,  16, 227, 248, 202,  51, 152, 252, 125,  81, 206, 215, 186, // 07
-         39,  158,  178, 187, 131, 136,   1,  49,  50,  17, 141,  91,  47, 129,  60,  99, // 08
-         154,  35,   86, 171, 105,  34,  38, 200, 147,  58,  77, 118, 173, 246,  76, 254, // 09
-         133, 232,  196, 144, 198, 124,  53,   4, 108,  74, 223, 234, 134, 230, 157, 139, // 10
-         189, 205,  199, 128, 176,  19, 211, 236, 127, 192, 231,  70, 233,  88, 146,  44, // 11
-         183, 201,   22,  83,  13, 214, 116, 109, 159,  32,  95, 226, 140, 220,  57,  12, // 12
-         221,  31,  209, 182, 143,  92, 149, 184, 148,  62, 113,  65,  37,  27, 106, 166, // 13
-         3,    14,  204,  72,  21,  41,  56,  66,  28, 193,  40, 217,  25,  54, 179, 117, // 14
-         238,  87,  240, 155, 180, 170, 242, 212, 191, 163,  78, 218, 137, 194, 175, 110, // 15
-         43,  119,  224,  71, 122, 142,  42, 160, 104,  48, 247, 103,  15,  11, 138, 239, // 16
+            // 0-255 shuffled in any (random) order suffices
+            98,    6,   85, 150,  36,  23, 112, 164, 135, 207, 169,   5,  26,  64, 165, 219, // 01
+            61,   20,   68,  89, 130,  63,  52, 102,  24, 229, 132, 245,  80, 216, 195, 115, // 02
+            90,  168,  156, 203, 177, 120,   2, 190, 188,   7, 100, 185, 174, 243, 162,  10, // 03
+            237,  18,  253, 225,   8, 208, 172, 244, 255, 126, 101,  79, 145, 235, 228, 121, // 04
+            123, 251,   67, 250, 161,   0, 107,  97, 241, 111, 181,  82, 249,  33,  69,  55, // 05
+            59,  153,   29,   9, 213, 167,  84,  93,  30,  46, 94,   75, 151, 114,  73, 222, // 06
+            197,  96,  210,  45,  16, 227, 248, 202,  51, 152, 252, 125,  81, 206, 215, 186, // 07
+            39,  158,  178, 187, 131, 136,   1,  49,  50,  17, 141,  91,  47, 129,  60,  99, // 08
+            154,  35,   86, 171, 105,  34,  38, 200, 147,  58,  77, 118, 173, 246,  76, 254, // 09
+            133, 232,  196, 144, 198, 124,  53,   4, 108,  74, 223, 234, 134, 230, 157, 139, // 10
+            189, 205,  199, 128, 176,  19, 211, 236, 127, 192, 231,  70, 233,  88, 146,  44, // 11
+            183, 201,   22,  83,  13, 214, 116, 109, 159,  32,  95, 226, 140, 220,  57,  12, // 12
+            221,  31,  209, 182, 143,  92, 149, 184, 148,  62, 113,  65,  37,  27, 106, 166, // 13
+            3,    14,  204,  72,  21,  41,  56,  66,  28, 193,  40, 217,  25,  54, 179, 117, // 14
+            238,  87,  240, 155, 180, 170, 242, 212, 191, 163,  78, 218, 137, 194, 175, 110, // 15
+            43,  119,  224,  71, 122, 142,  42, 160, 104,  48, 247, 103,  15,  11, 138, 239, // 16
         };
 
     persistent_value U8 hash_lookup_table2[256] =
         {
-         251, 175, 119, 215,  81,  14,  79, 191, 103,  49, 181, 143, 186, 157,   0, 232, // 01
-         31,   32,  55,  60, 152,  58,  17, 237, 174,  70, 160, 144, 220,  90,  57, 223, // 02
-         59,    3,  18, 140, 111, 166, 203, 196, 134, 243, 124,  95, 222, 179, 197,  65, // 03
-         180,  48,  36,  15, 107,  46, 233, 130, 165,  30, 123, 161, 209,  23,  97,  16, // 04
-         40,   91, 219,  61, 100,  10, 210, 109, 250, 127,  22, 138,  29, 108, 244,  67, // 05
-         207,   9, 178, 204,  74,  98, 126, 249, 167, 116,  34,  77, 193, 200, 121,   5, // 06
-         20,  113,  71,  35, 128,  13, 182,  94,  25, 226, 227, 199,  75,  27,  41, 245, // 07
-         230, 224,  43, 225, 177,  26, 155, 150, 212, 142, 218, 115, 241,  73,  88, 105, // 08
-         39,  114,  62, 255, 192, 201, 145, 214, 168, 158, 221, 148, 154, 122,  12,  84, // 09
-         82,  163,  44, 139, 228, 236, 205, 242, 217,  11, 187, 146, 159,  64,  86, 239, // 10
-         195,  42, 106, 198, 118, 112, 184, 172,  87,   2, 173, 117, 176, 229, 247, 253, // 11
-         137, 185,  99, 164, 102, 147,  45,  66, 231,  52, 141, 211, 194, 206, 246, 238, // 12
-         56,  110,  78, 248,  63, 240, 189,  93,  92,  51,  53, 183,  19, 171,  72,  50, // 13
-         33,  104, 101,  69,   8, 252,  83, 120,  76, 135,  85,  54, 202, 125, 188, 213, // 14
-         96,  235, 136, 208, 162, 129, 190, 132, 156,  38,  47,   1,   7, 254,  24,   4, // 15
-         216, 131,  89,  21,  28, 133,  37, 153, 149,  80, 170,  68,   6, 169, 234, 151, // 16
+            251, 175, 119, 215,  81,  14,  79, 191, 103,  49, 181, 143, 186, 157,   0, 232, // 01
+            31,   32,  55,  60, 152,  58,  17, 237, 174,  70, 160, 144, 220,  90,  57, 223, // 02
+            59,    3,  18, 140, 111, 166, 203, 196, 134, 243, 124,  95, 222, 179, 197,  65, // 03
+            180,  48,  36,  15, 107,  46, 233, 130, 165,  30, 123, 161, 209,  23,  97,  16, // 04
+            40,   91, 219,  61, 100,  10, 210, 109, 250, 127,  22, 138,  29, 108, 244,  67, // 05
+            207,   9, 178, 204,  74,  98, 126, 249, 167, 116,  34,  77, 193, 200, 121,   5, // 06
+            20,  113,  71,  35, 128,  13, 182,  94,  25, 226, 227, 199,  75,  27,  41, 245, // 07
+            230, 224,  43, 225, 177,  26, 155, 150, 212, 142, 218, 115, 241,  73,  88, 105, // 08
+            39,  114,  62, 255, 192, 201, 145, 214, 168, 158, 221, 148, 154, 122,  12,  84, // 09
+            82,  163,  44, 139, 228, 236, 205, 242, 217,  11, 187, 146, 159,  64,  86, 239, // 10
+            195,  42, 106, 198, 118, 112, 184, 172,  87,   2, 173, 117, 176, 229, 247, 253, // 11
+            137, 185,  99, 164, 102, 147,  45,  66, 231,  52, 141, 211, 194, 206, 246, 238, // 12
+            56,  110,  78, 248,  63, 240, 189,  93,  92,  51,  53, 183,  19, 171,  72,  50, // 13
+            33,  104, 101,  69,   8, 252,  83, 120,  76, 135,  85,  54, 202, 125, 188, 213, // 14
+            96,  235, 136, 208, 162, 129, 190, 132, 156,  38,  47,   1,   7, 254,  24,   4, // 15
+            216, 131,  89,  21,  28, 133,  37, 153, 149,  80, 170,  68,   6, 169, 234, 151, // 16
         };
 
     Char *string = buffer;
@@ -1678,6 +969,7 @@ U64 internIntegerCheck (Intern_Integer *ii, U64 num)
     }
 }
 
+# if defined(NLIB_TESTS)
 header_function
 void internUnitTest (void)
 {
@@ -1704,6 +996,7 @@ void internUnitTest (void)
 
     return;
 }
+# endif
 
 /* ==========================
  * Hashing Infrastructure
@@ -1793,15 +1086,10 @@ U64 hashUniversal (Hash_Universal h, U64 key)
  * U64        htInsert (Hash_Table *ht, U64 key, U64 value);
  * U64        htLookup (Hash_Table *ht, U64 key);
  * U64        htRemove (Hash_Table *ht, U64 key);
- *
- * Hash_Table htCreateWithAlloc (Size min_slots,
- *                               Memory_Allocator_Function *allocator, void *allocator_data);
  */
 
 typedef struct Hash_Table {
     Hash_Universal univ;
-    Memory_Allocator_Function *allocator;
-    void *allocator_data;
     U64 *keys;
     U64 *values;
     Size slot_count;
@@ -1809,8 +1097,7 @@ typedef struct Hash_Table {
 } Hash_Table;
 
 header_function
-Hash_Table htCreateWithAlloc (Size slots_atleast,
-                              Memory_Allocator_Function *allocator, void *allocator_data)
+Hash_Table htCreate (Size slots_atleast)
 {
     Hash_Table ht = {0};
 
@@ -1821,28 +1108,8 @@ Hash_Table htCreateWithAlloc (Size slots_atleast,
     ht.slot_count = 1ULL << (ht.univ.m);
     hashUniversalConstantsUpdate(&ht.univ);
 
-    if (allocator != NULL) {
-        ht.allocator = allocator;
-        ht.allocator_data = allocator_data;
-    } else {
-        ht.allocator = memDefaultAllocator;
-        ht.allocator_data = memDefaultAllocatorData;
-    }
-
-    ht.keys     = ht.allocator(Memory_Allocator_Mode_ALLOC,
-                               (ht.slot_count) * sizeof(*(ht.keys)), NULL,
-                               ht.allocator_data);
-    ht.values   = ht.allocator(Memory_Allocator_Mode_ALLOC,
-                               (ht.slot_count) * sizeof(*(ht.values)), NULL,
-                               ht.allocator_data);
-
-    return ht;
-}
-
-header_function
-Hash_Table htCreate (Size slots_atleast)
-{
-    Hash_Table ht = htCreateWithAlloc(slots_atleast, NULL, NULL);
+    ht.keys     = nlib_Calloc(ht.slot_count,  sizeof(*(ht.keys)));
+    ht.values   = nlib_Calloc(ht.slot_count, sizeof(*(ht.values)));
 
     return ht;
 }
@@ -1850,8 +1117,8 @@ Hash_Table htCreate (Size slots_atleast)
 header_function
 void htDelete (Hash_Table ht)
 {
-    ht.allocator(Memory_Allocator_Mode_DEALLOC, 0, ht.keys,   NULL);
-    ht.allocator(Memory_Allocator_Mode_DEALLOC, 0, ht.values, NULL);
+    nlib_Dealloc(ht.keys);
+    nlib_Dealloc(ht.values);
 }
 
 header_function
@@ -1908,12 +1175,8 @@ U64 htInsert (Hash_Table *ht, U64 key, U64 value)
         ht->slot_count = 1ULL << (ht->univ.m);
         hashUniversalConstantsUpdate(&(ht->univ));
 
-        ht->keys   = ht->allocator(Memory_Allocator_Mode_ALLOC,
-                                   sizeof(*(ht->keys)) * ht->slot_count,
-                                   NULL, ht->allocator_data);
-        ht->values = ht->allocator(Memory_Allocator_Mode_ALLOC,
-                                   sizeof(*(ht->values)) * ht->slot_count,
-                                   NULL, ht->allocator_data);
+        ht->keys   = nlib_Calloc(ht->slot_count, sizeof(*(ht->keys)));
+        ht->values = nlib_Calloc(ht->slot_count, sizeof(*(ht->values)));
 
         for (Size i = 0; i < slot_count_prev; ++i) {
             U64 key_i     = keys[i];
@@ -1925,8 +1188,8 @@ U64 htInsert (Hash_Table *ht, U64 key, U64 value)
             }
         }
 
-        ht->allocator(Memory_Allocator_Mode_DEALLOC, 0, keys,   ht->allocator_data);
-        ht->allocator(Memory_Allocator_Mode_DEALLOC, 0, values, ht->allocator_data);
+        nlib_Dealloc(keys);
+        nlib_Dealloc(values);
     }
 
     U64 hash = hashUniversal(ht->univ, key);
@@ -1975,6 +1238,7 @@ U64 htRemove (Hash_Table *ht, U64 key)
     return result_value;
 }
 
+# if defined(NLIB_TESTS)
 header_function
 void htUnitTest (void)
 {
@@ -1992,7 +1256,6 @@ void htUnitTest (void)
     utTest(ht.slot_filled == (f0 + 1));
     utTest(htLookup(&ht, 0) == 0);
     utTest(htLookup(&ht, 1) == 1);
-    fflush(stdout);
     utTest(htLookup(&ht, 2) == 0);
 
     htInsert(&ht, 2, 42);
@@ -2077,6 +1340,7 @@ void htUnitTest (void)
 
     return;
 }
+# endif
 
 /* ==============
  * Map
@@ -2102,7 +1366,8 @@ typedef struct Map_Userdata {
                                sizeof(*(_map)));                        \
             shdr = sbuf_GetHeader(_map);                                \
             (shdr->len)++;                                              \
-            shdr->userdata = memAlloc(sizeof(Map_Userdata));            \
+            shdr->userdata = nlib_Malloc(sizeof(Map_Userdata));         \
+            *(Map_Userdata*)(shdr->userdata) = (Map_Userdata){0};       \
             ((Map_Userdata*)shdr->userdata)->table = htCreate(0);       \
         } else {                                                        \
             shdr = sbuf_GetHeader((_map));                              \
@@ -2150,6 +1415,7 @@ B32 mapExists (void *map, U64 key) {
         }                                                               \
     } while (0)
 
+# if defined(NLIB_TESTS)
 header_function
 void mapUnitTest (void)
 {
@@ -2218,6 +1484,7 @@ void mapUnitTest (void)
 
     return;
 }
+# endif
 
 #define NLIB_H_INCLUDE_GUARD
 #endif // NLIB_H_INCLUDE_GUARD

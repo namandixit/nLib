@@ -3,7 +3,7 @@
  * Notice: © Copyright 2019 Naman Dixit
  */
 
-#if !defined(LINEAR_ALGEBRA_H_INCLUDE_GUARD)
+#if !defined(NLIB_LINMATH_H_INCLUDE_GUARD)
 
 #include "mathematics.h"
 
@@ -880,5 +880,5 @@ Mat4 mat4PerspectiveD3D11 (F32 y_fov, F32 aspect, F32 near_plane, F32 far_plane)
     return m;
 }
 
-#define LINEAR_ALGEBRA_H_INCLUDE_GUARD
+#define NLIB_LINMATH_H_INCLUDE_GUARD
 #endif

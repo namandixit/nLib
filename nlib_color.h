@@ -3,7 +3,7 @@
  * Notice: © Copyright 2019 Naman Dixit
  */
 
-#if !defined(COLOR_H_INCLUDE_GUARD)
+#if !defined(NLIB_COLOR_H_INCLUDE_GUARD)
 
 typedef union {
     F32 elem[4];
@@ -16,7 +16,7 @@ typedef union {
 header_function
 Color colorNew (F32 a, F32 b, F32 c, F32 d)
 {
-    Color result = (Color){a, b, c, d};
+    Color result = (Color){.rgba = {a, b, c, d}};
     return result;
 }
 
@@ -26,5 +26,5 @@ U32 colorBGRX32LE(U8 r, U8 g, U8 b)
     return (((U32)r << 16U) | ((U32)g << 8U) | (U32)b);
 }
 
-#define COLOR_H_INCLUDE_GUARD
+#define NLIB_COLOR_H_INCLUDE_GUARD
 #endif

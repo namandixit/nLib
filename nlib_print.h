@@ -3,18 +3,19 @@
  * Notice: © Copyright 2019 Naman Dixit
  */
 
-#if !defined(SPRINTF_H_INCLUDE_GUARD)
+#if !defined(NLIB_PRINT_H_INCLUDE_GUARD)
 
 typedef enum Print_Flags {
     Print_Flags_LEFT_JUSTIFIED = 1u << 0,
     Print_Flags_LEADING_PLUS   = 1u << 1,
-    Print_Flags_LEADING_ZERO   = 1u << 2,
-    Print_Flags_INTMAX         = 1u << 3,
-    Print_Flags_NEGATIVE       = 1u << 4,
+    Print_Flags_LEADING_SPACE  = 1u << 2,
+    Print_Flags_LEADING_ZERO   = 1u << 3,
+    Print_Flags_INTMAX         = 1u << 4,
+    Print_Flags_NEGATIVE       = 1u << 5,
 } Print_Flags;
 
 header_function
-Size vsnprint (Char *buffer, Char *format, va_list va)
+Size printString (Char *buffer, Char *format, va_list va)
 {
     Char *fmt = format;
     Char *buf = buffer;
@@ -49,6 +50,11 @@ Size vsnprint (Char *buffer, Char *format, va_list va)
                     } break;
                     case '+': { // if we have leading plus
                         flags |= Print_Flags_LEADING_PLUS;
+                        fmt++;
+                        continue;
+                    } break;
+                    case ' ': { // if we have leading plus
+                        flags |= Print_Flags_LEADING_ZERO;
                         fmt++;
                         continue;
                     } break;
@@ -108,7 +114,7 @@ Size vsnprint (Char *buffer, Char *format, va_list va)
                 } break;
             }
 
-#define PRINT_SIZE 512ULL // big enough for e308 (with commas) or e-307
+# define PRINT_SIZE 512ULL // big enough for e308 (with commas) or e-307
             Char num_str[PRINT_SIZE];
             Char *str = NULL;
 
@@ -323,6 +329,8 @@ Size vsnprint (Char *buffer, Char *format, va_list va)
                         head_str[head_index++] = '-';
                     } else if (flags & Print_Flags_LEADING_PLUS) {
                         head_str[head_index++] = '+';
+                    } else if (flags & Print_Flags_LEADING_ZERO) {
+                        head_str[head_index++] = ' ';
                     }
 
                     if (precision < 0) {
@@ -499,27 +507,116 @@ Size vsnprint (Char *buffer, Char *format, va_list va)
         }
     }
 
+    if (buffer != NULL) {
+        buf[0] = '\0';
+    }
+    buf++;
+
     return (Size)(Uptr)(buf - buffer);
 }
 
+# if defined(OS_WINDOWS)
+
 header_function
-Size print (Char *format, ...)
+Size printConsole (Sint fd, Char *format, va_list ap)
+{
+    va_list ap1, ap2;
+    va_copy(ap1, ap);
+    va_copy(ap2, ap);
+
+    Size buffer_size = printString(NULL, format, ap1);
+    Char *buffer = nlib_Malloc(buffer_size);
+    printString(buffer, format, ap2);
+
+    HANDLE out_stream;
+    if (fd == 1) {
+        out_stream = GetStdHandle(STD_OUTPUT_HANDLE);
+    } else {
+        out_stream = GetStdHandle(STD_ERROR_HANDLE);
+    }
+
+    if ((out_stream != NULL) && (out_stream != INVALID_HANDLE_VALUE)) {
+        DWORD written = 0;
+        WriteConsoleA(out_stream, buffer, buffer_size, &written, NULL);
+    }
+
+    va_end(ap1);
+    va_end(ap2);
+
+    return buffer_size;
+}
+
+header_function
+Size printDebugOutput (Char *format, va_list ap)
+{
+    va_list ap1, ap2;
+    va_copy(ap1, ap);
+    va_copy(ap2, ap);
+
+    Size buffer_size = printString(NULL, format, ap1);
+    Char *buffer = nlib_Malloc(buffer_size);
+    printString(buffer, format, ap2);
+
+    LPWSTR wcstr = unicodeWin32UTF16FromUTF8(buffer);
+    OutputDebugStringW(wcstr);
+    unicodeWin32UTF16Dealloc(wcstr);
+
+    va_end(ap1);
+    va_end(ap2);
+
+    return buffer_size;
+}
+
+# elif defined(OS_LINUX)
+
+header_function
+Size printConsole (Sint fd, Char *format, va_list ap)
+{
+    va_list ap1, ap2;
+    va_copy(ap1, ap);
+    va_copy(ap2, ap);
+
+    Size buffer_size = printString(NULL, format, ap1);
+    Char *buffer = nlib_Malloc(buffer_size);
+    printString(buffer, format, ap2);
+
+    if (fd == 1) {
+        fputs(buffer, stdout);
+    } else {
+        fputs(buffer, stderr);
+    }
+
+    va_end(ap1);
+    va_end(ap2);
+
+    return buffer_size;
+}
+
+# endif
+
+header_function
+Size say (Char *format, ...)
 {
     va_list ap;
 
     va_start(ap, format);
-    Size buffer_size = vsnprint(NULL, format, ap);
-    va_end(ap);
-
-    Char *buffer = memAlloc(buffer_size + 1);
-
-    va_start(ap, format);
-    vsnprint(buffer, format, ap);
-    printf("%s", buffer);
+    Size buffer_size = printConsole(1, format, ap);
     va_end(ap);
 
     return buffer_size;
 }
 
-#define SPRINTF_H_INCLUDE_GUARD
+header_function
+Size err (Char *format, ...)
+{
+    va_list ap;
+
+    va_start(ap, format);
+    Size buffer_size = printConsole(2, format, ap);
+    va_end(ap);
+
+    return buffer_size;
+}
+
+#define NLIB_PRINT_H_INCLUDE_GUARD
 #endif

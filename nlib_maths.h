@@ -3,7 +3,7 @@
  * Notice: © Copyright 2019 Naman Dixit
  */
 
-#if !defined(MATHEMATICS_H_INCLUDE_GUARD)
+#if !defined(NLIB_MATHS_H_INCLUDE_GUARD)
 
 /* Wrapper for needed math.h functions */
 
@@ -305,5 +305,5 @@ F32 mathDegreesF32 (F32 radians)
     return degrees;
 }
 
-#define MATHEMATICS_H_INCLUDE_GUARD
+#define NLIB_MATHS_H_INCLUDE_GUARD
 #endif

@@ -15,7 +15,7 @@ typedef enum Print_Flags {
 } Print_Flags;
 
 header_function
-Size printString (Char *buffer, Char *format, va_list va)
+Size printStringVarArg (Char *buffer, Char *format, va_list va)
 {
     Char *fmt = format;
     Char *buf = buffer;
@@ -524,9 +524,9 @@ Size printConsole (Sint fd, Char *format, va_list ap)
     va_copy(ap1, ap);
     va_copy(ap2, ap);
 
-    Size buffer_size = printString(NULL, format, ap1);
+    Size buffer_size = printStringVarArg(NULL, format, ap1);
     Char *buffer = nlib_Malloc(buffer_size);
-    printString(buffer, format, ap2);
+    printStringVarArg(buffer, format, ap2);
 
     HANDLE out_stream;
     if (fd == 1) {
@@ -539,6 +539,8 @@ Size printConsole (Sint fd, Char *format, va_list ap)
         DWORD written = 0;
         WriteConsoleA(out_stream, buffer, buffer_size, &written, NULL);
     }
+
+    nlib_Dealloc(buffer);
 
     va_end(ap1);
     va_end(ap2);
@@ -553,13 +555,15 @@ Size printDebugOutput (Char *format, va_list ap)
     va_copy(ap1, ap);
     va_copy(ap2, ap);
 
-    Size buffer_size = printString(NULL, format, ap1);
+    Size buffer_size = printStringVarArg(NULL, format, ap1);
     Char *buffer = nlib_Malloc(buffer_size);
-    printString(buffer, format, ap2);
+    printStringVarArg(buffer, format, ap2);
 
     LPWSTR wcstr = unicodeWin32UTF16FromUTF8(buffer);
     OutputDebugStringW(wcstr);
     unicodeWin32UTF16Dealloc(wcstr);
+
+    nlib_Dealloc(buffer);
 
     va_end(ap1);
     va_end(ap2);
@@ -576,15 +580,17 @@ Size printConsole (Sint fd, Char *format, va_list ap)
     va_copy(ap1, ap);
     va_copy(ap2, ap);
 
-    Size buffer_size = printString(NULL, format, ap1);
+    Size buffer_size = printStringVarArg(NULL, format, ap1);
     Char *buffer = nlib_Malloc(buffer_size);
-    printString(buffer, format, ap2);
+    printStringVarArg(buffer, format, ap2);
 
     if (fd == 1) {
         fputs(buffer, stdout);
     } else {
         fputs(buffer, stderr);
     }
+
+    nlib_Dealloc(buffer);
 
     va_end(ap1);
     va_end(ap2);
@@ -593,6 +599,18 @@ Size printConsole (Sint fd, Char *format, va_list ap)
 }
 
 # endif
+
+header_function
+Size printString (Char *buffer, Char *format, ...)
+{
+    va_list ap;
+
+    va_start(ap, format);
+    Size buffer_size = printStringVarArg(buffer, format, ap);
+    va_end(ap);
+
+    return buffer_size;
+}
 
 header_function
 Size say (Char *format, ...)

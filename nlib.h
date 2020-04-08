@@ -684,13 +684,13 @@ Char* sbuf_Print(Char *buf, Char *fmt, ...)
     va_list args;
 
     va_start(args, fmt);
-    Size size = printString(NULL, fmt, args);
+    Size size = printStringVarArg(NULL, fmt, args);
     va_end(args);
 
     sbufResize(buf, sbufElemin(buf) + size);
 
     va_start(args, fmt);
-    printString(sbufEnd(buf), fmt, args);
+    printStringVarArg(sbufEnd(buf), fmt, args);
     va_end(args);
 
     sbuf_GetHeader(buf)->len += (size - 1);

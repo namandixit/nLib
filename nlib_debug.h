@@ -7,7 +7,7 @@
 
 # if defined(OS_WINDOWS)
 
-#  if defined(BUILD_INTERNAL)
+#  if defined(BUILD_DEBUG)
 #   define breakpoint() __debugbreak()
 #   define quit() breakpoint()
 #  else
@@ -17,7 +17,7 @@
 
 # elif defined(OS_LINUX)
 
-#  if defined(BUILD_INTERNAL)
+#  if defined(BUILD_DEBUG)
 #   define breakpoint() __asm__ volatile("int $0x03")
 #   define quit() breakpoint()
 #  else
@@ -26,6 +26,41 @@
 #  endif
 
 # endif
+
+/* ==============
+ * Claim (assert)
+ */
+
+# define claim(cond) claim_(cond, #cond, __FILE__, __LINE__)
+
+header_function
+void claim_ (B32 cond,
+             Char *cond_str,
+             Char *filename, U32 line_num)
+{
+    if (!cond) {
+        report("Claim \"%s\" Failed in %s:%u\n\n",
+               cond_str, filename, line_num);
+
+        quit();
+    }
+}
+
+/* ===================
+ * Unit Test Framework
+ */
+
+# define utTest(cond) ut_Test(cond, #cond, __FILE__, __LINE__)
+
+header_function
+void ut_Test (B32 cond,
+              Char *cond_str,
+              Char *filename, U32 line_num) {
+    if (!(cond)) {
+        report("Test Failed: (%s:%u) %s\n", filename, line_num, cond_str);
+        quit();
+    }
+}
 
 #define NLIB_DEBUG_H_INCLUDE_GUARD
 #endif

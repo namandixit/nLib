@@ -496,7 +496,7 @@ U64 u64NextPowerOf2 (U64 x)
 
 # if defined(OS_WINDOWS)
 
-#  if defined(BUILD_INTERNAL)
+#  if defined(BUILD_DEBUG)
 #   define report(...)              printDebugOutput(__VA_ARGS__)
 #   define reportv(format, va_list) printDebugOutput(format, va_list)
 #  else
@@ -506,7 +506,7 @@ U64 u64NextPowerOf2 (U64 x)
 
 # elif defined(OS_LINUX)
 
-#  if defined(BUILD_INTERNAL)
+#  if defined(BUILD_DEBUG)
 #   define report(...)              err(__VA_ARGS__)
 #   define reportv(format, va_list) err(format, va_list)
 #  else
@@ -522,47 +522,20 @@ U64 u64NextPowerOf2 (U64 x)
 
 # include "nlib_memory.h"
 # include "nlib_print.h"
+
 # include "nlib_debug.h"
+
+# if defined(NLIB_TESTS)
+#  define PRINT_TEST_ONLY
+#  include "nlib_print.h"
+#  undef PRINT_TEST_ONLY
+# endif
+
 # include "nlib_color.h"
 # include "nlib_maths.h"
 # include "nlib_color.h"
 # include "nlib_unicode.h"
 # include "nlib_string.h"
-
-/* ==============
- * Claim (assert)
- */
-
-# define claim(cond) claim_(cond, #cond, __FILE__, __LINE__)
-
-header_function
-void claim_ (B32 cond,
-             Char *cond_str,
-             Char *filename, U32 line_num)
-{
-    if (!cond) {
-        report("Claim \"%s\" Failed in %s:%u\n\n",
-               cond_str, filename, line_num);
-
-        quit();
-    }
-}
-
-/* ===================
- * Unit Test Framework
- */
-
-# define utTest(cond) ut_Test(cond, #cond, __FILE__, __LINE__)
-
-header_function
-void ut_Test (B32 cond,
-              Char *cond_str,
-              Char *filename, U32 line_num) {
-    if (!(cond)) {
-        report("Test Failed: (%s:%u) %s\n", filename, line_num, cond_str);
-        quit();
-    }
-}
 
 /* ****************************************************************************
  * DATA STRUCTURES ******************************************************************

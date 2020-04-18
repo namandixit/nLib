@@ -3,18 +3,28 @@
  * Notice: © Copyright 2019 Naman Dixit
  */
 
+// Takes 12151 bytes (11.86 KiB) without the unit test
+// Command: readelf -s test.linux.x64|perl -ne 'if(/(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)/) { print $3 . " " . $8. "\n";}'|sort -n | grep -i print
+
 #if !defined(NLIB_PRINT_H_INCLUDE_GUARD)
 
 # if !defined(PRINT_TEST_ONLY)
 
+#  if 0
+#   define p(...) printf(__VA_ARGS__)
+#  else
+#   define p(...)
+#  endif
+
 typedef enum Print_Flags {
-    Print_Flags_LEFT_JUSTIFIED = 1u << 0,
-    Print_Flags_ALTERNATE_FORM = 1u << 1,
-    Print_Flags_LEADING_PLUS   = 1u << 2,
-    Print_Flags_LEADING_SPACE  = 1u << 3,
-    Print_Flags_LEADING_ZERO   = 1u << 4,
-    Print_Flags_INTMAX         = 1u << 5,
-    Print_Flags_NEGATIVE       = 1u << 6,
+    Print_Flags_LEFT_JUSTIFIED     = 1u << 0,
+    Print_Flags_ALTERNATE_FORM     = 1u << 1,
+    Print_Flags_LEADING_PLUS       = 1u << 2,
+    Print_Flags_LEADING_SPACE      = 1u << 3,
+    Print_Flags_LEADING_ZERO       = 1u << 4,
+    Print_Flags_INT64              = 1u << 5,
+    Print_Flags_NEGATIVE           = 1u << 6,
+    Print_Flags_FLOAT_NO_LOW_BOUND = 1u << 7,
 } Print_Flags;
 
 header_function
@@ -107,15 +117,15 @@ Size printStringVarArg (Char *buffer, Char *format, va_list va)
             // handle integer size overrides
             switch (fmt[0]) {
                 case 'l': { // are we 64-bit
-                    flags |= Print_Flags_INTMAX;
+                    flags |= Print_Flags_INT64;
                     fmt++;
                 } break;
                 case 'z': { // are we 64-bit on size_t?
-                    flags |= (sizeof(Size) == 8) ? Print_Flags_INTMAX : 0;
+                    flags |= (sizeof(Size) == 8) ? Print_Flags_INT64 : 0;
                     fmt++;
                 } break;
                 case 't': { // are we 64-bit on ptrdiff_t?
-                    flags |= (sizeof(Dptr) == 8) ? Print_Flags_INTMAX : 0;
+                    flags |= (sizeof(Dptr) == 8) ? Print_Flags_INT64 : 0;
                     fmt++;
                 } break;
                 default: {
@@ -169,7 +179,7 @@ Size printStringVarArg (Char *buffer, Char *format, va_list va)
 
                 case 'b': { // binary
                     U64 num = 0;
-                    if (flags & Print_Flags_INTMAX) {
+                    if (flags & Print_Flags_INT64) {
                         num = va_arg(va, U64);
                     } else {
                         num = va_arg(va, U32);
@@ -201,7 +211,7 @@ Size printStringVarArg (Char *buffer, Char *format, va_list va)
 
                 case 'o': { // octal
                     U64 num = 0;
-                    if (flags & Print_Flags_INTMAX) {
+                    if (flags & Print_Flags_INT64) {
                         num = va_arg(va, U64);
                     } else {
                         num = va_arg(va, U32);
@@ -250,7 +260,7 @@ Size printStringVarArg (Char *buffer, Char *format, va_list va)
                     B32 upper = (fmt[0] == 'X') ? true : false;
 
                     U64 num = 0;
-                    if (flags & Print_Flags_INTMAX) {
+                    if (flags & Print_Flags_INT64) {
                         num = va_arg(va, U64);
                     } else {
                         num = va_arg(va, U32);
@@ -314,7 +324,7 @@ Size printStringVarArg (Char *buffer, Char *format, va_list va)
                 case 'd': { // integer
                     // get the integer and abs it
                     U64 num = 0;
-                    if (flags & Print_Flags_INTMAX) {
+                    if (flags & Print_Flags_INT64) {
                         S64 i64 = va_arg(va, S64);
                         num = (U64)i64;
                         if ((fmt[0] != 'u') && (i64 < 0)) {
@@ -377,11 +387,11 @@ Size printStringVarArg (Char *buffer, Char *format, va_list va)
                 } break;
 
                 case 'p': { // pointer
-                    flags |= (sizeof(void*) == 8) ? Print_Flags_INTMAX : 0;
+                    flags |= (sizeof(void*) == 8) ? Print_Flags_INT64 : 0;
                     precision = sizeof(void*) * 2;
 
                     U64 num = 0;
-                    if (flags & Print_Flags_INTMAX) {
+                    if (flags & Print_Flags_INT64) {
                         num = va_arg(va, U64);
                     } else {
                         num = va_arg(va, U32);
@@ -422,6 +432,309 @@ Size printStringVarArg (Char *buffer, Char *format, va_list va)
                     }
 
                     len = (((Uptr)num_str + PRINT_SIZE) - (Uptr)str);
+                } break;
+
+                case 'F': { // Only upper bound for scientific notation
+                    flags |= Print_Flags_FLOAT_NO_LOW_BOUND;
+                } // fallthrough
+
+                case 'f': { // floating-point number
+                    if (precision < 0) {
+                        precision = 6;
+                    }
+
+                    F64 f64 = va_arg(va, F64);
+                    union FU64 { F64 f; U64 u;} fu64 = {.f = f64};
+                    U64 bits = fu64.u;
+
+                    /* NOTE(naman): 64-bit IEEE-754 Floating Point structure
+                       ____________________________________________
+                       |  Sign bit | Exponent bits | Mantissa bits|
+                       |     1     |       11      |      52      |
+                       --------------------------------------------
+                    */
+
+# define            MANTISSA_BITS 52
+# define            EXPONENT_BITS 11
+# define            BIAS 1023
+
+                    // Is the top bit set?
+                    B32 negative  = ((bits >> (MANTISSA_BITS + EXPONENT_BITS)) & 1) != 0;
+                    // Remove all mantissa bits ------------------ and then reset the sign bit
+                    U32 exponent_biased = (((U32)(bits >> MANTISSA_BITS)) &
+                                           ((1U << EXPONENT_BITS) - 1U));
+                    // Reset all bits except for the mantissa bits
+                    U64 mantissa  = bits & ((1ULL << MANTISSA_BITS) - 1ULL);
+
+
+                    if (negative) {
+                        flags |= Print_Flags_NEGATIVE;
+                    }
+
+                    if (exponent_biased == 0x7FF) { // Handle NaN and Inf
+                        str = num_str + PRINT_SIZE;
+
+                        if (mantissa) {
+                            *--str = 'N';
+                            *--str = 'a';
+                            *--str = 'N';
+                        } else {
+                            *--str = 'f';
+                            *--str = 'n';
+                            *--str = 'I';
+                        }
+                    }
+
+                    if (str == NULL) {
+                        F64 value = (f64 < 0) ? -f64 : f64;
+                        B32 power_of_e_nonsense = false;
+                        Sint exponent = 0;
+
+                        { // Limit the "range" of float
+                            // log10(2^64) = 19 = max integral F64 storable in U64 without
+                            // loss of information
+                            F64 positive_threshold = 1e19;
+
+                            if (value >= positive_threshold) {
+                                power_of_e_nonsense = true;
+                                if (value >= 1e256) {
+                                    value /= 1e256;
+                                    exponent += 256;
+                                }
+                                if (value >= 1e128) {
+                                    value /= 1e128;
+                                    exponent += 128;
+                                }
+                                if (value >= 1e64) {
+                                    value /= 1e64;
+                                    exponent += 64;
+                                }
+                                if (value >= 1e32) {
+                                    value /= 1e32;
+                                    exponent += 32;
+                                }
+                                if (value >= 1e16) {
+                                    value /= 1e16;
+                                    exponent += 16;
+                                }
+                                if (value >= 1e8) {
+                                    value /= 1e8;
+                                    exponent += 8;
+                                }
+                                if (value >= 1e4) {
+                                    value /= 1e4;
+                                    exponent += 4;
+                                }
+                                if (value >= 1e2) {
+                                    value /= 1e2;
+                                    exponent += 2;
+                                }
+                                if (value >= 1e1) {
+                                    value /= 1e1;
+                                    exponent += 1;
+                                }
+                            }
+
+                            if (!(flags & Print_Flags_FLOAT_NO_LOW_BOUND)) {
+                                // 10^-(precision-1)
+                                // (so that we get atleast one digit)
+                                F64 negative_threshold = pow(10.0, 1.0 - (F64)precision);
+
+
+                                if (value > 0 && value <= negative_threshold) {
+                                    power_of_e_nonsense = true;
+                                    if (value < 1e-255) {
+                                        value *= 1e256;
+                                        exponent -= 256;
+                                    }
+                                    if (value < 1e-127) {
+                                        value *= 1e128;
+                                        exponent -= 128;
+                                    }
+                                    if (value < 1e-63) {
+                                        value *= 1e64;
+                                        exponent -= 64;
+                                    }
+                                    if (value < 1e-31) {
+                                        value *= 1e32;
+                                        exponent -= 32;
+                                    }
+                                    if (value < 1e-15) {
+                                        value *= 1e16;
+                                        exponent -= 16;
+                                    }
+                                    if (value < 1e-7) {
+                                        value *= 1e8;
+                                        exponent -= 8;
+                                    }
+                                    if (value < 1e-3) {
+                                        value *= 1e4;
+                                        exponent -= 4;
+                                    }
+                                    if (value < 1e-1) {
+                                        value *= 1e2;
+                                        exponent -= 2;
+                                    }
+                                    if (value < 1e0) {
+                                        value *= 1e1;
+                                        exponent -= 1;
+                                    }
+                                }
+                            }
+                        }
+
+                        U64 integral_part = (U64)value;
+                        p("\tIntegral part: %lu\n", integral_part);
+                        F64 remainder = value - integral_part;
+                        p("\tRemainder: %.19f\n", remainder);
+
+                        F64 remainder_modified = remainder * 1e19;
+                        p("\tRemainder modified: %19f\n", remainder_modified);
+                        U64 decimal_part = (U64)remainder_modified;
+
+                        p("\tDecimal part: %lu, %llu\n", decimal_part, 1ULL << 63);
+
+                        // rounding
+                        remainder_modified -= decimal_part;
+                        p("\tRemainder modified (rounded): %19f\n", remainder_modified);
+                        if (remainder_modified >= 0.5) {
+                            decimal_part++;
+                            if (decimal_part >= 10000000000000000000ULL) { // 19 zeroes
+                                decimal_part = 0;
+                                integral_part++;
+                                if (exponent != 0 && integral_part >= 10) {
+                                    exponent++;
+                                    integral_part = 1;
+                                }
+                            }
+                        }
+                        p("\tDecimal part (Rounded): %lu, %llu\n", decimal_part, 1ULL << 63);
+
+                        str = num_str + PRINT_SIZE;
+
+                        { // Write exponent (if needed)
+                            if (power_of_e_nonsense) {
+                                // convert to string
+                                Sint num_dec = (exponent > 0) ? exponent : -exponent;
+
+                                Char *str_now = str;
+
+                                if (num_dec) {
+                                    while (num_dec) {
+                                        *--str = (Char)(num_dec % 10) + '0';
+                                        num_dec /= 10;
+                                    }
+                                } else {
+                                    *--str = '0';
+                                }
+
+                                if ((Uptr)str_now - (Uptr)str == 1) {
+                                    *--str = '0';
+                                }
+
+                                if (exponent < 0) {
+                                    *--str = '-';
+                                } else {
+                                    *--str = '+';
+                                }
+
+                                *--str = 'e';
+                            }
+                        }
+
+                        { // Write decimal part
+                            if (precision > 0) {
+                                Char tmp_buf[PRINT_SIZE] = {0};
+                                Char *tmp = tmp_buf + PRINT_SIZE;
+                                Uint width = 19; // TODO(naman): Is this correct?
+
+                                Uint width_iter = width;
+
+                                // FIXME(naman): Get more decimal digits instead of just
+                                // printing zeroes
+                                for (Uint i = (Uint)precision; i > width; i--) {
+                                    *--tmp = '0';
+                                }
+
+                                do {
+                                    *--tmp = (Char)(decimal_part % 10) + '0';
+                                    decimal_part = decimal_part / 10;
+                                } while (--width_iter);
+
+                                p("\tTEMP: %.*s\n",
+                                  (int)((Uptr)tmp_buf + PRINT_SIZE - (Uptr)tmp),
+                                  tmp);
+
+                                if ((Uint)precision < width) {
+                                    for (Char *temp = tmp_buf + PRINT_SIZE - 1;
+                                         (Uptr)temp - (Uptr)tmp >= (Uint)precision;
+                                         temp--) {
+                                        Size index = 0;
+
+                                        if ((temp[index] - '0') > 5) {
+                                            B32 carry = false;
+                                            do {
+                                                p("\tTEMP CHAR: %c %c\n", temp[index], temp[index-1]);
+
+                                                if ((temp[index-1] - '0') == 9) {
+                                                    temp[index-1] = '0';
+                                                    carry = true;
+                                                } else {
+                                                    temp[index-1] += 1;
+                                                    carry = false;
+                                                }
+                                                index--;
+                                            } while (carry && ((Uptr) temp - index >= (Uptr)tmp));
+                                        }
+                                    }
+                                }
+
+                                p("\tTEMP: %.*s\n",
+                                  (int)((Uptr)tmp_buf + PRINT_SIZE - (Uptr)tmp),
+                                  tmp);
+
+                                str -= precision;
+                                for (Size i = 0; i < (Size)precision; i++) {
+                                    str[i] = tmp[i];
+                                }
+
+                                *--str = '.';
+                            }
+                        }
+
+                        { // Write integral
+                            do {
+                                *--str = (Char)(integral_part % 10) + '0';
+                                integral_part = integral_part / 10;
+                            } while (integral_part);
+                        }
+                    }
+
+                    // get the length that we copied
+                    len = (((Uptr)num_str + PRINT_SIZE) - (Uptr)str);
+
+                    if (len == 0) {
+                        *--str = '0';
+                        len = 1;
+                    }
+
+                    if (flags & Print_Flags_NEGATIVE) {
+                        head_str[head_index++] = '-';
+                    } else if (flags & Print_Flags_LEADING_PLUS) {
+                        head_str[head_index++] = '+';
+                    } else if (flags & Print_Flags_LEADING_SPACE) {
+                        if (!(flags & Print_Flags_NEGATIVE)) {
+                            head_str[head_index++] = ' ';
+                        }
+                    }
+
+                    if (flags & Print_Flags_LEADING_ZERO) {
+                        head_str[head_index++] = '0';
+                    }
+
+                    precision = 0;
+
+                    p("== %.*s\n", (int)len, str);
                 } break;
 
                 default: { // unknown, just copy code
@@ -703,8 +1016,7 @@ void printUnitTest (void)
 {
     Char buf[1024];
     Sint n = 0;
-//    const double pow_2_75 = 37778931862957161709568.0;
-//    const double pow_2_85 = 38685626227668133590597632.0;
+//    double pow_2_75 = 37778931862957161709568.0;
 
     // integers
     CHECK4("a b     1", "%c %s     %d", 'a', "b", 1);
@@ -724,64 +1036,41 @@ void printUnitTest (void)
     CHECK3("33 555", "%d %ld", (short)33, 555l);
     CHECK4("2 -3 %a", "%zd %td %a", (ssize_t)2, (ptrdiff_t)-3, 23);
 
-#if 0
     // floating-point numbers
     CHECK2("-3.000000", "%f", -3.0);
     CHECK2("-8.8888888800", "%.10f", -8.88888888);
     CHECK2("880.0888888800", "%.10f", 880.08888888);
     CHECK2("4.1", "%.1f", 4.1);
-    CHECK2(" 0", "% .0f", 0.1);
-    CHECK2("0.00", "%.2f", 1e-4);
+    CHECK2(" 0", "% .0F", 0.1);
+    CHECK2("0.00", "%.2F", 1e-4);
     CHECK2("-5.20", "%+4.2f", -5.2);
     CHECK2("0.0       ", "%-10.1f", 0.);
     CHECK2("-0.000000", "%f", -0.);
-    CHECK2("0.000001", "%f", 9.09834e-07);
-#if USE_STB  // rounding differences
-    CHECK2("38685626227668133600000000.0", "%.1f", pow_2_85);
-    CHECK2("0.000000499999999999999978", "%.24f", 5e-7);
-#else
-    CHECK2("38685626227668133590597632.0", "%.1f", pow_2_85); // exact
-    CHECK2("0.000000499999999999999977", "%.24f", 5e-7);
-#endif
+    CHECK2("0.000001", "%F", 9.09834e-07);
+    /* double pow_2_85 = 38685626227668133590597632.0;
+    CHECK2("38685626227668133600000000.0", "%.1f", pow_2_85); */ //FIXME(naman): Upper bound
+    CHECK2("0.000000500000000000000000", "%.24f", 5e-7);
     CHECK2("0.000000000000000020000000", "%.24f", 2e-17);
     CHECK3("0.0000000100 100000000", "%.10f %.0f", 1e-8, 1e+8);
     CHECK2("100056789.0", "%.1f", 100056789.0);
     CHECK4(" 1.23 %", "%*.*f %%", 5, 2, 1.23);
-    CHECK2("-3.000000e+00", "%e", -3.0);
-    CHECK2("4.1E+00", "%.1E", 4.1);
-    CHECK2("-5.20e+00", "%+4.2e", -5.2);
-    CHECK3("+0.3 -3", "%+g %+g", 0.3, -3.0);
-    CHECK2("4", "%.1G", 4.1);
-    CHECK2("-5.2", "%+4.2g", -5.2);
-    CHECK2("3e-300", "%g", 3e-300);
-    CHECK2("1", "%.0g", 1.2);
-    CHECK3(" 3.7 3.71", "% .3g %.3g", 3.704, 3.706);
-    CHECK3("2e-315:1e+308", "%g:%g", 2e-315, 1e+308);
 
-#if __STDC_VERSION__ >= 199901L
-#if USE_STB
-    CHECK4("Inf Inf NaN", "%g %G %f", INFINITY, INFINITY, NAN);
-    CHECK2("N", "%.1g", NAN);
-#else
-    CHECK4("inf INF nan", "%g %G %f", INFINITY, INFINITY, NAN);
-    CHECK2("nan", "%.1g", NAN);
-#endif
-#endif
+    // TODO(naman): Implement these when proper float support is added
+    /* CHECK2("-3.000000e+00", "%e", -3.0); */
+    /* CHECK2("4.1E+00", "%.1E", 4.1); */
+    /* CHECK2("-5.20e+00", "%+4.2e", -5.2); */
+    /* CHECK3("+0.3 -3", "%+g %+g", 0.3, -3.0); */
+    /* CHECK2("4", "%.1G", 4.1); */
+    /* CHECK2("-5.2", "%+4.2g", -5.2); */
+    /* CHECK2("3e-300", "%g", 3e-300); */
+    /* CHECK2("1", "%.0g", 1.2); */
+    /* CHECK3(" 3.7 3.71", "% .3g %.3g", 3.704, 3.706); */
+    /* CHECK3("2e-315:1e+308", "%g:%g", 2e-315, 1e+308); */
+    /* CHECK2("0x1.0091177587f83p-1022", "%a", 2.23e-308); */
+    /* CHECK2("-0X1.AB0P-5", "%.3A", -0X1.abp-5); */
 
-#if __STDC_VERSION__ >= 199901L
-    // hex floats
-    CHECK2("0x1.fedcbap+98", "%a", 0x1.fedcbap+98);
-    CHECK2("0x1.999999999999a0p-4", "%.14a", 0.1);
-    CHECK2("0x1.0p-1022", "%.1a", 0x1.ffp-1023);
-#if USE_STB  // difference in default precision and x vs X for %A
-    CHECK2("0x1.009117p-1022", "%a", 2.23e-308);
-    CHECK2("-0x1.AB0P-5", "%.3A", -0x1.abp-5);
-#else
-    CHECK2("0x1.0091177587f83p-1022", "%a", 2.23e-308);
-    CHECK2("-0X1.AB0P-5", "%.3A", -0X1.abp-5);
-#endif
-#endif
-#endif
+    CHECK3("Inf NaN", "%f %f", (F64)INFINITY, (F64)NAN);
+    CHECK2("NaN", "%.1f", (F64)NAN);
 
     // %p
     CHECK2("0000000000000000", "%p", (void*) NULL);

@@ -44,7 +44,7 @@ WarningFlags="-Weverything -Wpedantic -pedantic-errors -Werror \
               -Wno-c++98-compat \
               "
 LinkerFlags="-o ${TargetPath} \
-             -static-libgcc \
+             -static-libgcc -lm \
              -Wl,-rpath=\${ORIGIN} -Wl,-z,origin -Wl,--enable-new-dtags \
              "
 

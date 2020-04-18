@@ -13,6 +13,5 @@ int main (void)
     internUnitTest();
     mapUnitTest();
     printUnitTest();
-
     return 0;
 }

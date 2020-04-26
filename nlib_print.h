@@ -10,6 +10,8 @@
 
 # if !defined(PRINT_TEST_ONLY)
 
+#  include <math.h>
+
 #  if 0
 #   define p(...) printf(__VA_ARGS__)
 #  else

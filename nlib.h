@@ -160,11 +160,6 @@
 
 # elif defined(OS_LINUX)
 
-#  include <stdio.h>
-#  include <stdlib.h>
-#  include <math.h>
-#  include <stdatomic.h>
-
 # endif
 
 /* ===============
@@ -1323,7 +1318,8 @@ void htUnitTest (void)
  * void  mapInsert     (T *ptr, U64 key, T value)
  * void  mapRemove     (T *ptr, U64 key)
  * B32   mapExists     (T *ptr, U64 key)
- * T*    mapLookup     (T *ptr, U64 key)
+ * T     mapLookup     (T *ptr, U64 key)
+ * T*    mapGetRef     (T *ptr, U64 key)
  * void  mapDelete     (T *ptr)
  */
 

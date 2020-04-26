@@ -52,6 +52,8 @@ typedef MEMORY_ALLOCATOR(Memory_Allocator_Function);
 
 #   define MALLOC_DL_GLOBAL
 
+#   include <unistd.h>
+
 #   if defined(COMPILER_CLANG)
 #    pragma clang diagnostic push
 #    pragma clang diagnostic ignored "-Wexpansion-to-defined"
@@ -94,6 +96,7 @@ typedef MEMORY_ALLOCATOR(Memory_Allocator_Function);
 #  if defined(NLIB_MALLOC_NO_GLOBAL)
 
 #   define MALLOC_DL_LOCAL
+#   include <unistd.h>
 
 #   if defined(COMPILER_CLANG)
 #    pragma clang diagnostic push

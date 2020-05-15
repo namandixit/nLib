@@ -610,7 +610,7 @@ void* sbuf_Grow (void *buf, Size elem_size)
     } else {
         Size new_cap = max(2 * sbuf_Cap(buf), 4U);
 
-        Size new_size = (new_cap * elem_size) + sizeof(Sbuf_Header);
+        Size new_size = (new_cap * elem_size) + memAlignUp(sizeof(Sbuf_Header));
 
         Sbuf_Header *new_header = NULL;
 

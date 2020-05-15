@@ -276,6 +276,8 @@ typedef union {
 
 # elif defined(COMPILER_CLANG) || defined(COMPILER_GCC)
 
+// NOTE(naman): This is disabled permanently since this warning will be emitted anywhere the
+// min/max macros are used (as opposed to just where they are declared).
 #  if defined(COMPILER_CLANG)
 #   pragma clang diagnostic ignored "-Wgnu-statement-expression"
 #  endif

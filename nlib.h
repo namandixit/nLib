@@ -314,15 +314,22 @@ typedef union {
 #  if defined(LANGUAGE_C11)
 #   include <stdalign.h>
 #  else
-#   pragma clang diagnostic push
-#   pragma clang diagnostic ignored "-Wreserved-id-macro"
+
+#   if defined(COMPILER_CLANG)
+#    pragma clang diagnostic push
+#    pragma clang diagnostic ignored "-Wreserved-id-macro"
+#   endif
+
 #   define _Alignof __alignof__
 #   define alignof _Alignof
 #   define __alignof_is_defined 1
 #   define _Alignas(a) __attribute__ ((aligned (a)))
 #   define alignas _Alignas
 #   define __alignas_is_defined 1
-#   pragma clang diagnostic pop
+
+#   if defined(COMPILER_CLANG)
+#    pragma clang diagnostic pop
+#   endif
 
   /* Malloc Alignment: https://msdn.microsoft.com/en-us/library/ycsb6wwf.aspx
    */

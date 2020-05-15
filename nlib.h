@@ -881,6 +881,32 @@ Char *internStringCheck (Intern_String *is, Char *str)
     }
 }
 
+# if defined(BUILD_DEBUG)
+
+header_function
+void internStringDebugPrint (Intern_String *is)
+{
+    /* typedef struct Intern { */
+    /*     struct Intern_List { */
+    /*         Size *indices; */
+    /*         U8 *secondary_hashes; */
+    /*     } lists[256]; */
+    /* } Intern; */
+
+    /* typedef struct Intern_String { */
+    /*     Intern intern; */
+    /*     Char *strings; */
+    /* } Intern_String; */
+
+    for (Size i = 0; i < elemin(is->intern.lists); i++) {
+        for (Size j = 0; j < sbufElemin(is->intern.lists[i].indices); j++) {
+            report("%s\n", is->strings[is->intern.lists[i].indices[j]]);
+        }
+    }
+}
+
+# endif
+
 typedef struct Intern_Integer {
     Intern intern;
     U64 *integers;

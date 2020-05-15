@@ -150,9 +150,11 @@ Size printStringVarArg (Char *buffer, Char *format, va_list va)
                 case 's': { // string
                     // get the string
                     str = va_arg(va, Char*);
-                    if (str == NULL)
+                    if (str == NULL) {
                         str = "null";
-                    // get the length
+                    }
+
+                    // NOTE(naman): By this point, str is most definitely not NULL
                     while (str[len] != '\0') {
                         len++;
                     }

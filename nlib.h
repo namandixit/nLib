@@ -505,17 +505,17 @@ U64 u64NextPowerOf2 (U64 x)
 #   define reportv(format, va_list) printDebugOutput(format, va_list)
 #  else
 #   define report(...)              err(stderr, __VA_ARGS__)
-#   define reportv(format, va_list) err(stderr, format, va_list)
+#   define reportv(format, va_list) errv(stderr, format, va_list)
 #  endif
 
 # elif defined(OS_LINUX)
 
 #  if defined(BUILD_DEBUG)
 #   define report(...)              err(__VA_ARGS__)
-#   define reportv(format, va_list) err(format, va_list)
+#   define reportv(format, va_list) errv(format, va_list)
 #  else
 #   define report(...)              err(__VA_ARGS__)
-#   define reportv(format, va_list) err(format, va_list)
+#   define reportv(format, va_list) errv(format, va_list)
 #  endif
 
 # endif

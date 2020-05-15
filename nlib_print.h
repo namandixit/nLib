@@ -979,6 +979,13 @@ Size say (Char *format, ...)
 }
 
 header_function
+Size sayv (Char *format, va_list ap)
+{
+    Size buffer_size = printConsole(1, format, ap);
+    return buffer_size;
+}
+
+header_function
 Size err (Char *format, ...)
 {
     va_list ap;
@@ -987,6 +994,13 @@ Size err (Char *format, ...)
     Size buffer_size = printConsole(2, format, ap);
     va_end(ap);
 
+    return buffer_size;
+}
+
+header_function
+Size errv (Char *format, va_list ap)
+{
+    Size buffer_size = printConsole(2, format, ap);
     return buffer_size;
 }
 

@@ -760,6 +760,7 @@ void internData (Intern *it, U8 hash1, U8 hash2, Size index)
 {
     sbufAdd(it->lists[hash1].secondary_hashes, hash2);
     sbufAdd(it->lists[hash1].indices, index);
+    utTest(sbufElemin(it->lists[hash1].secondary_hashes) == sbufElemin(it->lists[hash1].indices));
 }
 
 header_function
@@ -824,13 +825,14 @@ U8 internStringPearsonHash (void *buffer, Size len, B32 which)
 
 typedef struct Intern_String {
     Intern intern;
-    Char *strings;
+    Char **strings;
 } Intern_String;
 
 header_function
 INTERN_EQUALITY(internStringEquality) {
     Char *sa = a;
-    Char *sb = (Char *)b + b_index;
+    Char **ss = b;
+    Char *sb = ss[b_index];
     B32 result = (strcmp(sa, sb) == 0);
     return result;
 }
@@ -843,17 +845,22 @@ Char *internString (Intern_String *is, Char *str)
 
     Size index = 0;
 
-    if (internCheck(&is->intern, hash1, hash2, str, is->strings, &internStringEquality, &index)) {
-        Char *result = is->strings + index;
+    if (internCheck(&is->intern, hash1, hash2, str, is->strings, internStringEquality, &index)) {
+        Char *result = is->strings[index];
         return result;
     } else {
         Size index_new = sbufElemin(is->strings);
+
+        Char *str_new = NULL;
         for (Char *s = str; s[0] != '\0'; s++) {
-            sbufAdd(is->strings, s[0]);
+            sbufAdd(str_new, s[0]);
         }
-        sbufAdd(is->strings, '\0');
+        sbufAdd(str_new, '\0');
+
+        sbufAdd(is->strings, str_new);
+
         internData(&is->intern, hash1, hash2, index_new);
-        Char *result = is->strings + index_new;
+        Char *result = is->strings[index_new];
         return result;
     }
 }
@@ -867,7 +874,7 @@ Char *internStringCheck (Intern_String *is, Char *str)
     Size index = 0;
 
     if (internCheck(&is->intern, hash1, hash2, str, is->strings, &internStringEquality, &index)) {
-        Char *result = is->strings + index;
+        Char *result = is->strings[index];
         return result;
     } else {
         return NULL;

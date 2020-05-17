@@ -31,8 +31,8 @@
  * Claim (assert)
  */
 
-# define claim(cond) claim_(cond, #cond, __FILE__, __LINE__)
-
+# if defined(BUILD_DEBUG)
+#  define claim(cond) claim_(cond, #cond, __FILE__, __LINE__)
 header_function
 void claim_ (B32 cond,
              Char *cond_str,
@@ -45,6 +45,9 @@ void claim_ (B32 cond,
         quit();
     }
 }
+# else
+#  define claim(cond) do { cond; } while (0)
+# endif
 
 /* ===================
  * Unit Test Framework

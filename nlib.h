@@ -59,6 +59,14 @@
 #  error Architecture not supported
 # endif
 
+# if defined(ARCH_X86)
+#  define BITWIDTH_32
+# elif defined(ARCH_X64)
+#  define BITWIDTH_64
+# else
+#  error "Bitwidth not supported"
+# endif
+
 # if defined(COMPILER_MSVC)
 #  if !defined(__cplusplus) // TODO(naman): See if this is actually works and is the best way.
 #   define LANGUAGE_C99  // TODO(naman): Update when Microsoft gets off its ass.
@@ -96,12 +104,13 @@
  * Standard C Headers Includes
  */
 
-/* NOTE(naman): Manually define NLIB_EXCLUDE_CRT if you want to not include CRT.
-   (done to maintain backwards compatibility). If you do prevent CRT from inclusion, do
-   the following from the code:
-
-   1. Run memUserCreate()
+/* NOTE(naman): Define NLIB_NO_LIBC to prevent the inclusion of libc functions.
 */
+
+// NOTE(naman): These warnings are disabled permanently
+# if defined(COMPILER_CLANG)
+#  pragma clang diagnostic ignored "-Wgnu-statement-expression" // to use min/max
+# endif
 
 # if defined(COMPILER_MSVC)
 #  pragma warning(push)
@@ -114,53 +123,13 @@
 #  pragma warning(pop)
 # endif
 
-# include <limits.h>
 # include <stdint.h>
-# include <stdarg.h>
 # include <inttypes.h>
+# include <limits.h>
+# include <stdarg.h>
 # include <stdnoreturn.h>
 # include <float.h>
 # include <stddef.h>
-# include <errno.h>
-
-/* ===========================
- * Misc C Headers Includes
- */
-
-/* ===========================
- * Platform Headers Includes
- */
-
-# if defined(OS_WINDOWS)
-
-#  if defined(COMPILER_MSVC)
-#   pragma warning(push)
-#    pragma warning(disable:4255)
-#    pragma warning(disable:4668)
-#  endif
-
-#  include <Windows.h>
-
-#  if defined(COMPILER_MSVC)
-#   pragma warning(pop)
-#  endif
-
-#  if defined(COMPILER_MSVC)
-#   pragma warning(push)
-#    pragma warning(disable:4820)
-#    pragma warning(disable:4668)
-#    pragma warning(disable:4255)
-#  endif
-
-#  include <intrin.h>
-
-#  if defined(COMPILER_MSVC)
-#   pragma warning(pop)
-#  endif
-
-# elif defined(OS_LINUX)
-
-# endif
 
 /* ===============
  * Primitive Types
@@ -217,10 +186,61 @@ typedef char                 Char;
 # define unused_variable(var) (void)var
 
 # define global_variable   static
+# define global_immutable  static const
 # define persistent_value  static
 
 # define internal_function static
 # define header_function   static inline
+
+/* ===========================
+ * Platform-specific Headers
+ */
+
+# if defined(OS_WINDOWS)
+
+#  if defined(COMPILER_MSVC)
+#   pragma warning(push)
+#    pragma warning(disable:4255)
+#    pragma warning(disable:4668)
+#  endif
+
+#  include <Windows.h>
+
+#  if defined(COMPILER_MSVC)
+#   pragma warning(pop)
+#  endif
+
+#  if defined(COMPILER_MSVC)
+#   pragma warning(push)
+#    pragma warning(disable:4820)
+#    pragma warning(disable:4668)
+#    pragma warning(disable:4255)
+#  endif
+
+#  include <intrin.h>
+
+#  if defined(COMPILER_MSVC)
+#   pragma warning(pop)
+#  endif
+
+#  include "nlib_nolibc.h"
+
+# elif defined(OS_LINUX)
+
+#  if defined(NLIB_NO_LIBC)
+#   if defined(COMPILER_CLANG)
+#    pragma clang diagnostic push
+#    pragma clang diagnostic ignored "-Wreserved-id-macro"
+#   endif
+#   include "nlib_linux.h"
+#   include "nlib_nolibc.h"
+#   if defined(COMPILER_CLANG)
+#    pragma clang diagnostic pop
+#   endif
+#  else // defined(NLIB_NO_LIBC)
+#   include <unistd.h>
+#  endif
+# endif
 
 /* =======================
  * Compiler Specific Hacks
@@ -276,12 +296,6 @@ typedef union {
 
 # elif defined(COMPILER_CLANG) || defined(COMPILER_GCC)
 
-// NOTE(naman): This is disabled permanently since this warning will be emitted anywhere the
-// min/max macros are used (as opposed to just where they are declared).
-#  if defined(COMPILER_CLANG)
-#   pragma clang diagnostic ignored "-Wgnu-statement-expression"
-#  endif
-
 #   if defined(COMPILER_GCC)
 #    pragma GCC diagnostic push
 #    pragma GCC diagnostic ignored "-Wpedantic"
@@ -314,7 +328,6 @@ typedef union {
 #  if defined(LANGUAGE_C11)
 #   include <stdalign.h>
 #  else
-
 #   if defined(COMPILER_CLANG)
 #    pragma clang diagnostic push
 #    pragma clang diagnostic ignored "-Wreserved-id-macro"
@@ -347,6 +360,7 @@ typedef union {
 } max_align_t;
 #   endif
 #  endif
+
 
 #  define thread_local __thread
 
@@ -524,22 +538,18 @@ U64 u64NextPowerOf2 (U64 x)
  * Other nlib libraries
  */
 
-# include "nlib_memory.h"
+# define NLIB_PRINT_INTERFACE_ONLY
 # include "nlib_print.h"
+# undef NLIB_PRINT_INTERFACE_ONLY
 
 # include "nlib_debug.h"
-
-# if defined(NLIB_TESTS)
-#  define PRINT_TEST_ONLY
-#  include "nlib_print.h"
-#  undef PRINT_TEST_ONLY
-# endif
-
+# include "nlib_memory.h"
+# include "nlib_string.h"
+# include "nlib_print.h"
 # include "nlib_color.h"
 # include "nlib_maths.h"
 # include "nlib_color.h"
 # include "nlib_unicode.h"
-# include "nlib_string.h"
 
 /* ****************************************************************************
  * DATA STRUCTURES ******************************************************************
@@ -704,7 +714,7 @@ void sbufUnitTest (void)
     sbufPrint(stream, "Still here? %d\n", 420);
     sbufPrint(stream, "GO AWAY!!!\n");
 
-    utTest(strcmp(stream, "Hello, World!\nStill here? 420\nGO AWAY!!!\n") == 0);
+    utTest(stringEqual(stream, "Hello, World!\nStill here? 420\nGO AWAY!!!\n"));
 }
 # endif
 
@@ -833,15 +843,15 @@ INTERN_EQUALITY(internStringEquality) {
     Char *sa = a;
     Char **ss = b;
     Char *sb = ss[b_index];
-    B32 result = (strcmp(sa, sb) == 0);
+    B32 result = stringEqual(sa, sb);
     return result;
 }
 
 header_function
 Char *internString (Intern_String *is, Char *str)
 {
-    U8 hash1 = internStringPearsonHash(str, strlen(str), true);
-    U8 hash2 = internStringPearsonHash(str, strlen(str), false);
+    U8 hash1 = internStringPearsonHash(str, stringLength(str), true);
+    U8 hash2 = internStringPearsonHash(str, stringLength(str), false);
 
     Size index = 0;
 
@@ -868,8 +878,8 @@ Char *internString (Intern_String *is, Char *str)
 header_function
 Char *internStringCheck (Intern_String *is, Char *str)
 {
-    U8 hash1 = internStringPearsonHash(str, strlen(str), true);
-    U8 hash2 = internStringPearsonHash(str, strlen(str), false);
+    U8 hash1 = internStringPearsonHash(str, stringLength(str), true);
+    U8 hash2 = internStringPearsonHash(str, stringLength(str), false);
 
     Size index = 0;
 

@@ -33,9 +33,8 @@ fi
 # For Address Sanitizer: -fsanitize=address -fno-omit-frame-pointer
 #     Memory Sanitizer : -fsanitize=memory -fno-optimize-sibling-calls -fno-omit-frame-pointer -fsanitize-memory-track-origins
 
-
 CompilerFlags="-iquote ${ProjectRoot}/../../include \
-               -g3 -O0 -fno-strict-aliasing -fwrapv -msse2 \
+               -g3 -O0 -fno-strict-aliasing -fwrapv -msse2 -nostdlib -ffreestanding -lgcc \
                "
 LanguageFlags="--std=c11 -DBUILD_INTERNAL -DBUILD_SLOW -DBUILD_DEBUG \
                -DBUILD_NUMBER=${NEW_BUILD_NUMBER}                    \
@@ -44,7 +43,7 @@ WarningFlags="-Weverything -Wpedantic -pedantic-errors -Werror \
               -Wno-c++98-compat \
               "
 LinkerFlags="-o ${TargetPath} \
-             -static-libgcc -lm \
+              \
              -Wl,-rpath=\${ORIGIN} -Wl,-z,origin -Wl,--enable-new-dtags \
              "
 

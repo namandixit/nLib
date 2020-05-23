@@ -24,8 +24,6 @@
  * MEMORY ALLOCATORS **********************************************************
  */
 
-# if !defined(NLIB_NO_ALLOCATOR)
-
 typedef enum Memory_Allocator_Mode {
     Memory_Allocator_Mode_NONE,
     Memory_Allocator_Mode_CREATE,
@@ -44,107 +42,10 @@ typedef enum Memory_Allocator_Mode {
 
 typedef MEMORY_ALLOCATOR(Memory_Allocator_Function);
 
-/* =============================
- * dlmalloc Memory Allocator
- */
-
-#  if !defined(NLIB_MALLOC_NO_GLOBAL) && !defined(NLIB_MALLOC_CUSTOM)
-
-#   define MALLOC_DL_GLOBAL
-
-#   include <unistd.h>
-
-#   if defined(COMPILER_CLANG)
-#    pragma clang diagnostic push
-#    pragma clang diagnostic ignored "-Wexpansion-to-defined"
-#    pragma clang diagnostic ignored "-Wstrict-prototypes"
-#    pragma clang diagnostic ignored "-Wpadded"
-#    pragma clang diagnostic ignored "-Wsign-conversion"
-#    pragma clang diagnostic ignored "-Wnull-pointer-arithmetic"
-#    pragma clang diagnostic ignored "-Wcast-align"
-#    pragma clang diagnostic ignored "-Wextra-semi-stmt"
-#    pragma clang diagnostic ignored "-Wshorten-64-to-32"
-#    pragma clang diagnostic ignored "-Wint-to-pointer-cast"
-#    pragma clang diagnostic ignored "-Wbad-function-cast"
-#    pragma clang diagnostic ignored "-Wreserved-id-macro"
-#    pragma clang diagnostic ignored "-Wmissing-prototypes"
-#   endif
-
-#   if defined(COMPILER_GCC)
-#    pragma GCC diagnostic push
-#    pragma GCC diagnostic ignored "-Wexpansion-to-defined"
-#   endif
-
-#   define USE_DL_PREFIX 1
-#   include "nlib/ext/dlmalloc/malloc.c"
-
-#   if defined(COMPILER_CLANG)
-#    pragma clang diagnostic pop
-#   endif
-
-#   if defined(COMPILER_GCC)
-#    pragma GCC diagnostic pop
-#   endif
-
-#   define nlib_Malloc(size)        dlmalloc(size)
-#   define nlib_Calloc(count, size) dlcalloc(count, size)
-#   define nlib_Realloc(ptr, size)  dlrealloc(ptr, size)
-#   define nlib_Dealloc(ptr)        dlfree(ptr)
-
-#  endif
-
-#  if defined(NLIB_MALLOC_NO_GLOBAL)
-
-#   define MALLOC_DL_LOCAL
-#   include <unistd.h>
-
-#   if defined(COMPILER_CLANG)
-#    pragma clang diagnostic push
-#    pragma clang diagnostic ignored "-Wexpansion-to-defined"
-#    pragma clang diagnostic ignored "-Wstrict-prototypes"
-#    pragma clang diagnostic ignored "-Wpadded"
-#    pragma clang diagnostic ignored "-Wsign-conversion"
-#    pragma clang diagnostic ignored "-Wnull-pointer-arithmetic"
-#    pragma clang diagnostic ignored "-Wcast-align"
-#    pragma clang diagnostic ignored "-Wextra-semi-stmt"
-#    pragma clang diagnostic ignored "-Wshorten-64-to-32"
-#    pragma clang diagnostic ignored "-Wreserved-id-macro"
-#    pragma clang diagnostic ignored "-Wcast-qual"
-#    pragma clang diagnostic ignored "-Wmissing-prototypes"
-#   endif
-
-#   if defined(COMPILER_GCC)
-#    pragma GCC diagnostic push
-#    pragma GCC diagnostic ignored "-Wexpansion-to-defined"
-#   endif
-
-#   define USE_DL_PREFIX 1
-#   define ONLY_MSPACES 1
-#   include "nlib/ext/dlmalloc/malloc.c"
-
-#   if defined(COMPILER_CLANG)
-#    pragma clang diagnostic pop
-#   endif
-
-#   if defined(COMPILER_GCC)
-#    pragma GCC diagnostic pop
-#   endif
-
-global_variable thread_local mspace mspace_handle = NULL;
-#   define nlib_Malloc(size)        mspace_malloc(mspace_handle, size)
-#   define nlib_Calloc(count, size) mspace_calloc(mspace_handle, count, size)
-#   define nlib_Realloc(ptr, size)  mspace_realloc(mspace_handle, ptr, size)
-#   define nlib_Dealloc(ptr)        mspace_free(mspace_handle, ptr)
-
-#  endif
-
-#  if defined(NLIB_MALLOC_CUSTOM)
-
-#   define MALLOC_CUSTOM
-
-#  endif
-
-# endif
+#   define nlib_Malloc(size) ({do{(void)size;}while(0); NULL;})
+#   define nlib_Calloc(count, size) ({do{(void)count;(void)size;}while(0); NULL;})
+#   define nlib_Realloc(ptr, size) ({do{(void)ptr;(void)size;}while(0); NULL;})
+#   define nlib_Dealloc(ptr) ({do{(void)ptr;}while(0); NULL;})
 
 #define NLIB_MEMORY_H_INCLUDE_GUARD
 #endif

@@ -23,39 +23,39 @@
 #    pragma clang diagnostic push
 #    pragma clang diagnostic ignored "-Wmissing-prototypes"
 #   endif
-void *memmove(void *dst, void *src, size_t len)
+void *memmove(void *dst, void *src, Size len)
 {
-    ssize_t pos = (dst <= src) ? -1 : (long)len;
+    SSize pos = (dst <= src) ? -1 : (S64)len;
     void *ret = dst;
 
     while (len--) {
         pos += (dst <= src) ? 1 : -1;
-        ((char *)dst)[pos] = ((char *)src)[pos];
+        ((Char*)dst)[pos] = ((Char*)src)[pos];
     }
     return ret;
 }
 
-void *memset(void *dst, int b, size_t len)
+void *memset(void *dst, S32 b, Size len)
 {
     char *p = dst;
 
     while (len--)
-        *(p++) = (char)b;
+        *(p++) = (Char)b;
     return dst;
 }
 
-int memcmp(void *s1, void *s2, size_t n)
+S32 memcmp(void *s1, void *s2, Size n)
 {
     size_t ofs = 0;
     char c1 = 0;
 
-    while (ofs < n && !(c1 = ((char *)s1)[ofs] - ((char *)s2)[ofs])) {
+    while (ofs < n && !(c1 = ((Char *)s1)[ofs] - ((Char *)s2)[ofs])) {
         ofs++;
     }
     return c1;
 }
 
-void *memcpy(void *dst, void *src, size_t len)
+void *memcpy(void *dst, void *src, Size len)
 {
     return memmove(dst, src, len);
 }

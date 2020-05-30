@@ -17,8 +17,6 @@ echo "Entering directory \`$(pwd)'"
 # BUILD
 # `````````````````````````````````````````````````````````````````````
 
-Compiler="clang"
-
 Source=${ProjectRoot}/test.c
 Target=test.${BuildPlatform}.${BuildArchitecture}
 TargetPath="${Target}"
@@ -33,20 +31,46 @@ fi
 # For Address Sanitizer: -fsanitize=address -fno-omit-frame-pointer
 #     Memory Sanitizer : -fsanitize=memory -fno-optimize-sibling-calls -fno-omit-frame-pointer -fsanitize-memory-track-origins
 
-CompilerFlags="-iquote ${ProjectRoot}/../../include \
-               -g3 -O0 -fno-strict-aliasing -fwrapv -msse2 -nostdlib -ffreestanding -lgcc \
-               "
-LanguageFlags="--std=c11 -DBUILD_INTERNAL -DBUILD_SLOW -DBUILD_DEBUG \
-               -DBUILD_NUMBER=${NEW_BUILD_NUMBER}                    \
-               -D_POSIX_C_SOURCE=200809L -D_DEFAULT_SOURCE"
-WarningFlags="-Weverything -Wpedantic -pedantic-errors -Werror \
-              -Wno-c++98-compat \
-              "
-LinkerFlags="-o ${TargetPath} \
-              \
-             -Wl,-rpath=\${ORIGIN} -Wl,-z,origin -Wl,--enable-new-dtags \
-             "
+LibcCompiler="clang"
+LibcWarningFlags="-Weverything -Wpedantic -pedantic-errors -Werror \
+                  -Wno-c++98-compat -Wno-disabled-macro-expansion \
+                  "
+LibcCompilerFlags="-iquote ${ProjectRoot}/../../include \
+                   -g3 -O0 -fno-strict-aliasing -fwrapv -msse2 \
+                   "
+LibcLanguageFlags="--std=c11 -DBUILD_INTERNAL -DBUILD_SLOW -DBUILD_DEBUG \
+                   -DBUILD_NUMBER=${NEW_BUILD_NUMBER} \
+                   -D_POSIX_C_SOURCE=200809L -D_DEFAULT_SOURCE"
+LibcLinkerFlags="-o ${TargetPath}.libc \
+                  -static-libgcc \
+                  -lm \
+                 -Wl,-rpath=\${ORIGIN} -Wl,-z,origin -Wl,--enable-new-dtags \
+                 "
 
-${Compiler} ${CompilerFlags} ${LanguageFlags} ${WarningFlags} \
+echo "Libc Build"
+
+${LibcCompiler} ${LibcCompilerFlags} ${LibcLanguageFlags} ${LibcWarningFlags} \
             ${Source} \
-            ${LinkerFlags}
+            ${LibcLinkerFlags}
+
+
+NoLibcCompiler="gcc"
+NoLibcWarningFlags="-Wall -Wextra -Werror
+                    "
+NoLibcCompilerFlags="-iquote ${ProjectRoot}/../../include \
+                     -g3 -O0 -fno-strict-aliasing -fwrapv -mno-sse2 -nostdlib -ffreestanding \
+                     "
+NoLibcLanguageFlags="--std=c11 -DBUILD_INTERNAL -DBUILD_SLOW -DBUILD_DEBUG \
+                     -DBUILD_NUMBER=${NEW_BUILD_NUMBER} \
+                     -DNLIB_NO_LIBC \
+                     -D_POSIX_C_SOURCE=200809L -D_DEFAULT_SOURCE"
+NoLibcLinkerFlags="-o ${TargetPath}.nolibc \
+                    -lgcc -lm \
+                   -Wl,-rpath=\${ORIGIN} -Wl,-z,origin -Wl,--enable-new-dtags \
+                   "
+
+echo "NoLibc Build"
+
+${NoLibcCompiler} ${NoLibcCompilerFlags} ${NoLibcLanguageFlags} ${NoLibcWarningFlags} \
+                  ${Source} \
+                  ${NoLibcLinkerFlags}

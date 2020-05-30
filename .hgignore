@@ -1,3 +1,4 @@
 syntax: glob
 
-test.linux.x64
+test.linux.x64.libc
+test.linux.x64.nolibc

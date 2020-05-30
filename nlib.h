@@ -129,7 +129,6 @@
 # include <stdarg.h>
 # include <stdnoreturn.h>
 # include <float.h>
-# include <stddef.h>
 
 /* ===============
  * Primitive Types
@@ -171,8 +170,11 @@ typedef char                 Char;
  */
 
 # define elemin(array) (sizeof(array)/sizeof((array)[0]))
-#define containerof(ptr, type, member)                                  \
+# define containerof(ptr, type, member)                                  \
     ((type *)( ((Byte *)(true ? (ptr) : (type *)NULL)) - offsetof(type, member) ))
+
+# define isOdd(x)  ((x) % 2 ? true : false)
+# define isEven(x) (!isOdd(x))
 
 # define KiB(x) (   (x) * 1024ULL)
 # define MiB(x) (KiB(x) * 1024ULL)
@@ -191,56 +193,6 @@ typedef char                 Char;
 
 # define internal_function static
 # define header_function   static inline
-
-/* ===========================
- * Platform-specific Headers
- */
-
-# if defined(OS_WINDOWS)
-
-#  if defined(COMPILER_MSVC)
-#   pragma warning(push)
-#    pragma warning(disable:4255)
-#    pragma warning(disable:4668)
-#  endif
-
-#  include <Windows.h>
-
-#  if defined(COMPILER_MSVC)
-#   pragma warning(pop)
-#  endif
-
-#  if defined(COMPILER_MSVC)
-#   pragma warning(push)
-#    pragma warning(disable:4820)
-#    pragma warning(disable:4668)
-#    pragma warning(disable:4255)
-#  endif
-
-#  include <intrin.h>
-
-#  if defined(COMPILER_MSVC)
-#   pragma warning(pop)
-#  endif
-
-#  include "nlib_nolibc.h"
-
-# elif defined(OS_LINUX)
-
-#  if defined(NLIB_NO_LIBC)
-#   if defined(COMPILER_CLANG)
-#    pragma clang diagnostic push
-#    pragma clang diagnostic ignored "-Wreserved-id-macro"
-#   endif
-#   include "nlib_linux.h"
-#   include "nlib_nolibc.h"
-#   if defined(COMPILER_CLANG)
-#    pragma clang diagnostic pop
-#   endif
-#  else // defined(NLIB_NO_LIBC)
-#   include <unistd.h>
-#  endif
-# endif
 
 /* =======================
  * Compiler Specific Hacks
@@ -293,6 +245,8 @@ typedef union {
 #  define thread_local __declspec( thread )
 
 #  define swap_endian(x) _byteswap_ulong(x)
+
+#  define fallthrough
 
 # elif defined(COMPILER_CLANG) || defined(COMPILER_GCC)
 
@@ -366,33 +320,108 @@ typedef union {
 
 #  define swap_endian(x) __builtin_bswap32(x)
 
+#  define fallthrough __attribute__((fallthrough))
+
 # endif
 
-/* ===============================
- * Integer Mathematics Functions
+/* ===========================
+ * Platform-specific Headers
  */
 
 # if defined(OS_WINDOWS)
 
-/* _BitScanReverse64(&r, x) scans for the first 1-bit from left in x. Once it finds it,
- * it returns the number of bits after the found 1-bit.
- *
- * If b is the bit-width of the number,
- *    p is the closest lower power of two and
- *    r is the number of bits to the right of the first 1-bit when seen from left; then
- * then a number between 2^p and 2^(p+1) has the form: (b-p-1 0-bits) 1 (p bits)
- *
- * => r = p
- *
- * Thus, the rounded-down log2 of the number is r.
+#  if defined(COMPILER_MSVC)
+#   pragma warning(push)
+#    pragma warning(disable:4255)
+#    pragma warning(disable:4668)
+#  endif
+
+#  include <Windows.h>
+
+#  if defined(COMPILER_MSVC)
+#   pragma warning(pop)
+#  endif
+
+#  if defined(COMPILER_MSVC)
+#   pragma warning(push)
+#    pragma warning(disable:4820)
+#    pragma warning(disable:4668)
+#    pragma warning(disable:4255)
+#  endif
+
+#  include <intrin.h>
+
+#  if defined(COMPILER_MSVC)
+#   pragma warning(pop)
+#  endif
+
+#  include "nlib_nolibc.h"
+
+# elif defined(OS_LINUX)
+
+#  if defined(NLIB_NO_LIBC)
+#   if defined(COMPILER_CLANG)
+#    pragma clang diagnostic push
+#    pragma clang diagnostic ignored "-Wreserved-id-macro"
+#   endif
+#   include "nlib_linux.h"
+#   include "nlib_nolibc.h"
+#   if defined(COMPILER_CLANG)
+#    pragma clang diagnostic pop
+#   endif
+#  else // defined(NLIB_NO_LIBC)
+#   include <sys/types.h>
+#   include <sys/stat.h>
+#   include <sys/mman.h>
+#   include <fcntl.h>
+#   include <unistd.h>
+#   include <string.h>
+#   include <stdio.h>
+typedef   ssize_t             SSize;
+typedef   dev_t               Dev;
+typedef   ino_t               Ino;
+typedef   mode_t              Mode;
+typedef   pid_t               PID;
+typedef   uid_t               UID;
+typedef   gid_t               GID;
+typedef   nlink_t             NLink;
+typedef   off_t               Offset;
+typedef   blksize_t           Block_Size;
+typedef   blkcnt_t            Block_Count;
+typedef   time_t              Time;
+
+typedef   struct pollfd       Poll_FD;
+typedef   struct timeval      Time_Value;
+typedef   struct direct64     Directory_Entry64;
+typedef   struct fd_set       FD_Set;
+typedef   struct rusage       RUsage;
+typedef   struct stat         Stat;
+#  endif
+# endif
+
+/* =======================
+ * Other nlib libraries
  */
-header_function
-U64 u64Log2(U64 x)
-{
-    unsigned long result = 0;
-    _BitScanReverse64(&result, x);
-    return result;
-}
+
+# include "nlib_bitbang.h"
+# include "nlib_maths.h"
+# include "nlib_string.h"
+
+# define NLIB_PRINT_INTERFACE_ONLY
+# include "nlib_print.h"
+# undef NLIB_PRINT_INTERFACE_ONLY
+
+# include "nlib_debug.h"
+# include "nlib_memory.h"
+# include "nlib_print.h"
+# include "nlib_color.h"
+# include "nlib_unicode.h"
+
+/* ===============================
+ * Random Number Generator
+ */
+
+# if defined(OS_WINDOWS)
 
 /* Linear Congruential Generator
  *
@@ -410,7 +439,7 @@ U64 u64Log2(U64 x)
  */
 
 header_function
-U64 u64Rand (U64 seed)
+U64 randomU64 (U64 seed)
 {
     U64 previous = seed;
     if (previous == 0) {
@@ -422,7 +451,7 @@ U64 u64Rand (U64 seed)
 
     U64 upper = 0, lower = 0;
     lower = _umul128(previous, a, &upper);
-    U64 log_upper = u64Log2(upper);
+    U64 log_upper = upper ? mathLog2U64(upper) : 0;
     U64 shift_amount = 64 - (log_upper + 1);
     upper = (upper << shift_amount) | (lower >> log_upper);
 
@@ -432,26 +461,6 @@ U64 u64Rand (U64 seed)
 }
 
 # elif defined(OS_LINUX)
-
-/* __builtin_clzll(x) returns the leading number of 0-bits in x, starting from
- * most significant position.
- *
- * If b is the bit-width of the number,
- *    p is the closest lower power of two and
- *    lz is the number of leading 0-bits; then
- * then a number between 2^p and 2^(p+1) has the form: (b-p-1 0-bits) 1 (p bits)
- *
- * => lz = b-p-1
- * => p = b-(lz+1)
- *
- * Thus, the rounded-down log2 of the number is b-(lz+1).
- */
-header_function
-U64 u64Log2(U64 x)
-{
-    U64 result = 64ULL - ((U64)__builtin_clzll(x) + 1ULL);
-    return result;
-}
 
 /* Linear Congruential Generator
  *
@@ -472,7 +481,7 @@ U64 u64Log2(U64 x)
  */
 
 header_function
-U64 u64Rand (U64 seed)
+U64 randomU64 (U64 seed)
 {
     U64 previous = seed;
     if (previous == 0) {
@@ -484,7 +493,7 @@ U64 u64Rand (U64 seed)
 
     __uint128_t product = (__uint128_t)previous * (__uint128_t)a;
     U64 upper = product >> 64, lower = (U64)product;
-    U64 log_upper = u64Log2(upper);
+    U64 log_upper = upper ? mathLog2U64(upper) : 0;
     U64 shift_amount = 64 - (log_upper + 1);
     upper = (upper << shift_amount) | (lower >> log_upper);
 
@@ -495,61 +504,10 @@ U64 u64Rand (U64 seed)
 
 # endif
 
-header_function
-U64 u64NextPowerOf2 (U64 x)
-{
-    U64 result = 0;
-    if ((x != 0) && ((x & (x - 1)) == 0)) { // If x is a power of true
-        result = x;
-    } else {
-        result = 1 << (u64Log2(x) + 1);
-    }
-
-    return result;
-}
-
 /* ===================
  * Logging
  */
 
-# if defined(OS_WINDOWS)
-
-#  if defined(BUILD_DEBUG)
-#   define report(...)              printDebugOutput(__VA_ARGS__)
-#   define reportv(format, va_list) printDebugOutput(format, va_list)
-#  else
-#   define report(...)              err(stderr, __VA_ARGS__)
-#   define reportv(format, va_list) errv(stderr, format, va_list)
-#  endif
-
-# elif defined(OS_LINUX)
-
-#  if defined(BUILD_DEBUG)
-#   define report(...)              err(__VA_ARGS__)
-#   define reportv(format, va_list) errv(format, va_list)
-#  else
-#   define report(...)              err(__VA_ARGS__)
-#   define reportv(format, va_list) errv(format, va_list)
-#  endif
-
-# endif
-
-/* =======================
- * Other nlib libraries
- */
-
-# define NLIB_PRINT_INTERFACE_ONLY
-# include "nlib_print.h"
-# undef NLIB_PRINT_INTERFACE_ONLY
-
-# include "nlib_debug.h"
-# include "nlib_memory.h"
-# include "nlib_string.h"
-# include "nlib_print.h"
-# include "nlib_color.h"
-# include "nlib_maths.h"
-# include "nlib_color.h"
-# include "nlib_unicode.h"
 
 /* ****************************************************************************
  * DATA STRUCTURES ******************************************************************
@@ -570,6 +528,10 @@ U64 u64NextPowerOf2 (U64 x)
  * Size  sbufMaxElemin (T *ptr)
  */
 
+# define sbufMemoryAllocate(s) memVirtual(Memory_Allocator_Mode_ALLOCATE, s, NULL, NULL)
+# define sbufMemoryReallocate(p, s) memVirtual(Memory_Allocator_Mode_REALLOCATE, s, p, NULL)
+# define sbufMemoryDeallocate(p) memVirtual(Memory_Allocator_Mode_DEALLOCATE, 0, p, NULL)
+
 typedef struct Sbuf_Header {
     Size cap; // NOTE(naman): Maximum number of elements that can be stored
     Size len; // NOTE(naman): Count of elements actually stored
@@ -586,7 +548,7 @@ typedef struct Sbuf_Header {
                                (sb)[sbuf_Len(sb)] = (__VA_ARGS__),      \
                                ((sbuf_GetHeader(sb))->len)++)
 # define sbufDelete(sb)       ((sb) ?                                   \
-                               (nlib_Dealloc(sbuf_GetHeader(sb)), (sb) = NULL) : \
+                               (sbufMemoryDeallocate(sbuf_GetHeader(sb)), (sb) = NULL) : \
                                0)
 # define sbufClear(sb)        ((sb) ?                                   \
                                (memset((sb), 0, sbufSizeof(sb)),        \
@@ -625,9 +587,9 @@ void* sbuf_Grow (void *buf, Size elem_size)
         Sbuf_Header *new_header = NULL;
 
         if (buf != NULL) {
-            new_header = nlib_Realloc(sbuf_GetHeader(buf), new_size);
+            new_header = sbufMemoryReallocate(sbuf_GetHeader(buf), new_size);
         } else {
-            new_header = nlib_Malloc(new_size);
+            new_header = sbufMemoryAllocate(new_size);
             *new_header = (Sbuf_Header){.len = 0,
                                         .userdata = NULL};
         }
@@ -648,9 +610,9 @@ void* sbuf_Resize (void *buf, Size elem_count, Size elem_size)
     Sbuf_Header *new_header = NULL;
 
     if (buf != NULL) {
-        new_header = nlib_Realloc(sbuf_GetHeader(buf), new_size);
+        new_header = sbufMemoryReallocate(sbuf_GetHeader(buf), new_size);
     } else {
-        new_header = nlib_Malloc(new_size);
+        new_header = sbufMemoryAllocate(new_size);
         *new_header = (Sbuf_Header){.cap = 0,
                                     .len = 0,
                                     .userdata = NULL};
@@ -1076,11 +1038,11 @@ header_function
 void hashUniversalConstantsUpdate (Hash_Universal *h)
 {
     do {
-        h->r = u64Rand(h->r);
+        h->r = randomU64(h->r);
         h->a = h->r;
-    } while ((h->a > 0) && ((h->a & 0x01) != 0x01)); // Make sure that 'a' is odd
+    } while ((h->a == 0) || ((h->a > 0) && ((h->a & 0x01) != 0x01))); // Make sure that 'a' is odd
 
-    h->r = u64Rand(h->r);
+    h->r = randomU64(h->r);
     // b should be (64 - m) bits long
     h->b = h->r & (0xFFFFFFFFFFFFFFFFULL >> h->m);
 }
@@ -1114,41 +1076,121 @@ typedef struct Hash_Table {
     U64 *values;
     Size slot_count;
     Size slot_filled;
+    Memory_Allocator_Function *allocator;
+    B64 fixed; // Use fixed memory
+    U64 collision_count;
 } Hash_Table;
 
+# define htMemoryAllocate(s)   memBuddy(Memory_Allocator_Mode_ALLOCATE, s, NULL, NULL)
+# define htMemoryDeallocate(p) memBuddy(Memory_Allocator_Mode_DEALLOCATE, 0, p, NULL)
+
 header_function
-Hash_Table htCreate (Size slots_atleast)
+Hash_Table ht_Create (Size slots_atleast, Memory_Allocator_Function *allocator,
+                       void *memory, Size memory_size)
 {
+    claim((allocator == NULL) || (memory == NULL)); // Can't have fixed memory with allocator
+    claim((memory == NULL) || (slots_atleast == 0)); // Can't have fixed memory without fixed slots
+
     Hash_Table ht = {0};
 
-    ht.univ.m = u64Log2(max(slots_atleast, 1U)); // Log of closest lower power of two
+    if (memory) {
+        // NOTE(naman): We are willing to waste some memory because not going overboard
+        // is more important. However, the client code should try to provide
+        // memory_size such that memory_size/16 is power of 2.
+        Size slots = memory_size / (sizeof(*(ht.keys)) + sizeof(*(ht.values)));
+        ht.slot_count = mathPrevPowerOf2U64(slots);
+    } else {
+        // NOTE(naman): We try to make the initial hash table a bit larger than expected.
+        // The reason for this is that if we have only a small amount of elements, we would
+        // just use a associative array instead of a hash table to do the lookup.
+        Size slots = max(slots_atleast, 64U);
+        ht.slot_count = mathNextPowerOf2U64(slots);
+    }
 
-    // This will make m log of closest upper power of two
-    ht.univ.m = ht.univ.m + 1;
-    ht.slot_count = 1ULL << (ht.univ.m);
+    ht.univ.m = mathLog2U64(ht.slot_count);
     hashUniversalConstantsUpdate(&ht.univ);
 
-    ht.keys     = nlib_Calloc(ht.slot_count,  sizeof(*(ht.keys)));
-    ht.values   = nlib_Calloc(ht.slot_count, sizeof(*(ht.values)));
+    if (memory) {
+        ht.fixed = true;
+        ht.keys = memory;
+        ht.values = (void*)((Byte*)memory + ht.slot_count * sizeof((ht.keys)));
+    } else if (allocator) {
+        ht.allocator = allocator;
+        ht.keys     = allocator(Memory_Allocator_Mode_ALLOCATE,
+                                ht.slot_count * sizeof(*(ht.keys)),
+                                NULL, NULL);
+        ht.values   = allocator(Memory_Allocator_Mode_ALLOCATE,
+                                ht.slot_count * sizeof(*(ht.values)),
+                                NULL, NULL);
+    } else {
+        ht.keys     = htMemoryAllocate(ht.slot_count * sizeof(*(ht.keys)));
+        ht.values   = htMemoryAllocate(ht.slot_count * sizeof(*(ht.values)));
+    }
 
+    memset(ht.keys,   0, ht.slot_count * sizeof(*(ht.keys)));
+    memset(ht.values, 0, ht.slot_count * sizeof(*(ht.values)));
+
+    return ht;
+}
+
+header_function
+Hash_Table htCreate (void)
+{
+    Hash_Table ht = ht_Create(0, NULL, NULL, 0);
+    return ht;
+}
+
+header_function
+Hash_Table htCreateWithSlots (Size slots)
+{
+    Hash_Table ht = ht_Create(slots, NULL, NULL, 0);
+    return ht;
+}
+
+header_function
+Hash_Table htCreateWithAllocator (Memory_Allocator_Function *allocator)
+{
+    Hash_Table ht = ht_Create(0, allocator, NULL, 0);
+    return ht;
+}
+
+header_function
+Hash_Table htCreateWithSlotsAndAllocator (Size slots, Memory_Allocator_Function *allocator)
+{
+    Hash_Table ht = ht_Create(slots, allocator, NULL, 0);
+    return ht;
+}
+
+header_function
+Hash_Table htCreateFixed (void *memory, Size memory_size)
+{
+    Hash_Table ht = ht_Create(0, NULL, memory, memory_size);
     return ht;
 }
 
 header_function
 void htDelete (Hash_Table ht)
 {
-    nlib_Dealloc(ht.keys);
-    nlib_Dealloc(ht.values);
+    if (ht.fixed) {
+        claim(false && "Trying to free a fixed-memory hash table");
+    } else if (ht.allocator) {
+        ht.allocator(Memory_Allocator_Mode_DEALLOCATE, 0, ht.keys, NULL);
+        ht.allocator(Memory_Allocator_Mode_DEALLOCATE, 0, ht.values, NULL);
+    } else {
+        htMemoryDeallocate(ht.keys);
+        htMemoryDeallocate(ht.values);
+    }
 }
 
 header_function
-B32 ht_LinearProbeSearch (Hash_Table *ht, U64 key, Size *value)
+B32 ht_LinearProbeSearch (Hash_Table *ht, U64 key, U64 hash, Size *value)
 {
     Size index = 0;
     B32 found = false;
 
+    // TODO(naman): WE ARE SEARCHING EVERYTHING!!! WTF?????
     for (Size i = 0; !found && (i < ht->slot_count); ++i) {
-        index = (key + i) % (ht->slot_count);
+        index = (hash + i) % (ht->slot_count);
         if (ht->keys[index] == key) {
             found = true;
             break;
@@ -1168,12 +1210,13 @@ U64 ht_LinearProbeInsertion (Hash_Table *ht,
 
     for (Size i = 0; i < ht->slot_count; ++i) {
         Size index = (hash + i) % (ht->slot_count);
-
         if ((ht->keys[index] == key) || (ht->values[index] == 0))  {
             result_value = ht->values[index];
             ht->keys[index] = key;
             ht->values[index] = value;
             break;
+        } else {
+            ht->collision_count++;
         }
     }
 
@@ -1185,35 +1228,59 @@ U64 htInsert (Hash_Table *ht, U64 key, U64 value)
 {
     if ((key == 0) || (value == 0)) return 0;
 
-    // FIXME(naman): Use number of collisions as the parameter for resizing
-    if ((2U * (ht->slot_filled)) > (ht->slot_count)) {
+    if (ht->fixed) {
+        if (ht->slot_filled >= ht->slot_count) {
+            return 0;
+        }
+    } else if ((ht->collision_count > ht->slot_count) ||
+               ((2 * ht->slot_filled) >= ht->slot_count)) {
+        // FIXME(naman): Figure out the correct condition on which to resize on.
         Size slot_count_prev = ht->slot_count;
         U64 *keys   = ht->keys;
         U64 *values = ht->values;
 
-        ht->univ.m = ht->univ.m + 1;
-        ht->slot_count = 1ULL << (ht->univ.m);
-        hashUniversalConstantsUpdate(&(ht->univ));
+        if ((2 * ht->slot_filled) >= ht->slot_count) { // Only increase size if need be
+            ht->univ.m = ht->univ.m + 1;
+            ht->slot_count = 1ULL << (ht->univ.m);
+            hashUniversalConstantsUpdate(&(ht->univ));
+        }
 
-        ht->keys   = nlib_Calloc(ht->slot_count, sizeof(*(ht->keys)));
-        ht->values = nlib_Calloc(ht->slot_count, sizeof(*(ht->values)));
+        if (ht->allocator) {
+            ht->keys   = ht->allocator(Memory_Allocator_Mode_ALLOCATE,
+                                  ht->slot_count * sizeof(*(ht->keys)),
+                                  NULL, NULL);
+            ht->values = ht->allocator(Memory_Allocator_Mode_ALLOCATE,
+                                  ht->slot_count * sizeof(*(ht->values)),
+                                  NULL, NULL);
+        } else {
+            ht->keys   = htMemoryAllocate(ht->slot_count * sizeof(*(ht->keys)));
+            ht->values = htMemoryAllocate(ht->slot_count * sizeof(*(ht->values)));
+        }
+
+        memset(ht->keys,   0, ht->slot_count * sizeof(*(ht->keys)));
+        memset(ht->values, 0, ht->slot_count * sizeof(*(ht->values)));
 
         for (Size i = 0; i < slot_count_prev; ++i) {
-            U64 key_i     = keys[i];
-            U64 value_i   = values[i];
-
+            U64 key_i   = keys[i];
+            U64 value_i = values[i];
             if (value_i != 0) {
                 U64 hash_new = hashUniversal(ht->univ, key_i);
                 ht_LinearProbeInsertion(ht, hash_new, key_i, value_i);
             }
         }
 
-        nlib_Dealloc(keys);
-        nlib_Dealloc(values);
+        if (ht->allocator) {
+            ht->allocator(Memory_Allocator_Mode_DEALLOCATE, 0, keys, NULL);
+            ht->allocator(Memory_Allocator_Mode_DEALLOCATE, 0, values, NULL);
+        } else {
+            htMemoryDeallocate(keys);
+            htMemoryDeallocate(values);
+        }
+
+        ht->collision_count = 0;
     }
 
     U64 hash = hashUniversal(ht->univ, key);
-
     U64 result_value = ht_LinearProbeInsertion(ht, hash, key, value);
     if (result_value == 0) {
         ht->slot_filled++;
@@ -1230,7 +1297,8 @@ U64 htLookup (Hash_Table *ht, U64 key)
     Size location = 0;
     U64 result_value = 0;
 
-    if (ht_LinearProbeSearch(ht, key, &location)) {
+    U64 hash = hashUniversal(ht->univ, key);
+    if (ht_LinearProbeSearch(ht, key, hash, &location)) {
         result_value = ht->values[location];
     }
 
@@ -1245,7 +1313,8 @@ U64 htRemove (Hash_Table *ht, U64 key)
     Size location = 0;
     U64 result_value = 0;
 
-    if (ht_LinearProbeSearch(ht, key, &location)) {
+    U64 hash = hashUniversal(ht->univ, key);
+    if (ht_LinearProbeSearch(ht, key, hash, &location)) {
         result_value = ht->values[location];
     }
 
@@ -1262,7 +1331,7 @@ U64 htRemove (Hash_Table *ht, U64 key)
 header_function
 void htUnitTest (void)
 {
-    Hash_Table ht = htCreate(0);
+    Hash_Table ht = htCreate();
 
     /* No Entries */
     utTest(htLookup(&ht, 0) == 0);
@@ -1358,6 +1427,16 @@ void htUnitTest (void)
 
     htDelete(ht);
 
+    Hash_Table htalloc = htCreate();
+    for (Size i = 1; i < 100; i++) {
+        htInsert(&htalloc, i, 200 + i);
+        claim(htLookup(&htalloc, i) == (200 + i));
+    }
+    for (Size i = 1; i < 100; i++) {
+        claim(htLookup(&htalloc, i) == (200 + i));
+    }
+    htDelete(htalloc);
+
     return;
 }
 # endif
@@ -1387,9 +1466,9 @@ typedef struct Map_Userdata {
                                sizeof(*(_map)));                        \
             shdr = sbuf_GetHeader(_map);                                \
             (shdr->len)++;                                              \
-            shdr->userdata = nlib_Malloc(sizeof(Map_Userdata));         \
+            shdr->userdata = memAlloc(sizeof(Map_Userdata));         \
             *(Map_Userdata*)(shdr->userdata) = (Map_Userdata){0};       \
-            ((Map_Userdata*)shdr->userdata)->table = htCreate(0);       \
+            ((Map_Userdata*)shdr->userdata)->table = htCreate();       \
         } else {                                                        \
             shdr = sbuf_GetHeader((_map));                              \
         }                                                               \

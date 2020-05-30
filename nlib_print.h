@@ -4,29 +4,40 @@
  */
 
 // Takes 12151 bytes (11.86 KiB) without the unit test
-// Command: readelf -s test.linux.x64|perl -ne 'if(/(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)/) { print $3 . " " . $8. "\n";}'|sort -n | grep -i print
+// Command: readelf -s test.linux.x64.libc | perl -ne 'if(/(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)/) { print $3 . " " . $8. "\n";}'|sort -n | grep -i print
 
 #if defined(NLIB_PRINT_INTERFACE_ONLY)
+
 header_function Size printStringVarArg (Char *, Char *, va_list);
 header_function Size say  (Char *format, ...);
 header_function Size sayv (Char *format, va_list ap);
 header_function Size err  (Char *format, ...);
 header_function Size errv (Char *format, va_list ap);
-#endif // defined(NLIB_PRINT_INTERFACE_ONLY)
 
-#if !defined(NLIB_PRINT_H_INCLUDE_GUARD) && !defined(NLIB_PRINT_INTERFACE_ONLY)
+#if defined(OS_WINDOWS)
+# if defined(BUILD_DEBUG)
+#  define report(...)              printDebugOutput(__VA_ARGS__)
+#  define reportv(format, va_list) printDebugOutput(format, va_list)
+# else // = if !defined(BUILD_DEBUG)
+#  define report(...)              err(stderr, __VA_ARGS__)
+#  define reportv(format, va_list) errv(stderr, format, va_list)
+# endif // defined(BUILD_DEBUG)
+#elif defined(OS_LINUX)
+# if defined(BUILD_DEBUG)
+#  define report(...)              err(__VA_ARGS__)
+#  define reportv(format, va_list) errv(format, va_list)
+# else // = if !defined(BUILD_DEBUG)
+#  define report(...)              err(__VA_ARGS__)
+#  define reportv(format, va_list) errv(format, va_list)
+# endif // defined(BUILD_DEBUG)
+#endif // defined(OS_WINDOWS)
 
-# include <math.h>
+
+#elif !defined(NLIB_PRINT_H_INCLUDE_GUARD)
 
 # if !defined(NLIB_PRINT_BAD_FLOAT)
 #  include "nlib_ryu.h"
 # endif // defined(NLIB_PRINT_BAD_FLOAT)
-
-# if 0
-#  define p(...) printf(__VA_ARGS__)
-# else
-#  define p(...)
-# endif
 
 typedef enum Print_Flags {
     Print_Flags_LEFT_JUSTIFIED     = 1u << 0,
@@ -46,11 +57,6 @@ Size printStringVarArg (Char *buffer, Char *format, va_list va)
     Char *buf = buffer;
 
     while (true) {
-        Sint field_width = 0;
-        Sint precision = -1;
-        Sint trailing_zeroes = 0;
-        U32 flags = 0;
-
         // Copy everything up to the next % (or end of string)
         while ((fmt[0] != '%') && (fmt[0] != '\0')) {
             if (buffer != NULL) {
@@ -61,9 +67,15 @@ Size printStringVarArg (Char *buffer, Char *format, va_list va)
         }
 
         if (fmt[0] == '%') {
+            Char *format_pointer = fmt;
+
             fmt++;
 
             // read the modifiers first
+            Sint field_width = 0;
+            Sint precision = -1;
+            Sint trailing_zeroes = 0;
+            U32 flags = 0;
 
             // flags
             while (true) {
@@ -144,7 +156,7 @@ Size printStringVarArg (Char *buffer, Char *format, va_list va)
                 } break;
             }
 
-# define NLIB_PRINT_SIZE 512ULL // big enough for e308 (with commas) or e-307
+#  define NLIB_PRINT_SIZE 512ULL // big enough for e308 (with commas) or e-307
             Char num_str[NLIB_PRINT_SIZE];
             Char *str = NULL;
 
@@ -448,10 +460,10 @@ Size printStringVarArg (Char *buffer, Char *format, va_list va)
                     len = (((Uptr)num_str + NLIB_PRINT_SIZE) - (Uptr)str);
                 } break;
 
-# if defined(NLIB_PRINT_BAD_FLOAT)
+#  if defined(NLIB_PRINT_BAD_FLOAT)
                 case 'F': { // Only upper bound for scientific notation
                     flags |= Print_Flags_FLOAT_NO_LOW_BOUND;
-                } // fallthrough
+                } fallthrough;
 
                 case 'f': { // floating-point number
                     if (precision < 0) {
@@ -469,9 +481,9 @@ Size printStringVarArg (Char *buffer, Char *format, va_list va)
                        --------------------------------------------
                     */
 
-#  define            MANTISSA_BITS 52
-#  define            EXPONENT_BITS 11
-#  define            BIAS 1023
+#   define            MANTISSA_BITS 52
+#   define            EXPONENT_BITS 11
+#   define            BIAS 1023
 
                     // Is the top bit set?
                     B32 negative  = ((bits >> (MANTISSA_BITS + EXPONENT_BITS)) & 1) != 0;
@@ -598,19 +610,13 @@ Size printStringVarArg (Char *buffer, Char *format, va_list va)
                         }
 
                         U64 integral_part = (U64)value;
-                        p("\tIntegral part: %lu\n", integral_part);
-                        F64 remainder = value - integral_part;
-                        p("\tRemainder: %.19f\n", remainder);
+                        F64 remainder = value - (F64)integral_part;
 
                         F64 remainder_modified = remainder * 1e19;
-                        p("\tRemainder modified: %19f\n", remainder_modified);
                         U64 decimal_part = (U64)remainder_modified;
 
-                        p("\tDecimal part: %lu, %llu\n", decimal_part, 1ULL << 63);
-
                         // rounding
-                        remainder_modified -= decimal_part;
-                        p("\tRemainder modified (rounded): %19f\n", remainder_modified);
+                        remainder_modified -= (F64)decimal_part;
                         if (remainder_modified >= 0.5) {
                             decimal_part++;
                             if (decimal_part >= 10000000000000000000ULL) { // 19 zeroes
@@ -622,7 +628,6 @@ Size printStringVarArg (Char *buffer, Char *format, va_list va)
                                 }
                             }
                         }
-                        p("\tDecimal part (Rounded): %lu, %llu\n", decimal_part, 1ULL << 63);
 
                         str = num_str + NLIB_PRINT_SIZE;
 
@@ -675,10 +680,6 @@ Size printStringVarArg (Char *buffer, Char *format, va_list va)
                                     decimal_part = decimal_part / 10;
                                 } while (--width_iter);
 
-                                p("\tTEMP: %.*s\n",
-                                  (int)((Uptr)tmp_buf + NLIB_PRINT_SIZE - (Uptr)tmp),
-                                  tmp);
-
                                 if ((Uint)precision < width) {
                                     for (Char *temp = tmp_buf + NLIB_PRINT_SIZE - 1;
                                          (Uptr)temp - (Uptr)tmp >= (Uint)precision;
@@ -688,8 +689,6 @@ Size printStringVarArg (Char *buffer, Char *format, va_list va)
                                         if ((temp[index] - '0') > 5) {
                                             B32 carry = false;
                                             do {
-                                                p("\tTEMP CHAR: %c %c\n", temp[index], temp[index-1]);
-
                                                 if ((temp[index-1] - '0') == 9) {
                                                     temp[index-1] = '0';
                                                     carry = true;
@@ -702,10 +701,6 @@ Size printStringVarArg (Char *buffer, Char *format, va_list va)
                                         }
                                     }
                                 }
-
-                                p("\tTEMP: %.*s\n",
-                                  (int)((Uptr)tmp_buf + NLIB_PRINT_SIZE - (Uptr)tmp),
-                                  tmp);
 
                                 str -= precision;
                                 for (Size i = 0; i < (Size)precision; i++) {
@@ -748,9 +743,8 @@ Size printStringVarArg (Char *buffer, Char *format, va_list va)
 
                     precision = 0;
 
-                    p("== %.*s\n", (int)len, str);
                 } break;
-# else
+#  else
                 case 'f':
                 case 'F': {
                     if (precision < 0) {
@@ -768,9 +762,9 @@ Size printStringVarArg (Char *buffer, Char *format, va_list va)
                        --------------------------------------------
                     */
 
-#  define            MANTISSA_BITS 52
-#  define            EXPONENT_BITS 11
-#  define            BIAS 1023
+#   define            MANTISSA_BITS 52
+#   define            EXPONENT_BITS 11
+#   define            BIAS 1023
 
                     // Is the top bit set?
                     B32 negative  = ((bits >> (MANTISSA_BITS + EXPONENT_BITS)) & 1) != 0;
@@ -826,12 +820,26 @@ Size printStringVarArg (Char *buffer, Char *format, va_list va)
                     precision = 0;
 
                 } break;
-# endif
+#  endif
+                case '%': {
+                    str = num_str;
+                    str[0] = '%';
+                    len = 1;
+                    precision = 0;
+                } break;
 
                 default: { // unknown, just copy code
-                    str = num_str + NLIB_PRINT_SIZE - 1;
-                    *str = fmt[0];
-                    len = 1;
+                    str = num_str;
+
+                    while (format_pointer <= fmt) {
+                        str[0] = format_pointer[0];
+                        format_pointer++;
+                        str++;
+                    }
+
+                    len = (Size)(Dptr)(str - num_str);
+                    str = num_str;
+                    precision = 0;
                 } break;
             }
 
@@ -958,7 +966,7 @@ Size printStringVarArg (Char *buffer, Char *format, va_list va)
     return (Size)(Uptr)(buf - buffer);
 }
 
-# if defined(OS_WINDOWS)
+#  if defined(OS_WINDOWS)
 
 header_function
 Size printConsole (Sint fd, Char *format, va_list ap)
@@ -1014,7 +1022,7 @@ Size printDebugOutput (Char *format, va_list ap)
     return buffer_size;
 }
 
-# elif defined(OS_LINUX)
+#  elif defined(OS_LINUX)
 
 header_function
 Size printConsole (Sint fd, Char *format, va_list ap)
@@ -1024,12 +1032,20 @@ Size printConsole (Sint fd, Char *format, va_list ap)
     va_copy(ap2, ap);
 
     Size buffer_size = printStringVarArg(NULL, format, ap1);
-    Char *buffer = nlib_Malloc(buffer_size);
+    Char *buffer = memAlloc(buffer_size);
     printStringVarArg(buffer, format, ap2);
 
+#   if defined(NLIB_NO_LIBC)
     write(fd, buffer, buffer_size);
+#   else
+    if (fd == 1) {
+        fputs(buffer, stdout);
+    } else {
+        fputs(buffer, stderr);
+    }
+#   endif
 
-    nlib_Dealloc(buffer);
+    memDealloc(buffer);
 
     va_end(ap1);
     va_end(ap2);
@@ -1037,7 +1053,7 @@ Size printConsole (Sint fd, Char *format, va_list ap)
     return buffer_size;
 }
 
-# endif
+#  endif
 
 header_function
 Size printString (Char *buffer, Char *format, ...)
@@ -1089,20 +1105,20 @@ Size errv (Char *format, va_list ap)
     return buffer_size;
 }
 
-# if defined(NLIB_TESTS)
+#  if defined(NLIB_TESTS)
 
-#  define CHECK_END(str) utTest(stringEqual(buf, (str)) || ((unsigned) ret == stringLength(str)))
-#  define SPRINTF printString
+#   define CHECK_END(str) utTest(stringEqual(buf, (str)) || ((unsigned) ret == stringLength(str)))
+#   define SPRINTF printString
 
-#  define CHECK9(str, v1, v2, v3, v4, v5, v6, v7, v8, v9) do { Size ret = SPRINTF(buf, v1, v2, v3, v4, v5, v6, v7, v8, v9); CHECK_END(str); } while (0)
-#  define CHECK8(str, v1, v2, v3, v4, v5, v6, v7, v8    ) do { Size ret = SPRINTF(buf, v1, v2, v3, v4, v5, v6, v7, v8    ); CHECK_END(str); } while (0)
-#  define CHECK7(str, v1, v2, v3, v4, v5, v6, v7        ) do { Size ret = SPRINTF(buf, v1, v2, v3, v4, v5, v6, v7        ); CHECK_END(str); } while (0)
-#  define CHECK6(str, v1, v2, v3, v4, v5, v6            ) do { Size ret = SPRINTF(buf, v1, v2, v3, v4, v5, v6            ); CHECK_END(str); } while (0)
-#  define CHECK5(str, v1, v2, v3, v4, v5                ) do { Size ret = SPRINTF(buf, v1, v2, v3, v4, v5                ); CHECK_END(str); } while (0)
-#  define CHECK4(str, v1, v2, v3, v4                    ) do { Size ret = SPRINTF(buf, v1, v2, v3, v4                    ); CHECK_END(str); } while (0)
-#  define CHECK3(str, v1, v2, v3                        ) do { Size ret = SPRINTF(buf, v1, v2, v3                        ); CHECK_END(str); } while (0)
-#  define CHECK2(str, v1, v2                            ) do { Size ret = SPRINTF(buf, v1, v2                            ); CHECK_END(str); } while (0)
-#  define CHECK1(str, v1                                ) do { Size ret = SPRINTF(buf, v1                                ); CHECK_END(str); } while (0)
+#   define CHECK9(str, v1, v2, v3, v4, v5, v6, v7, v8, v9) do { Size ret = SPRINTF(buf, v1, v2, v3, v4, v5, v6, v7, v8, v9); CHECK_END(str); } while (0)
+#   define CHECK8(str, v1, v2, v3, v4, v5, v6, v7, v8    ) do { Size ret = SPRINTF(buf, v1, v2, v3, v4, v5, v6, v7, v8    ); CHECK_END(str); } while (0)
+#   define CHECK7(str, v1, v2, v3, v4, v5, v6, v7        ) do { Size ret = SPRINTF(buf, v1, v2, v3, v4, v5, v6, v7        ); CHECK_END(str); } while (0)
+#   define CHECK6(str, v1, v2, v3, v4, v5, v6            ) do { Size ret = SPRINTF(buf, v1, v2, v3, v4, v5, v6            ); CHECK_END(str); } while (0)
+#   define CHECK5(str, v1, v2, v3, v4, v5                ) do { Size ret = SPRINTF(buf, v1, v2, v3, v4, v5                ); CHECK_END(str); } while (0)
+#   define CHECK4(str, v1, v2, v3, v4                    ) do { Size ret = SPRINTF(buf, v1, v2, v3, v4                    ); CHECK_END(str); } while (0)
+#   define CHECK3(str, v1, v2, v3                        ) do { Size ret = SPRINTF(buf, v1, v2, v3                        ); CHECK_END(str); } while (0)
+#   define CHECK2(str, v1, v2                            ) do { Size ret = SPRINTF(buf, v1, v2                            ); CHECK_END(str); } while (0)
+#   define CHECK1(str, v1                                ) do { Size ret = SPRINTF(buf, v1                                ); CHECK_END(str); } while (0)
 
 header_function
 void printUnitTest (void)
@@ -1127,7 +1143,7 @@ void printUnitTest (void)
     CHECK2("", "%.0x", 0);
     CHECK2("",  "%.0d", 0);  // glibc gives "" as specified by C99(?)
     CHECK3("33 555", "%d %ld", (short)33, 555l);
-    CHECK4("2 -3 %a", "%zd %td %a", (ssize_t)2, (ptrdiff_t)-3, 23);
+    CHECK4("2 -3 %a", "%zd %td %a", (S64)2, (Dptr)-3, 23);
 
     // floating-point numbers
     CHECK2("-3.000000", "%f", -3.0);
@@ -1233,4 +1249,4 @@ void printUnitTest (void)
 #endif // defined(NLIB_TESTS)
 
 #define NLIB_PRINT_H_INCLUDE_GUARD
-#endif
+#endif // defined(NLIB_PRINT_INTERFACE_ONLY)

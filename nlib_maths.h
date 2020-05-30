@@ -5,197 +5,119 @@
 
 #if !defined(NLIB_MATHS_H_INCLUDE_GUARD)
 
+# if !defined(NLIB_NO_LIBC)
+#  include <math.h>
+# else
+// TODO(naman): Add some alternative to math.h
+#  include <math.h>
+# endif
 /* Wrapper for needed math.h functions */
 
-#define MATH_PI 3.14159265358979323846f
+# if defined(LANGUAGE_C11)
+#  define mathGeneric(...) _Generic(...)
+#  else
+#  define mathGeneric(...) claim(false && "Generic function only supported in C11")
+# endif
 
-// Square Root ===============================================================
+# define MATH_PI 3.14159265358979323846
 
-#if defined(LANGAUGE_C11)
-# define mathSqrt(x) _Generic((x),                      \
-                              F32 : mathSqrt##F32       \
+# define mathSqrt(x) mathGeneric((x),                   \
+                                 F32 : mathSqrtF32      \
+                                 F64 : mathSqrtF64      \
         )(x)
-#endif
 
-header_function
-F32 mathSqrtF32 (F32 x)
-{
-    F32 y = sqrtf(x);
-    return y;
-}
+header_function F32 mathSqrtF32 (F32 x) { F32 y = sqrtf(x); return y; }
+header_function F64 mathSqrtF64 (F64 x) { F64 y = sqrt(x);  return y; }
 
-// Power of 2 ================================================================
-
-#if defined(LANGAUGE_C11)
-# define mathPow2(x) _Generic((x),                      \
-                              F32 : mathPow2##F32,      \
-                              U32 : mathPow2##U32       \
+# define mathPow2(x) mathGeneric((x),                    \
+                                F32 : mathPow2F32,      \
+                                F64 : mathPow2F64,      \
+                                U32 : mathPow2U32       \
+                                U64 : mathPow2U64       \
         )(x)
-#endif
 
-header_function
-F32 mathPow2F32 (F32 x)
-{
-    F32 y = exp2f(x);
-    return y;
-}
+header_function F32 mathPow2F32 (F32 x) { F32 y = exp2f(x); return y; }
+header_function F64 mathPow2F64 (F64 x) { F64 y = exp2(x);  return y; }
+header_function U32 mathPow2U32 (U32 x) { U32 y = 1 << x;   return y; }
+header_function U64 mathPow2U64 (U64 x) { U64 y = 1 << x;   return y; }
 
-header_function
-U32 mathPow2U32 (U32 x)
-{
-    U32 y = 1 << x;
-    return y;
-}
-
-// Logarithm with base 2 =====================================================
-
-#if defined(LANGAUGE_C11)
-# define mathLog2(x) _Generic((x),                      \
-                              F32 : mathLog2##F32,      \
-                              U32: mathLog2##U32,       \
-                              U64: mathLog2##U64        \
+# define mathLog2(x) mathGeneric((x),                    \
+                                F32 : mathLog2F32,      \
+                                F64 : mathLog2F64,      \
+                                U32:  mathLog2U32,      \
+                                U64:  mathLog2U64       \
         )(x)
-#endif
 
-header_function
-F32 mathLog2F32 (F32 x)
-{
-    F32 y = log2f(x);
-    return y;
-}
+header_function F32 mathLog2F32 (F32 x) { F32 y = log2f(x); return y; }
+header_function F64 mathLog2F64 (F64 x) { F64 y = log2(x);  return y; }
+header_function U32 mathLog2U32 (U32 x) { U32 y = x ? bitFindMSBU32(x) : 0; return y; }
+header_function U64 mathLog2U64 (U64 x) { U64 y = x ? bitFindMSBU64(x) : 0; return y; }
 
-# if defined(OS_WINDOWS)
-/* _BitScanReverse(&r, x) scans for the first 1-bit from left in x. Once it finds it,
- * it returns the number of bits after the found 1-bit.
- *
- * If b is the bit-width of the number,
- *    p is the log2 of the closest lower power of two and
- *    r is the number of bits to the right of the first 1-bit when seen from left;
- * then a number between 2^p and 2^(p+1) has the form: (b-p-1 0-bits) 1 (p bits)
- *
- * => r = p
- *
- * Thus, the rounded-down log2 of the number is r.
- */
-
-header_function
-U32 mathLog2U32(U32 x)
-{
-    unsigned long result = 0;
-    _BitScanReverse(&result, x);
-    return result;
-}
-
-header_function
-U64 mathLog2U64(U64 x)
-{
-    unsigned long result = 0;
-    _BitScanReverse64(&result, x);
-    return result;
-}
-# elif defined(OS_LINUX)
-/* __builtin_clzll(x) returns the leading number of 0-bits in x, starting from
- * most significant position.
- *
- * If b is the bit-width of the number,
- *    p is the closest lower power of two and
- *    lz is the number of leading 0-bits; then
- * then a number between 2^p and 2^(p+1) has the form: (b-p-1 0-bits) 1 (p bits)
- *
- * => lz = b-p-1
- * => p = b-(lz+1)
- *
- * Thus, the rounded-down log2 of the number is b-(lz+1).
- */
-
-header_function
-U32 mathLog2U32(U32 x)
-{
-    U32 result = (U32)(32 - ((U64)__builtin_clz(x) + 1));
-    return result;
-}
-
-header_function
-U64 mathLog2U64(U64 x)
-{
-    U64 result = 64ULL - ((U64)__builtin_clzll(x) + 1ULL);
-    return result;
-}
-#endif
-
-// Sine of an angle in radians ===============================================
-
-#if defined(LANGAUGE_C11)
-# define mathSin(x) _Generic((x),               \
-                             F32 : mathSin##F32 \
+# define mathIsPowerOf2(x) mathGeneric((x),                      \
+                                      U32 : mathIsPowerOf2U32   \
+                                      U64 : mathIsPowerOf2U64   \
         )(x)
-#endif
 
-header_function
-F32 mathSinF32 (F32 x)
-{
-    F32 y = sinf(x);
-    return y;
-}
+header_function B32 mathIsPowerOf2U32 (U32 x) { B32 b = (x & (x - 1)) == 0; return b; }
+header_function B64 mathIsPowerOf2U64 (U64 x) { B64 b = (x & (x - 1)) == 0; return b; }
 
-// Cosine of an angle in radians =============================================
-
-#if defined(LANGAUGE_C11)
-# define mathCos(x) _Generic((x),               \
-                             F32 : mathCos##F32 \
+# define mathNextPowerOf2(x) mathGeneric((x),                    \
+                                        U32 : mathNextPowerOf2U32 \
+                                        U64 : mathNextPowerOf2U64 \
         )(x)
-#endif
 
-header_function
-F32 mathCosF32 (F32 x)
-{
-    F32 y = cosf(x);
-    return y;
-}
 
-// Tangent of an angle in radians ============================================
+header_function U32 mathNextPowerOf2U32 (U32 x) { U32 y = mathIsPowerOf2U32(x) ? (1U << (mathLog2U32(x) + 1U)) : x; return y; }
+header_function U64 mathNextPowerOf2U64 (U64 x) { U64 y = mathIsPowerOf2U64(x) ? (1LLU << (mathLog2U64(x) + 1LLU)) : x; return y; }
 
-#if defined(LANGAUGE_C11)
-# define mathTan(x) _Generic((x),               \
-                             F32 : mathTan##F32 \
+# define mathPrevPowerOf2(x) mathGeneric((x),                    \
+                                        U32 : mathPrevPowerOf2U32 \
+                                        U64 : mathPrevPowerOf2U64 \
         )(x)
-#endif
 
-header_function
-F32 mathTanF32 (F32 x)
-{
-    F32 y = tanf(x);
-    return y;
-}
 
-// Radians from degrees ======================================================
-#if defined(LANGAUGE_C11)
-# define mathRadians(x) _Generic((x),                   \
-                                 F32 : mathRadians##F32 \
+header_function U32 mathPrevPowerOf2U32 (U32 x) { U32 y = mathIsPowerOf2U32(x) ? (1U << (mathLog2U32(x) - 1U)) : x; return y; }
+header_function U64 mathPrevPowerOf2U64 (U64 x) { U64 y = mathIsPowerOf2U64(x) ? (1LLU << (mathLog2U64(x) - 1LLU)) : x; return y; }
+
+# define mathSin(x) mathGeneric((x),             \
+                               F32 : mathSinF32 \
+                               F64 : mathSinF64 \
         )(x)
-#endif
 
-header_function
-F32 mathRadiansF32 (F32 degrees)
-{
-    F32 radians = (degrees * MATH_PI) / 180.0f;
-    return radians;
-}
+header_function F32 mathSinF32 (F32 x) { F32 y = sinf(x); return y; }
+header_function F64 mathSinF64 (F64 x) { F64 y = sin(x);  return y; }
 
-// Degrees from radians ======================================================
-
-#if defined(LANGAUGE_C11)
-# define mathDegrees(x) _Generic((x),                   \
-                                 F32 : mathDegrees##F32 \
+# define mathCos(x) mathGeneric((x),             \
+                               F32 : mathCosF32 \
+                               F64 : mathCosF64 \
         )(x)
-#endif
 
-header_function
-F32 mathDegreesF32 (F32 radians)
-{
-    F32 degrees = (radians * 180.0f) / MATH_PI;
-    return degrees;
-}
+header_function F32 mathCosF32 (F32 x) { F32 y = cosf(x); return y; }
+header_function F64 mathCosF64 (F64 x) { F64 y = cos(x);  return y; }
 
-#define NLIB_MATHS_H_INCLUDE_GUARD
+# define mathTan(x) mathGeneric((x),             \
+                               F32 : mathTanF32 \
+                               F64 : mathTanF64 \
+        )(x)
+
+header_function F32 mathTanF32 (F32 x) { F32 y = tanf(x); return y; }
+header_function F64 mathTanF64 (F64 x) { F64 y = tan(x);  return y; }
+
+# define mathRadians(x) mathGeneric((x),                 \
+                                   F32 : mathRadiansF64 \
+                                   F64 : mathRadiansF64 \
+        )(x)
+
+header_function F32 mathRadiansF32 (F32 degrees) { F32 radians = (degrees * (F32)MATH_PI) / 180.0f; return radians; }
+header_function F64 mathRadiansF64 (F64 degrees) { F64 radians = (degrees * MATH_PI)      / 180.0;  return radians; }
+
+# define mathDegrees(x) mathGeneric((x),                 \
+                                   F32 : mathDegreesF32 \
+                                   F64 : mathDegreesF64 \
+        )(x)
+
+header_function F32 mathDegreesF32 (F32 radians) { F32 degrees = (radians * 180.0f) / (F32)MATH_PI; return degrees; }
+header_function F64 mathDegreesF64 (F64 radians) { F64 degrees = (radians * 180.0) / MATH_PI;       return degrees; }
+
+# define NLIB_MATHS_H_INCLUDE_GUARD
 #endif

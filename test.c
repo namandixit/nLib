@@ -3,17 +3,20 @@
  * Notice: © Copyright 2019 Naman Dixit
  */
 #define NLIB_TESTS
-#define NLIB_NO_LIBC
+#define NLIB_PRINT_BAD_FLOAT
 #include "nlib.h"
 
-int main (void);
-int main (void)
+Sint main (Sint argc, Char *argv[])
 {
-    say("=============== %f\n", 38685626227668133590597632.0);
+    unused_variable(argc);
+    unused_variable(argv);
+
+# if !defined(NLIB_NO_LIBC)
+# endif
     sbufUnitTest(); // Uses sbufPrint, so tests might clash with printUnitTest
     htUnitTest();
     internUnitTest();
     mapUnitTest();
-//    printUnitTest();
+    printUnitTest();
     return 0;
 }

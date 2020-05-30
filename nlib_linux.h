@@ -27,15 +27,15 @@
  *
  * Syscalls are split into 2 levels:
  *   - The lower level is the arch-specific syscall() definition, consisting in
- *     assembly code in compound expressions. These are called linuxSysCall0() to
- *     linuxSysCall6() depending on the number of arguments. The MIPS
+ *     assembly code in compound expressions. These are called linuxMakeSysCall0() to
+ *     linuxMakeSysCall6() depending on the number of arguments. The MIPS
  *     implementation is limited to 5 arguments. All input arguments are cast
  *     to a long stored in a register. These expressions always return the
  *     syscall's return value as a signed long value which is often either a
  *     pointer or the negated errno value.
  *
  *   - The second level is mostly architecture-independent. It is made of
- *     static functions called sys_<name>() which rely on linuxSysCallN()
+ *     static functions called sys_<name>() which rely on linuxMakeSysCallN()
  *     depending on the syscall definition. These functions are responsible
  *     for exposing the appropriate types for the syscall arguments (int,
  *     pointers, etc) and for setting the appropriate return type (often int).
@@ -73,67 +73,72 @@
 #define __ARCH_WANT_SYSCALL_NO_FLAGS
 #define __ARCH_WANT_SYSCALL_DEPRECATED
 
-#include <asm/unistd.h>
+#include <linux/unistd.h>
+#include <linux/ioctl.h>
 #include <asm/ioctls.h>
-#include <asm/errno.h>
+#include <linux/errno.h>
 #include <linux/fs.h>
 #include <linux/loop.h>
-#include <asm/signal.h>
+#include <linux/signal.h>
+#include <linux/types.h>
 
-typedef   signed long       ssize_t;
+global_variable thread_local S32 errno;
+
+typedef   signed long       SSize;
+typedef   struct timeval    Time_Value;
 
 /* for stat() */
-typedef unsigned int          dev_t;
-typedef unsigned long         ino_t;
-typedef unsigned int         mode_t;
-typedef   signed int          pid_t;
-typedef unsigned int          uid_t;
-typedef unsigned int          gid_t;
-typedef unsigned long       nlink_t;
-typedef   signed long         off_t;
-typedef   signed long     blksize_t;
-typedef   signed long      blkcnt_t;
-typedef   signed long        time_t;
+typedef unsigned int          Dev;
+typedef unsigned long         Ino;
+typedef unsigned int          Mode;
+typedef   signed int          PID;
+typedef unsigned int          UID;
+typedef unsigned int          GID;
+typedef unsigned long         NLink;
+typedef   signed long         Offset;
+typedef   signed long         Block_Size;
+typedef   signed long         Block_Count;
+typedef   signed long         Time;
 
 /* for poll() */
-struct pollfd {
-    int fd;
-    short int events;
-    short int revents;
-};
+typedef struct Poll_FD {
+    S32 fd;
+    S16 events;
+    S16 revents;
+} Poll_FD;
 
 /* for getdents64() */
-struct linux_dirent64 {
-    uint64_t       d_ino;
-    int64_t        d_off;
-    unsigned short d_reclen;
-    unsigned char  d_type;
-    char           d_name[];
-};
+typedef struct Directory_Entry64 {
+    U64  d_ino;
+    S64  d_off;
+    U16  d_reclen;
+    Byte d_type;
+    Char d_name[];
+} Directory_Entry64;
 
 /* commonly an fd_set represents 256 FDs */
 #define FD_SETSIZE 256
-typedef struct { uint32_t fd32[FD_SETSIZE/32]; } fd_set;
+typedef struct { U32 fd32[FD_SETSIZE/32]; } FD_Set;
 
 /* needed by wait4() */
-struct rusage {
-    struct timeval ru_utime;
-    struct timeval ru_stime;
-    long   ru_maxrss;
-    long   ru_ixrss;
-    long   ru_idrss;
-    long   ru_isrss;
-    long   ru_minflt;
-    long   ru_majflt;
-    long   ru_nswap;
-    long   ru_inblock;
-    long   ru_oublock;
-    long   ru_msgsnd;
-    long   ru_msgrcv;
-    long   ru_nsignals;
-    long   ru_nvcsw;
-    long   ru_nivcsw;
-};
+typedef struct RUsage {
+    Time_Value ru_utime;
+    Time_Value ru_stime;
+    S64        ru_maxrss;
+    S64        ru_ixrss;
+    S64        ru_idrss;
+    S64        ru_isrss;
+    S64        ru_minflt;
+    S64        ru_majflt;
+    S64        ru_nswap;
+    S64        ru_inblock;
+    S64        ru_oublock;
+    S64        ru_msgsnd;
+    S64        ru_msgrcv;
+    S64        ru_nsignals;
+    S64        ru_nvcsw;
+    S64        ru_nivcsw;
+} RUsage;
 
 /* stat flags (WARNING, octal here) */
 #define S_IFDIR       0040000
@@ -184,21 +189,21 @@ struct rusage {
 /* The format of the struct as returned by the libc to the application, which
  * significantly differs from the format returned by the stat() syscall flavours.
  */
-struct stat {
-    dev_t     st_dev;     /* ID of device containing file */
-    ino_t     st_ino;     /* inode number */
-    mode_t    st_mode;    /* protection */
-    nlink_t   st_nlink;   /* number of hard links */
-    uid_t     st_uid;     /* user ID of owner */
-    gid_t     st_gid;     /* group ID of owner */
-    dev_t     st_rdev;    /* device ID (if special file) */
-    off_t     st_size;    /* total size, in bytes */
-    blksize_t st_blksize; /* blocksize for file system I/O */
-    blkcnt_t  st_blocks;  /* number of 512B blocks allocated */
-    time_t    st_atime;   /* time of last access */
-    time_t    st_mtime;   /* time of last modification */
-    time_t    st_ctime;   /* time of last status change */
-};
+typedef struct Stat {
+    Dev         st_dev;     /* ID of device containing file */
+    Ino         st_ino;     /* inode number */
+    Mode        st_mode;    /* protection */
+    NLink       st_nlink;   /* number of hard links */
+    UID         st_uid;     /* user ID of owner */
+    GID         st_gid;     /* group ID of owner */
+    Dev         st_rdev;    /* device ID (if special file) */
+    Offset      st_size;    /* total size, in bytes */
+    Block_Size  st_blksize; /* blocksize for file system I/O */
+    Block_Count st_blocks;  /* number of 512B blocks allocated */
+    Time        st_atime;   /* time of last access */
+    Time        st_mtime;   /* time of last modification */
+    Time        st_ctime;   /* time of last status change */
+} Stat;
 
 #define WEXITSTATUS(status)   (((status) & 0xff00) >> 8)
 #define WIFEXITED(status)     (((status) & 0x7f) == 0)
@@ -220,49 +225,49 @@ struct stat {
  *   - the system call is performed by calling the syscall instruction
  *   - syscall return comes in rax
  *   - rcx and r8..r11 may be clobbered, others are preserved.
- *   - the arguments are cast to long and assigned into the target registers
+ *   - the arguments are cast to S64 and assigned into the target registers
  *     which are then simply passed as registers to the asm code, so that we
  *     don't have to experience issues with register constraints.
  *   - the syscall number is always specified last in order to allow to force
  *     some registers before (gcc refuses a %-register at the last position).
  */
 
-#define linuxSysCall0(num)                                      \
-    ({                                                          \
-        long _ret;                                              \
-        register long _num  __asm__("rax") = (num);             \
-                                                                \
-        __asm__ volatile (                                      \
-            "syscall\n"                                         \
-            : "=a" (_ret)                                       \
-            : "0"(_num)                                         \
-            : "rcx", "r8", "r9", "r10", "r11", "memory", "cc"   \
-            );                                                  \
-        _ret;                                                   \
+#define linuxMakeSysCall0(num)                                          \
+    ({                                                                  \
+        S64 _ret;                                                       \
+        register S64 _num  __asm__("rax") = (num);                      \
+                                                                        \
+        __asm__ volatile (                                              \
+                          "syscall\n"                                   \
+                          : "=a" (_ret)                                 \
+                          : "0"(_num)                                   \
+                          : "rcx", "r8", "r9", "r10", "r11", "memory", "cc" \
+                                                                );      \
+        _ret;                                                           \
     })
 
-#define linuxSysCall1(num, arg1)                                \
-    ({                                                          \
-        long _ret;                                              \
-        register long _num  __asm__("rax") = (num);             \
-        register long _arg1 __asm__("rdi") = (long)(arg1);      \
-                                                                \
-        __asm__ volatile (                                      \
-            "syscall\n"                                         \
-            : "=a" (_ret)                                       \
-            : "r"(_arg1),                                       \
-              "0"(_num)                                         \
-            : "rcx", "r8", "r9", "r10", "r11", "memory", "cc"   \
-            );                                                  \
-        _ret;                                                   \
+#define linuxMakeSysCall1(num, arg1)                                    \
+    ({                                                                  \
+        S64 _ret;                                                       \
+        register S64 _num  __asm__("rax") = (num);                      \
+        register S64 _arg1 __asm__("rdi") = (S64)(arg1);                \
+                                                                        \
+        __asm__ volatile (                                              \
+                          "syscall\n"                                   \
+                          : "=a" (_ret)                                 \
+                          : "r"(_arg1),                                 \
+                            "0"(_num)                                   \
+                          : "rcx", "r8", "r9", "r10", "r11", "memory", "cc" \
+                                                                );      \
+        _ret;                                                           \
     })
 
-#define linuxSysCall2(num, arg1, arg2)                          \
+#define linuxMakeSysCall2(num, arg1, arg2)                          \
     ({                                                          \
-        long _ret;                                              \
-        register long _num  __asm__("rax") = (num);             \
-        register long _arg1 __asm__("rdi") = (long)(arg1);      \
-        register long _arg2 __asm__("rsi") = (long)(arg2);      \
+        S64 _ret;                                              \
+        register S64 _num  __asm__("rax") = (num);             \
+        register S64 _arg1 __asm__("rdi") = (S64)(arg1);      \
+        register S64 _arg2 __asm__("rsi") = (S64)(arg2);      \
                                                                 \
         __asm__ volatile (                                      \
             "syscall\n"                                         \
@@ -274,13 +279,13 @@ struct stat {
         _ret;                                                   \
     })
 
-#define linuxSysCall3(num, arg1, arg2, arg3)                    \
+#define linuxMakeSysCall3(num, arg1, arg2, arg3)                    \
     ({                                                          \
-        long _ret;                                              \
-        register long _num  __asm__("rax") = (num);             \
-        register long _arg1 __asm__("rdi") = (long)(arg1);      \
-        register long _arg2 __asm__("rsi") = (long)(arg2);      \
-        register long _arg3 __asm__("rdx") = (long)(arg3);      \
+        S64 _ret;                                              \
+        register S64 _num  __asm__("rax") = (num);             \
+        register S64 _arg1 __asm__("rdi") = (S64)(arg1);      \
+        register S64 _arg2 __asm__("rsi") = (S64)(arg2);      \
+        register S64 _arg3 __asm__("rdx") = (S64)(arg3);      \
                                                                 \
         __asm__ volatile (                                      \
             "syscall\n"                                         \
@@ -292,14 +297,14 @@ struct stat {
         _ret;                                                   \
     })
 
-#define linuxSysCall4(num, arg1, arg2, arg3, arg4)              \
+#define linuxMakeSysCall4(num, arg1, arg2, arg3, arg4)              \
     ({                                                          \
-        long _ret;                                              \
-        register long _num  __asm__("rax") = (num);             \
-        register long _arg1 __asm__("rdi") = (long)(arg1);      \
-        register long _arg2 __asm__("rsi") = (long)(arg2);      \
-        register long _arg3 __asm__("rdx") = (long)(arg3);      \
-        register long _arg4 __asm__("r10") = (long)(arg4);      \
+        S64 _ret;                                              \
+        register S64 _num  __asm__("rax") = (num);             \
+        register S64 _arg1 __asm__("rdi") = (S64)(arg1);      \
+        register S64 _arg2 __asm__("rsi") = (S64)(arg2);      \
+        register S64 _arg3 __asm__("rdx") = (S64)(arg3);      \
+        register S64 _arg4 __asm__("r10") = (S64)(arg4);      \
                                                                 \
         __asm__ volatile (                                      \
             "syscall\n"                                         \
@@ -311,15 +316,15 @@ struct stat {
         _ret;                                                   \
     })
 
-#define linuxSysCall5(num, arg1, arg2, arg3, arg4, arg5)                \
+#define linuxMakeSysCall5(num, arg1, arg2, arg3, arg4, arg5)                \
     ({                                                                  \
-        long _ret;                                                      \
-        register long _num  __asm__("rax") = (num);                     \
-        register long _arg1 __asm__("rdi") = (long)(arg1);              \
-        register long _arg2 __asm__("rsi") = (long)(arg2);              \
-        register long _arg3 __asm__("rdx") = (long)(arg3);              \
-        register long _arg4 __asm__("r10") = (long)(arg4);              \
-        register long _arg5 __asm__("r8")  = (long)(arg5);              \
+        S64 _ret;                                                      \
+        register S64 _num  __asm__("rax") = (num);                     \
+        register S64 _arg1 __asm__("rdi") = (S64)(arg1);              \
+        register S64 _arg2 __asm__("rsi") = (S64)(arg2);              \
+        register S64 _arg3 __asm__("rdx") = (S64)(arg3);              \
+        register S64 _arg4 __asm__("r10") = (S64)(arg4);              \
+        register S64 _arg5 __asm__("r8")  = (S64)(arg5);              \
                                                                         \
         __asm__ volatile (                                              \
             "syscall\n"                                                 \
@@ -331,16 +336,16 @@ struct stat {
         _ret;                                                           \
     })
 
-#define linuxSysCall6(num, arg1, arg2, arg3, arg4, arg5, arg6)          \
+#define linuxMakeSysCall6(num, arg1, arg2, arg3, arg4, arg5, arg6)          \
     ({                                                                  \
-        long _ret;                                                      \
-        register long _num  __asm__("rax") = (num);                     \
-        register long _arg1 __asm__("rdi") = (long)(arg1);              \
-        register long _arg2 __asm__("rsi") = (long)(arg2);              \
-        register long _arg3 __asm__("rdx") = (long)(arg3);              \
-        register long _arg4 __asm__("r10") = (long)(arg4);              \
-        register long _arg5 __asm__("r8")  = (long)(arg5);              \
-        register long _arg6 __asm__("r9")  = (long)(arg6);              \
+        S64 _ret;                                                      \
+        register S64 _num  __asm__("rax") = (num);                     \
+        register S64 _arg1 __asm__("rdi") = (S64)(arg1);              \
+        register S64 _arg2 __asm__("rsi") = (S64)(arg2);              \
+        register S64 _arg3 __asm__("rdx") = (S64)(arg3);              \
+        register S64 _arg4 __asm__("r10") = (S64)(arg4);              \
+        register S64 _arg5 __asm__("r8")  = (S64)(arg5);              \
+        register S64 _arg6 __asm__("r9")  = (S64)(arg6);              \
                                                                         \
         __asm__ volatile (                                              \
             "syscall\n"                                                 \
@@ -384,27 +389,27 @@ __asm__(".section .text\n"
  * syscall returns 116 bytes and stops in the middle of __unused.
  */
 struct sys_stat_struct {
-    unsigned long st_dev;
-    unsigned long st_ino;
-    unsigned long st_nlink;
-    unsigned int  st_mode;
-    unsigned int  st_uid;
+    U64 st_dev;
+    U64 st_ino;
+    U64 st_nlink;
+    U32  st_mode;
+    U32  st_uid;
 
-    unsigned int  st_gid;
-    unsigned int  __pad0;
-    unsigned long st_rdev;
-    long          st_size;
-    long          st_blksize;
+    U32  st_gid;
+    U32  __pad0;
+    U64 st_rdev;
+    S64          st_size;
+    S64          st_blksize;
 
-    long          st_blocks;
-    unsigned long st_atime;
-    unsigned long st_atime_nsec;
-    unsigned long st_mtime;
+    S64          st_blocks;
+    U64 st_atime;
+    U64 st_atime_nsec;
+    U64 st_mtime;
 
-    unsigned long st_mtime_nsec;
-    unsigned long st_ctime;
-    unsigned long st_ctime_nsec;
-    long          __unused[3];
+    U64 st_mtime_nsec;
+    U64 st_ctime;
+    U64 st_ctime_nsec;
+    S64          __unused[3];
 };
 
 #elif defined(__i386__) || defined(__i486__) || defined(__i586__) || defined(__i686__)
@@ -416,7 +421,7 @@ struct sys_stat_struct {
  *   - all registers are preserved (except eax of course)
  *   - the system call is performed by calling int $0x80
  *   - syscall return comes in eax
- *   - the arguments are cast to long and assigned into the target registers
+ *   - the arguments are cast to S64 and assigned into the target registers
  *     which are then simply passed as registers to the asm code, so that we
  *     don't have to experience issues with register constraints.
  *   - the syscall number is always specified last in order to allow to force
@@ -426,10 +431,10 @@ struct sys_stat_struct {
  */
 #define __ARCH_WANT_SYS_OLD_SELECT
 
-#define linuxSysCall0(num)                              \
+#define linuxMakeSysCall0(num)                              \
     ({                                                  \
-        long _ret;                                      \
-        register long _num __asm__("eax") = (num);      \
+        S64 _ret;                                      \
+        register S64 _num __asm__("eax") = (num);      \
                                                         \
         __asm__ volatile (                              \
             "int $0x80\n"                               \
@@ -440,11 +445,11 @@ struct sys_stat_struct {
         _ret;                                           \
     })
 
-#define linuxSysCall1(num, arg1)                                \
+#define linuxMakeSysCall1(num, arg1)                                \
     ({                                                          \
-        long _ret;                                              \
-        register long _num __asm__("eax") = (num);              \
-        register long _arg1 __asm__("ebx") = (long)(arg1);      \
+        S64 _ret;                                              \
+        register S64 _num __asm__("eax") = (num);              \
+        register S64 _arg1 __asm__("ebx") = (S64)(arg1);      \
                                                                 \
         __asm__ volatile (                                      \
             "int $0x80\n"                                       \
@@ -456,12 +461,12 @@ struct sys_stat_struct {
         _ret;                                                   \
     })
 
-#define linuxSysCall2(num, arg1, arg2)                          \
+#define linuxMakeSysCall2(num, arg1, arg2)                          \
     ({                                                          \
-        long _ret;                                              \
-        register long _num __asm__("eax") = (num);              \
-        register long _arg1 __asm__("ebx") = (long)(arg1);      \
-        register long _arg2 __asm__("ecx") = (long)(arg2);      \
+        S64 _ret;                                              \
+        register S64 _num __asm__("eax") = (num);              \
+        register S64 _arg1 __asm__("ebx") = (S64)(arg1);      \
+        register S64 _arg2 __asm__("ecx") = (S64)(arg2);      \
                                                                 \
         __asm__ volatile (                                      \
             "int $0x80\n"                                       \
@@ -473,13 +478,13 @@ struct sys_stat_struct {
         _ret;                                                   \
     })
 
-#define linuxSysCall3(num, arg1, arg2, arg3)                    \
+#define linuxMakeSysCall3(num, arg1, arg2, arg3)                    \
     ({                                                          \
-        long _ret;                                              \
-        register long _num __asm__("eax") = (num);              \
-        register long _arg1 __asm__("ebx") = (long)(arg1);      \
-        register long _arg2 __asm__("ecx") = (long)(arg2);      \
-        register long _arg3 __asm__("edx") = (long)(arg3);      \
+        S64 _ret;                                              \
+        register S64 _num __asm__("eax") = (num);              \
+        register S64 _arg1 __asm__("ebx") = (S64)(arg1);      \
+        register S64 _arg2 __asm__("ecx") = (S64)(arg2);      \
+        register S64 _arg3 __asm__("edx") = (S64)(arg3);      \
                                                                 \
         __asm__ volatile (                                      \
             "int $0x80\n"                                       \
@@ -491,14 +496,14 @@ struct sys_stat_struct {
         _ret;                                                   \
     })
 
-#define linuxSysCall4(num, arg1, arg2, arg3, arg4)              \
+#define linuxMakeSysCall4(num, arg1, arg2, arg3, arg4)              \
     ({                                                          \
-        long _ret;                                              \
-        register long _num __asm__("eax") = (num);              \
-        register long _arg1 __asm__("ebx") = (long)(arg1);      \
-        register long _arg2 __asm__("ecx") = (long)(arg2);      \
-        register long _arg3 __asm__("edx") = (long)(arg3);      \
-        register long _arg4 __asm__("esi") = (long)(arg4);      \
+        S64 _ret;                                              \
+        register S64 _num __asm__("eax") = (num);              \
+        register S64 _arg1 __asm__("ebx") = (S64)(arg1);      \
+        register S64 _arg2 __asm__("ecx") = (S64)(arg2);      \
+        register S64 _arg3 __asm__("edx") = (S64)(arg3);      \
+        register S64 _arg4 __asm__("esi") = (S64)(arg4);      \
                                                                 \
         __asm__ volatile (                                      \
             "int $0x80\n"                                       \
@@ -510,15 +515,15 @@ struct sys_stat_struct {
         _ret;                                                   \
     })
 
-#define linuxSysCall5(num, arg1, arg2, arg3, arg4, arg5)                \
+#define linuxMakeSysCall5(num, arg1, arg2, arg3, arg4, arg5)                \
     ({                                                                  \
-        long _ret;                                                      \
-        register long _num __asm__("eax") = (num);                      \
-        register long _arg1 __asm__("ebx") = (long)(arg1);              \
-        register long _arg2 __asm__("ecx") = (long)(arg2);              \
-        register long _arg3 __asm__("edx") = (long)(arg3);              \
-        register long _arg4 __asm__("esi") = (long)(arg4);              \
-        register long _arg5 __asm__("edi") = (long)(arg5);              \
+        S64 _ret;                                                      \
+        register S64 _num __asm__("eax") = (num);                      \
+        register S64 _arg1 __asm__("ebx") = (S64)(arg1);              \
+        register S64 _arg2 __asm__("ecx") = (S64)(arg2);              \
+        register S64 _arg3 __asm__("edx") = (S64)(arg3);              \
+        register S64 _arg4 __asm__("esi") = (S64)(arg4);              \
+        register S64 _arg5 __asm__("edi") = (S64)(arg5);              \
                                                                         \
         __asm__ volatile (                                              \
             "int $0x80\n"                                               \
@@ -564,26 +569,26 @@ __asm__(".section .text\n"
  * exactly 56 bytes (stops before the unused array).
  */
 struct sys_stat_struct {
-    unsigned long  st_dev;
-    unsigned long  st_ino;
+    U64  st_dev;
+    U64  st_ino;
     unsigned short st_mode;
     unsigned short st_nlink;
     unsigned short st_uid;
     unsigned short st_gid;
 
-    unsigned long  st_rdev;
-    unsigned long  st_size;
-    unsigned long  st_blksize;
-    unsigned long  st_blocks;
+    U64  st_rdev;
+    U64  st_size;
+    U64  st_blksize;
+    U64  st_blocks;
 
-    unsigned long  st_atime;
-    unsigned long  st_atime_nsec;
-    unsigned long  st_mtime;
-    unsigned long  st_mtime_nsec;
+    U64  st_atime;
+    U64  st_atime_nsec;
+    U64  st_mtime;
+    U64  st_mtime_nsec;
 
-    unsigned long  st_ctime;
-    unsigned long  st_ctime_nsec;
-    unsigned long  __unused[2];
+    U64  st_ctime;
+    U64  st_ctime_nsec;
+    U64  __unused[2];
 };
 
 #elif defined(__ARM_EABI__)
@@ -596,7 +601,7 @@ struct sys_stat_struct {
  *   - the system call is performed by calling svc #0
  *   - syscall return comes in r0.
  *   - only lr is clobbered.
- *   - the arguments are cast to long and assigned into the target registers
+ *   - the arguments are cast to S64 and assigned into the target registers
  *     which are then simply passed as registers to the asm code, so that we
  *     don't have to experience issues with register constraints.
  *   - the syscall number is always specified last in order to allow to force
@@ -606,10 +611,10 @@ struct sys_stat_struct {
  */
 #define __ARCH_WANT_SYS_OLD_SELECT
 
-#define linuxSysCall0(num)                              \
+#define linuxMakeSysCall0(num)                              \
     ({                                                  \
-        register long _num __asm__("r7") = (num);       \
-        register long _arg1 __asm__("r0");              \
+        register S64 _num __asm__("r7") = (num);       \
+        register S64 _arg1 __asm__("r0");              \
                                                         \
         __asm__ volatile (                              \
             "svc #0\n"                                  \
@@ -620,10 +625,10 @@ struct sys_stat_struct {
         _arg1;                                          \
     })
 
-#define linuxSysCall1(num, arg1)                                \
+#define linuxMakeSysCall1(num, arg1)                                \
     ({                                                          \
-        register long _num __asm__("r7") = (num);               \
-        register long _arg1 __asm__("r0") = (long)(arg1);       \
+        register S64 _num __asm__("r7") = (num);               \
+        register S64 _arg1 __asm__("r0") = (S64)(arg1);       \
                                                                 \
         __asm__ volatile (                                      \
             "svc #0\n"                                          \
@@ -635,11 +640,11 @@ struct sys_stat_struct {
         _arg1;                                                  \
     })
 
-#define linuxSysCall2(num, arg1, arg2)                          \
+#define linuxMakeSysCall2(num, arg1, arg2)                          \
     ({                                                          \
-        register long _num __asm__("r7") = (num);               \
-        register long _arg1 __asm__("r0") = (long)(arg1);       \
-        register long _arg2 __asm__("r1") = (long)(arg2);       \
+        register S64 _num __asm__("r7") = (num);               \
+        register S64 _arg1 __asm__("r0") = (S64)(arg1);       \
+        register S64 _arg2 __asm__("r1") = (S64)(arg2);       \
                                                                 \
         __asm__ volatile (                                      \
             "svc #0\n"                                          \
@@ -651,12 +656,12 @@ struct sys_stat_struct {
         _arg1;                                                  \
     })
 
-#define linuxSysCall3(num, arg1, arg2, arg3)                    \
+#define linuxMakeSysCall3(num, arg1, arg2, arg3)                    \
     ({                                                          \
-        register long _num __asm__("r7") = (num);               \
-        register long _arg1 __asm__("r0") = (long)(arg1);       \
-        register long _arg2 __asm__("r1") = (long)(arg2);       \
-        register long _arg3 __asm__("r2") = (long)(arg3);       \
+        register S64 _num __asm__("r7") = (num);               \
+        register S64 _arg1 __asm__("r0") = (S64)(arg1);       \
+        register S64 _arg2 __asm__("r1") = (S64)(arg2);       \
+        register S64 _arg3 __asm__("r2") = (S64)(arg3);       \
                                                                 \
         __asm__ volatile (                                      \
             "svc #0\n"                                          \
@@ -668,13 +673,13 @@ struct sys_stat_struct {
         _arg1;                                                  \
     })
 
-#define linuxSysCall4(num, arg1, arg2, arg3, arg4)              \
+#define linuxMakeSysCall4(num, arg1, arg2, arg3, arg4)              \
     ({                                                          \
-        register long _num __asm__("r7") = (num);               \
-        register long _arg1 __asm__("r0") = (long)(arg1);       \
-        register long _arg2 __asm__("r1") = (long)(arg2);       \
-        register long _arg3 __asm__("r2") = (long)(arg3);       \
-        register long _arg4 __asm__("r3") = (long)(arg4);       \
+        register S64 _num __asm__("r7") = (num);               \
+        register S64 _arg1 __asm__("r0") = (S64)(arg1);       \
+        register S64 _arg2 __asm__("r1") = (S64)(arg2);       \
+        register S64 _arg3 __asm__("r2") = (S64)(arg3);       \
+        register S64 _arg4 __asm__("r3") = (S64)(arg4);       \
                                                                 \
         __asm__ volatile (                                      \
             "svc #0\n"                                          \
@@ -686,14 +691,14 @@ struct sys_stat_struct {
         _arg1;                                                  \
     })
 
-#define linuxSysCall5(num, arg1, arg2, arg3, arg4, arg5)                \
+#define linuxMakeSysCall5(num, arg1, arg2, arg3, arg4, arg5)                \
     ({                                                                  \
-        register long _num __asm__("r7") = (num);                       \
-        register long _arg1 __asm__("r0") = (long)(arg1);               \
-        register long _arg2 __asm__("r1") = (long)(arg2);               \
-        register long _arg3 __asm__("r2") = (long)(arg3);               \
-        register long _arg4 __asm__("r3") = (long)(arg4);               \
-        register long _arg5 __asm__("r4") = (long)(arg5);               \
+        register S64 _num __asm__("r7") = (num);                       \
+        register S64 _arg1 __asm__("r0") = (S64)(arg1);               \
+        register S64 _arg2 __asm__("r1") = (S64)(arg2);               \
+        register S64 _arg3 __asm__("r2") = (S64)(arg3);               \
+        register S64 _arg4 __asm__("r3") = (S64)(arg4);               \
+        register S64 _arg5 __asm__("r4") = (S64)(arg5);               \
                                                                         \
         __asm__ volatile (                                              \
             "svc #0\n"                                                  \
@@ -754,9 +759,9 @@ struct sys_stat_struct {
     unsigned short st_dev;
     unsigned short __pad1;
 #else
-    unsigned long  st_dev;
+    U64  st_dev;
 #endif
-    unsigned long  st_ino;
+    U64  st_ino;
     unsigned short st_mode;
     unsigned short st_nlink;
     unsigned short st_uid;
@@ -765,18 +770,18 @@ struct sys_stat_struct {
     unsigned short st_rdev;
     unsigned short __pad2;
 #else
-    unsigned long  st_rdev;
+    U64  st_rdev;
 #endif
-    unsigned long  st_size;
-    unsigned long  st_blksize;
-    unsigned long  st_blocks;
-    unsigned long  st_atime;
-    unsigned long  st_atime_nsec;
-    unsigned long  st_mtime;
-    unsigned long  st_mtime_nsec;
-    unsigned long  st_ctime;
-    unsigned long  st_ctime_nsec;
-    unsigned long  __unused[2];
+    U64  st_size;
+    U64  st_blksize;
+    U64  st_blocks;
+    U64  st_atime;
+    U64  st_atime_nsec;
+    U64  st_mtime;
+    U64  st_mtime_nsec;
+    U64  st_ctime;
+    U64  st_ctime_nsec;
+    U64  __unused[2];
 };
 
 #elif defined(__aarch64__)
@@ -787,7 +792,7 @@ struct sys_stat_struct {
  *   - arguments are in x0, x1, x2, x3, x4, x5
  *   - the system call is performed by calling svc 0
  *   - syscall return comes in x0.
- *   - the arguments are cast to long and assigned into the target registers
+ *   - the arguments are cast to S64 and assigned into the target registers
  *     which are then simply passed as registers to the asm code, so that we
  *     don't have to experience issues with register constraints.
  *
@@ -795,10 +800,10 @@ struct sys_stat_struct {
  */
 #define __ARCH_WANT_SYS_PSELECT6
 
-#define linuxSysCall0(num)                              \
+#define linuxMakeSysCall0(num)                              \
     ({                                                  \
-        register long _num  __asm__("x8") = (num);      \
-        register long _arg1 __asm__("x0");              \
+        register S64 _num  __asm__("x8") = (num);      \
+        register S64 _arg1 __asm__("x0");              \
                                                         \
         __asm__ volatile (                              \
             "svc #0\n"                                  \
@@ -809,10 +814,10 @@ struct sys_stat_struct {
         _arg1;                                          \
     })
 
-#define linuxSysCall1(num, arg1)                                \
+#define linuxMakeSysCall1(num, arg1)                                \
     ({                                                          \
-        register long _num  __asm__("x8") = (num);              \
-        register long _arg1 __asm__("x0") = (long)(arg1);       \
+        register S64 _num  __asm__("x8") = (num);              \
+        register S64 _arg1 __asm__("x0") = (S64)(arg1);       \
                                                                 \
         __asm__ volatile (                                      \
             "svc #0\n"                                          \
@@ -824,11 +829,11 @@ struct sys_stat_struct {
         _arg1;                                                  \
     })
 
-#define linuxSysCall2(num, arg1, arg2)                          \
+#define linuxMakeSysCall2(num, arg1, arg2)                          \
     ({                                                          \
-        register long _num  __asm__("x8") = (num);              \
-        register long _arg1 __asm__("x0") = (long)(arg1);       \
-        register long _arg2 __asm__("x1") = (long)(arg2);       \
+        register S64 _num  __asm__("x8") = (num);              \
+        register S64 _arg1 __asm__("x0") = (S64)(arg1);       \
+        register S64 _arg2 __asm__("x1") = (S64)(arg2);       \
                                                                 \
         __asm__ volatile (                                      \
             "svc #0\n"                                          \
@@ -840,12 +845,12 @@ struct sys_stat_struct {
         _arg1;                                                  \
     })
 
-#define linuxSysCall3(num, arg1, arg2, arg3)                    \
+#define linuxMakeSysCall3(num, arg1, arg2, arg3)                    \
     ({                                                          \
-        register long _num  __asm__("x8") = (num);              \
-        register long _arg1 __asm__("x0") = (long)(arg1);       \
-        register long _arg2 __asm__("x1") = (long)(arg2);       \
-        register long _arg3 __asm__("x2") = (long)(arg3);       \
+        register S64 _num  __asm__("x8") = (num);              \
+        register S64 _arg1 __asm__("x0") = (S64)(arg1);       \
+        register S64 _arg2 __asm__("x1") = (S64)(arg2);       \
+        register S64 _arg3 __asm__("x2") = (S64)(arg3);       \
                                                                 \
         __asm__ volatile (                                      \
             "svc #0\n"                                          \
@@ -857,13 +862,13 @@ struct sys_stat_struct {
         _arg1;                                                  \
     })
 
-#define linuxSysCall4(num, arg1, arg2, arg3, arg4)              \
+#define linuxMakeSysCall4(num, arg1, arg2, arg3, arg4)              \
     ({                                                          \
-        register long _num  __asm__("x8") = (num);              \
-        register long _arg1 __asm__("x0") = (long)(arg1);       \
-        register long _arg2 __asm__("x1") = (long)(arg2);       \
-        register long _arg3 __asm__("x2") = (long)(arg3);       \
-        register long _arg4 __asm__("x3") = (long)(arg4);       \
+        register S64 _num  __asm__("x8") = (num);              \
+        register S64 _arg1 __asm__("x0") = (S64)(arg1);       \
+        register S64 _arg2 __asm__("x1") = (S64)(arg2);       \
+        register S64 _arg3 __asm__("x2") = (S64)(arg3);       \
+        register S64 _arg4 __asm__("x3") = (S64)(arg4);       \
                                                                 \
         __asm__ volatile (                                      \
             "svc #0\n"                                          \
@@ -875,14 +880,14 @@ struct sys_stat_struct {
         _arg1;                                                  \
     })
 
-#define linuxSysCall5(num, arg1, arg2, arg3, arg4, arg5)                \
+#define linuxMakeSysCall5(num, arg1, arg2, arg3, arg4, arg5)                \
     ({                                                                  \
-        register long _num  __asm__("x8") = (num);                      \
-        register long _arg1 __asm__("x0") = (long)(arg1);               \
-        register long _arg2 __asm__("x1") = (long)(arg2);               \
-        register long _arg3 __asm__("x2") = (long)(arg3);               \
-        register long _arg4 __asm__("x3") = (long)(arg4);               \
-        register long _arg5 __asm__("x4") = (long)(arg5);               \
+        register S64 _num  __asm__("x8") = (num);                      \
+        register S64 _arg1 __asm__("x0") = (S64)(arg1);               \
+        register S64 _arg2 __asm__("x1") = (S64)(arg2);               \
+        register S64 _arg3 __asm__("x2") = (S64)(arg3);               \
+        register S64 _arg4 __asm__("x3") = (S64)(arg4);               \
+        register S64 _arg5 __asm__("x4") = (S64)(arg5);               \
                                                                         \
         __asm__ volatile (                                              \
             "svc #0\n"                                                  \
@@ -894,15 +899,15 @@ struct sys_stat_struct {
         _arg1;                                                          \
     })
 
-#define linuxSysCall6(num, arg1, arg2, arg3, arg4, arg5, arg6)          \
+#define linuxMakeSysCall6(num, arg1, arg2, arg3, arg4, arg5, arg6)          \
     ({                                                                  \
-        register long _num  __asm__("x8") = (num);                      \
-        register long _arg1 __asm__("x0") = (long)(arg1);               \
-        register long _arg2 __asm__("x1") = (long)(arg2);               \
-        register long _arg3 __asm__("x2") = (long)(arg3);               \
-        register long _arg4 __asm__("x3") = (long)(arg4);               \
-        register long _arg5 __asm__("x4") = (long)(arg5);               \
-        register long _arg6 __asm__("x5") = (long)(arg6);               \
+        register S64 _num  __asm__("x8") = (num);                      \
+        register S64 _arg1 __asm__("x0") = (S64)(arg1);               \
+        register S64 _arg2 __asm__("x1") = (S64)(arg2);               \
+        register S64 _arg3 __asm__("x2") = (S64)(arg3);               \
+        register S64 _arg4 __asm__("x3") = (S64)(arg4);               \
+        register S64 _arg5 __asm__("x4") = (S64)(arg5);               \
+        register S64 _arg6 __asm__("x5") = (S64)(arg6);               \
                                                                         \
         __asm__ volatile (                                              \
             "svc #0\n"                                                  \
@@ -946,28 +951,28 @@ __asm__(".section .text\n"
  * x86_64's stat one by field ordering, so be careful.
  */
 struct sys_stat_struct {
-    unsigned long   st_dev;
-    unsigned long   st_ino;
-    unsigned int    st_mode;
-    unsigned int    st_nlink;
-    unsigned int    st_uid;
-    unsigned int    st_gid;
+    U64   st_dev;
+    U64   st_ino;
+    U32    st_mode;
+    U32    st_nlink;
+    U32    st_uid;
+    U32    st_gid;
 
-    unsigned long   st_rdev;
-    unsigned long   __pad1;
-    long            st_size;
+    U64   st_rdev;
+    U64   __pad1;
+    S64            st_size;
     int             st_blksize;
     int             __pad2;
 
-    long            st_blocks;
-    long            st_atime;
-    unsigned long   st_atime_nsec;
-    long            st_mtime;
+    S64            st_blocks;
+    S64            st_atime;
+    U64   st_atime_nsec;
+    S64            st_mtime;
 
-    unsigned long   st_mtime_nsec;
-    long            st_ctime;
-    unsigned long   st_ctime_nsec;
-    unsigned int    __unused[2];
+    U64   st_mtime_nsec;
+    S64            st_ctime;
+    U64   st_ctime_nsec;
+    U32    __unused[2];
 };
 
 #elif defined(__mips__) && defined(_ABIO32)
@@ -986,15 +991,15 @@ struct sys_stat_struct {
  *   - the system call is performed by calling "syscall"
  *   - syscall return comes in v0, and register a3 needs to be checked to know
  *     if an error occured, in which case errno is in v0.
- *   - the arguments are cast to long and assigned into the target registers
+ *   - the arguments are cast to S64 and assigned into the target registers
  *     which are then simply passed as registers to the asm code, so that we
  *     don't have to experience issues with register constraints.
  */
 
-#define linuxSysCall0(num)                                              \
+#define linuxMakeSysCall0(num)                                              \
     ({                                                                  \
-        register long _num __asm__("v0") = (num);                       \
-        register long _arg4 __asm__("a3");                              \
+        register S64 _num __asm__("v0") = (num);                       \
+        register S64 _arg4 __asm__("a3");                              \
                                                                         \
         __asm__ volatile (                                              \
             "addiu $sp, $sp, -32\n"                                     \
@@ -1008,11 +1013,11 @@ struct sys_stat_struct {
         _arg4 ? -_num : _num;                                           \
     })
 
-#define linuxSysCall1(num, arg1)                                        \
+#define linuxMakeSysCall1(num, arg1)                                        \
     ({                                                                  \
-        register long _num __asm__("v0") = (num);                       \
-        register long _arg1 __asm__("a0") = (long)(arg1);               \
-        register long _arg4 __asm__("a3");                              \
+        register S64 _num __asm__("v0") = (num);                       \
+        register S64 _arg1 __asm__("a0") = (S64)(arg1);               \
+        register S64 _arg4 __asm__("a3");                              \
                                                                         \
         __asm__ volatile (                                              \
             "addiu $sp, $sp, -32\n"                                     \
@@ -1027,12 +1032,12 @@ struct sys_stat_struct {
         _arg4 ? -_num : _num;                                           \
     })
 
-#define linuxSysCall2(num, arg1, arg2)                                  \
+#define linuxMakeSysCall2(num, arg1, arg2)                                  \
     ({                                                                  \
-        register long _num __asm__("v0") = (num);                       \
-        register long _arg1 __asm__("a0") = (long)(arg1);               \
-        register long _arg2 __asm__("a1") = (long)(arg2);               \
-        register long _arg4 __asm__("a3");                              \
+        register S64 _num __asm__("v0") = (num);                       \
+        register S64 _arg1 __asm__("a0") = (S64)(arg1);               \
+        register S64 _arg2 __asm__("a1") = (S64)(arg2);               \
+        register S64 _arg4 __asm__("a3");                              \
                                                                         \
         __asm__ volatile (                                              \
             "addiu $sp, $sp, -32\n"                                     \
@@ -1047,13 +1052,13 @@ struct sys_stat_struct {
         _arg4 ? -_num : _num;                                           \
     })
 
-#define linuxSysCall3(num, arg1, arg2, arg3)                            \
+#define linuxMakeSysCall3(num, arg1, arg2, arg3)                            \
     ({                                                                  \
-        register long _num __asm__("v0")  = (num);                      \
-        register long _arg1 __asm__("a0") = (long)(arg1);               \
-        register long _arg2 __asm__("a1") = (long)(arg2);               \
-        register long _arg3 __asm__("a2") = (long)(arg3);               \
-        register long _arg4 __asm__("a3");                              \
+        register S64 _num __asm__("v0")  = (num);                      \
+        register S64 _arg1 __asm__("a0") = (S64)(arg1);               \
+        register S64 _arg2 __asm__("a1") = (S64)(arg2);               \
+        register S64 _arg3 __asm__("a2") = (S64)(arg3);               \
+        register S64 _arg4 __asm__("a3");                              \
                                                                         \
         __asm__ volatile (                                              \
             "addiu $sp, $sp, -32\n"                                     \
@@ -1068,13 +1073,13 @@ struct sys_stat_struct {
         _arg4 ? -_num : _num;                                           \
     })
 
-#define linuxSysCall4(num, arg1, arg2, arg3, arg4)                      \
+#define linuxMakeSysCall4(num, arg1, arg2, arg3, arg4)                      \
     ({                                                                  \
-        register long _num __asm__("v0") = (num);                       \
-        register long _arg1 __asm__("a0") = (long)(arg1);               \
-        register long _arg2 __asm__("a1") = (long)(arg2);               \
-        register long _arg3 __asm__("a2") = (long)(arg3);               \
-        register long _arg4 __asm__("a3") = (long)(arg4);               \
+        register S64 _num __asm__("v0") = (num);                       \
+        register S64 _arg1 __asm__("a0") = (S64)(arg1);               \
+        register S64 _arg2 __asm__("a1") = (S64)(arg2);               \
+        register S64 _arg3 __asm__("a2") = (S64)(arg3);               \
+        register S64 _arg4 __asm__("a3") = (S64)(arg4);               \
                                                                         \
         __asm__ volatile (                                              \
             "addiu $sp, $sp, -32\n"                                     \
@@ -1089,14 +1094,14 @@ struct sys_stat_struct {
         _arg4 ? -_num : _num;                                           \
     })
 
-#define linuxSysCall5(num, arg1, arg2, arg3, arg4, arg5)                \
+#define linuxMakeSysCall5(num, arg1, arg2, arg3, arg4, arg5)                \
     ({                                                                  \
-        register long _num __asm__("v0") = (num);                       \
-        register long _arg1 __asm__("a0") = (long)(arg1);               \
-        register long _arg2 __asm__("a1") = (long)(arg2);               \
-        register long _arg3 __asm__("a2") = (long)(arg3);               \
-        register long _arg4 __asm__("a3") = (long)(arg4);               \
-        register long _arg5 = (long)(arg5);                             \
+        register S64 _num __asm__("v0") = (num);                       \
+        register S64 _arg1 __asm__("a0") = (S64)(arg1);               \
+        register S64 _arg2 __asm__("a1") = (S64)(arg2);               \
+        register S64 _arg3 __asm__("a2") = (S64)(arg3);               \
+        register S64 _arg4 __asm__("a3") = (S64)(arg4);               \
+        register S64 _arg5 = (S64)(arg5);                             \
                                                                         \
         __asm__ volatile (                                              \
             "addiu $sp, $sp, -32\n"                                     \
@@ -1152,26 +1157,26 @@ __asm__(".section .text\n"
  * syscall.
  */
 struct sys_stat_struct {
-    unsigned int  st_dev;
-    long          st_pad1[3];
-    unsigned long st_ino;
-    unsigned int  st_mode;
-    unsigned int  st_nlink;
-    unsigned int  st_uid;
-    unsigned int  st_gid;
-    unsigned int  st_rdev;
-    long          st_pad2[2];
-    long          st_size;
-    long          st_pad3;
-    long          st_atime;
-    long          st_atime_nsec;
-    long          st_mtime;
-    long          st_mtime_nsec;
-    long          st_ctime;
-    long          st_ctime_nsec;
-    long          st_blksize;
-    long          st_blocks;
-    long          st_pad4[14];
+    U32  st_dev;
+    S64          st_pad1[3];
+    U64 st_ino;
+    U32  st_mode;
+    U32  st_nlink;
+    U32  st_uid;
+    U32  st_gid;
+    U32  st_rdev;
+    S64          st_pad2[2];
+    S64          st_size;
+    S64          st_pad3;
+    S64          st_atime;
+    S64          st_atime_nsec;
+    S64          st_mtime;
+    S64          st_mtime_nsec;
+    S64          st_ctime;
+    S64          st_ctime_nsec;
+    S64          st_blksize;
+    S64          st_blocks;
+    S64          st_pad4[14];
 };
 
 #elif defined(__riscv)
@@ -1190,15 +1195,15 @@ struct sys_stat_struct {
  *   - arguments are in a0, a1, a2, a3, a4, a5
  *   - the system call is performed by calling ecall
  *   - syscall return comes in a0
- *   - the arguments are cast to long and assigned into the target
+ *   - the arguments are cast to S64 and assigned into the target
  *     registers which are then simply passed as registers to the asm code,
  *     so that we don't have to experience issues with register constraints.
  */
 
-#define linuxSysCall0(num)                              \
+#define linuxMakeSysCall0(num)                              \
     ({                                                  \
-        register long _num  __asm__("a7") = (num);      \
-        register long _arg1 __asm__("a0");              \
+        register S64 _num  __asm__("a7") = (num);      \
+        register S64 _arg1 __asm__("a0");              \
                                                         \
         __asm__ volatile (                              \
             "ecall\n\t"                                 \
@@ -1209,10 +1214,10 @@ struct sys_stat_struct {
         _arg1;                                          \
     })
 
-#define linuxSysCall1(num, arg1)                                \
+#define linuxMakeSysCall1(num, arg1)                                \
     ({                                                          \
-        register long _num  __asm__("a7") = (num);              \
-        register long _arg1 __asm__("a0") = (long)(arg1);       \
+        register S64 _num  __asm__("a7") = (num);              \
+        register S64 _arg1 __asm__("a0") = (S64)(arg1);       \
                                                                 \
         __asm__ volatile (                                      \
             "ecall\n"                                           \
@@ -1223,11 +1228,11 @@ struct sys_stat_struct {
         _arg1;                                                  \
     })
 
-#define linuxSysCall2(num, arg1, arg2)                          \
+#define linuxMakeSysCall2(num, arg1, arg2)                          \
     ({                                                          \
-        register long _num  __asm__("a7") = (num);              \
-        register long _arg1 __asm__("a0") = (long)(arg1);       \
-        register long _arg2 __asm__("a1") = (long)(arg2);       \
+        register S64 _num  __asm__("a7") = (num);              \
+        register S64 _arg1 __asm__("a0") = (S64)(arg1);       \
+        register S64 _arg2 __asm__("a1") = (S64)(arg2);       \
                                                                 \
         __asm__ volatile (                                      \
             "ecall\n"                                           \
@@ -1239,12 +1244,12 @@ struct sys_stat_struct {
         _arg1;                                                  \
     })
 
-#define linuxSysCall3(num, arg1, arg2, arg3)                    \
+#define linuxMakeSysCall3(num, arg1, arg2, arg3)                    \
     ({                                                          \
-        register long _num  __asm__("a7") = (num);              \
-        register long _arg1 __asm__("a0") = (long)(arg1);       \
-        register long _arg2 __asm__("a1") = (long)(arg2);       \
-        register long _arg3 __asm__("a2") = (long)(arg3);       \
+        register S64 _num  __asm__("a7") = (num);              \
+        register S64 _arg1 __asm__("a0") = (S64)(arg1);       \
+        register S64 _arg2 __asm__("a1") = (S64)(arg2);       \
+        register S64 _arg3 __asm__("a2") = (S64)(arg3);       \
                                                                 \
         __asm__ volatile (                                      \
             "ecall\n\t"                                         \
@@ -1256,13 +1261,13 @@ struct sys_stat_struct {
         _arg1;                                                  \
     })
 
-#define linuxSysCall4(num, arg1, arg2, arg3, arg4)              \
+#define linuxMakeSysCall4(num, arg1, arg2, arg3, arg4)              \
     ({                                                          \
-        register long _num  __asm__("a7") = (num);              \
-        register long _arg1 __asm__("a0") = (long)(arg1);       \
-        register long _arg2 __asm__("a1") = (long)(arg2);       \
-        register long _arg3 __asm__("a2") = (long)(arg3);       \
-        register long _arg4 __asm__("a3") = (long)(arg4);       \
+        register S64 _num  __asm__("a7") = (num);              \
+        register S64 _arg1 __asm__("a0") = (S64)(arg1);       \
+        register S64 _arg2 __asm__("a1") = (S64)(arg2);       \
+        register S64 _arg3 __asm__("a2") = (S64)(arg3);       \
+        register S64 _arg4 __asm__("a3") = (S64)(arg4);       \
                                                                 \
         __asm__ volatile (                                      \
             "ecall\n"                                           \
@@ -1274,14 +1279,14 @@ struct sys_stat_struct {
         _arg1;                                                  \
     })
 
-#define linuxSysCall5(num, arg1, arg2, arg3, arg4, arg5)        \
+#define linuxMakeSysCall5(num, arg1, arg2, arg3, arg4, arg5)        \
     ({                                                          \
-        register long _num  __asm__("a7") = (num);              \
-        register long _arg1 __asm__("a0") = (long)(arg1);       \
-        register long _arg2 __asm__("a1") = (long)(arg2);       \
-        register long _arg3 __asm__("a2") = (long)(arg3);       \
-        register long _arg4 __asm__("a3") = (long)(arg4);       \
-        register long _arg5 __asm__("a4") = (long)(arg5);       \
+        register S64 _num  __asm__("a7") = (num);              \
+        register S64 _arg1 __asm__("a0") = (S64)(arg1);       \
+        register S64 _arg2 __asm__("a1") = (S64)(arg2);       \
+        register S64 _arg3 __asm__("a2") = (S64)(arg3);       \
+        register S64 _arg4 __asm__("a3") = (S64)(arg4);       \
+        register S64 _arg5 __asm__("a4") = (S64)(arg5);       \
                                                                 \
         __asm__ volatile (                                      \
             "ecall\n"                                           \
@@ -1293,15 +1298,15 @@ struct sys_stat_struct {
         _arg1;                                                  \
     })
 
-#define linuxSysCall6(num, arg1, arg2, arg3, arg4, arg5, arg6)          \
+#define linuxMakeSysCall6(num, arg1, arg2, arg3, arg4, arg5, arg6)          \
     ({                                                                  \
-        register long _num  __asm__("a7") = (num);                      \
-        register long _arg1 __asm__("a0") = (long)(arg1);               \
-        register long _arg2 __asm__("a1") = (long)(arg2);               \
-        register long _arg3 __asm__("a2") = (long)(arg3);               \
-        register long _arg4 __asm__("a3") = (long)(arg4);               \
-        register long _arg5 __asm__("a4") = (long)(arg5);               \
-        register long _arg6 __asm__("a5") = (long)(arg6);               \
+        register S64 _num  __asm__("a7") = (num);                      \
+        register S64 _arg1 __asm__("a0") = (S64)(arg1);               \
+        register S64 _arg2 __asm__("a1") = (S64)(arg2);               \
+        register S64 _arg3 __asm__("a2") = (S64)(arg3);               \
+        register S64 _arg4 __asm__("a3") = (S64)(arg4);               \
+        register S64 _arg5 __asm__("a4") = (S64)(arg5);               \
+        register S64 _arg6 __asm__("a5") = (S64)(arg6);               \
                                                                         \
         __asm__ volatile (                                              \
             "ecall\n"                                                   \
@@ -1346,26 +1351,26 @@ __asm__(".section .text\n"
 #define O_DIRECTORY  0x200000
 
 struct sys_stat_struct {
-    unsigned long   st_dev;         /* Device.  */
-    unsigned long   st_ino;         /* File serial number.  */
-    unsigned int    st_mode;        /* File mode.  */
-    unsigned int    st_nlink;       /* Link count.  */
-    unsigned int    st_uid;         /* User ID of the file's owner.  */
-    unsigned int    st_gid;         /* Group ID of the file's group. */
-    unsigned long   st_rdev;        /* Device number, if device.  */
-    unsigned long   __pad1;
-    long            st_size;        /* Size of file, in bytes.  */
+    U64   st_dev;         /* Device.  */
+    U64   st_ino;         /* File serial number.  */
+    U32    st_mode;        /* File mode.  */
+    U32    st_nlink;       /* Link count.  */
+    U32    st_uid;         /* User ID of the file's owner.  */
+    U32    st_gid;         /* Group ID of the file's group. */
+    U64   st_rdev;        /* Device number, if device.  */
+    U64   __pad1;
+    S64            st_size;        /* Size of file, in bytes.  */
     int             st_blksize;     /* Optimal block size for I/O.  */
     int             __pad2;
-    long            st_blocks;      /* Number 512-byte blocks allocated. */
-    long            st_atime;       /* Time of last access.  */
-    unsigned long   st_atime_nsec;
-    long            st_mtime;       /* Time of last modification.  */
-    unsigned long   st_mtime_nsec;
-    long            st_ctime;       /* Time of last status change.  */
-    unsigned long   st_ctime_nsec;
-    unsigned int    __unused4;
-    unsigned int    __unused5;
+    S64            st_blocks;      /* Number 512-byte blocks allocated. */
+    S64            st_atime;       /* Time of last access.  */
+    U64   st_atime_nsec;
+    S64            st_mtime;       /* Time of last modification.  */
+    U64   st_mtime_nsec;
+    S64            st_ctime;       /* Time of last status change.  */
+    U64   st_ctime_nsec;
+    U32    __unused4;
+    U32    __unused5;
 };
 
 #endif
@@ -1376,240 +1381,269 @@ struct sys_stat_struct {
  * to reference them by a pointer if needed.
  */
 header_function
-void* linuxBRK (void *addr)
+void* linuxSysBrk (void *addr)
 {
-    void *result = (void*)(Uptr)linuxSysCall1(__NR_brk, addr);
+    void *result = (void*)(Uptr)linuxMakeSysCall1(__NR_brk, addr);
     return result;
 }
 
 header_function
 noreturn
-void linuxEXIT (Sint status)
+void linuxSysExit (S32 status)
 {
-    linuxSysCall1(__NR_exit, status & 255);
+    linuxMakeSysCall1(__NR_exit, status & 255);
     while (true); // Warning: function declared 'noreturn' should not return
 }
 
 header_function
-Sint linuxCHDIR (Char *path)
+S32 linuxSysChdir (Char *path)
 {
-    Sint result = (Sint)linuxSysCall1(__NR_chdir, path);
+    S32 result = (S32)linuxMakeSysCall1(__NR_chdir, path);
     return result;
 }
 
 header_function
-Sint linuxCHMOD (Char *path, mode_t mode)
+S32 linuxSysChmod (Char *path, Mode mode)
 {
-    Sint result;
+    S32 result;
 #if defined(__NR_fchmodat)
-    result = (Sint)linuxSysCall4(__NR_fchmodat, AT_FDCWD, path, mode, 0);
+    result = (S32)linuxMakeSysCall4(__NR_fchmodat, AT_FDCWD, path, mode, 0);
 #else
-    result = (Sint)linuxSysCall2(__NR_chmod, path, mode);
+    result = (S32)linuxMakeSysCall2(__NR_chmod, path, mode);
 #endif
 
     return result;
 }
 
 header_function
-Sint linuxCHOWN (Char *path, uid_t owner, gid_t group)
+S32 linuxSysChown (Char *path, UID owner, GID group)
 {
-    Sint result;
+    S32 result;
 #if defined(__NR_fchownat)
-    result = (Sint)linuxSysCall5(__NR_fchownat, AT_FDCWD, path, owner, group, 0);
+    result = (S32)linuxMakeSysCall5(__NR_fchownat, AT_FDCWD, path, owner, group, 0);
 #else
-    result = (Sint)linuxSysCall3(__NR_chown, path, owner, group);
+    result = (S32)linuxMakeSysCall3(__NR_chown, path, owner, group);
 #endif
     return result;
 }
 
 header_function
-Sint linuxCHROOT (Char *path)
+S32 linuxSysChroot (Char *path)
 {
-    Sint result = (Sint)linuxSysCall1(__NR_chroot, path);
+    S32 result = (S32)linuxMakeSysCall1(__NR_chroot, path);
     return result;
 }
 
 header_function
-Sint linuxCLOSE (Sint fd)
+S32 linuxSysClose (S32 fd)
 {
-    Sint result = (Sint)linuxSysCall1(__NR_close, fd);
+    S32 result = (S32)linuxMakeSysCall1(__NR_close, fd);
     return result;
 }
 
 header_function
-Sint linuxDUP (Sint fd)
+S32 linuxSysDup (S32 fd)
 {
-    Sint result = (Sint)linuxSysCall1(__NR_dup, fd);
+    S32 result = (S32)linuxMakeSysCall1(__NR_dup, fd);
+    return result;
+}
+
+header_function
+S32 linuxSysDup2 (S32 old, S32 new)
+{
+    S32 result;
+#ifdef __NR_dup3
+    result = (S32)linuxMakeSysCall3(__NR_dup3, old, new, 0);
+#else
+    result = (S32)linuxMakeSysCall2(__NR_dup2, old, new);
+#endif
     return result;
 }
 
 #ifdef __NR_dup3
 header_function
-Sint linuxDUP3 (Sint old, Sint new, Sint flags)
+S32 linuxSysDup3 (S32 old, S32 new, S32 flags)
 {
-    Sint result = (Sint)linuxSysCall3(__NR_dup3, old, new, flags);
+    S32 result = (S32)linuxMakeSysCall3(__NR_dup3, old, new, flags);
     return result;
 }
 #endif
 
 header_function
-Sint linuxDUP2 (Sint old, Sint new)
+S32 linuxSysExecve (Char *filename, Char *argv[], Char *envp[])
 {
-    Sint result;
-#ifdef __NR_dup3
-    result = (Sint)linuxSysCall3(__NR_dup3, old, new, 0);
-#else
-    result = (Sint)linuxSysCall2(__NR_dup2, old, new);
-#endif
+    S32 result = (S32)linuxMakeSysCall3(__NR_execve, filename, argv, envp);
     return result;
 }
 
 header_function
-Sint linuxEXECVE (Char *filename, Char *argv[], Char *envp[])
+PID linuxSysFork (void)
 {
-    Sint result = (Sint)linuxSysCall3(__NR_execve, filename, argv, envp);
-    return result;
-}
-
-header_function
-pid_t linuxFORK (void)
-{
-    pid_t result;
+    PID result;
 #ifdef __NR_clone
     /* note: some archs only have clone() and not fork(). Different archs
      * have a different API, but most archs have the flags on first arg and
      * will not use the rest with no other flag.
      */
-    result = (pid_t)linuxSysCall5(__NR_clone, SIGCHLD, 0, 0, 0, 0);
+    result = (PID)linuxMakeSysCall5(__NR_clone, SIGCHLD, 0, 0, 0, 0);
 #else
-    result = (pid_t)linuxSysCall0(__NR_fork);
+    result = (PID)linuxMakeSysCall0(__NR_fork);
 #endif
     return result;
 }
 
 header_function
-Sint linuxFSYNC (Sint fd)
+S32 linuxSysFsync (S32 fd)
 {
-    Sint result = (Sint)linuxSysCall1(__NR_fsync, fd);
+    S32 result = (S32)linuxMakeSysCall1(__NR_fsync, fd);
     return result;
 }
 
 header_function
-Sint linuxGETDENTS64 (Sint fd, struct linux_dirent64 *dirp, Sint count)
+S32 linuxSysGetDEnts64 (S32 fd, struct Directory_Entry64 *dirp, S32 count)
 {
-    Sint result = (Sint)linuxSysCall3(__NR_getdents64, fd, dirp, count);
+    S32 result = (S32)linuxMakeSysCall3(__NR_getdents64, fd, dirp, count);
     return result;
 }
 
 header_function
-pid_t linuxGETPGID (pid_t pid)
+PID linuxSysGetPGID (PID pid)
 {
-    pid_t result = (pid_t)linuxSysCall1(__NR_getpgid, pid);
+    PID result = (PID)linuxMakeSysCall1(__NR_getpgid, pid);
     return result;
 }
 
 header_function
-pid_t linuxGETPGRP (void)
+PID linuxSysGetpgrp (void)
 {
-    pid_t result = (pid_t)linuxGETPGID(0);
+    PID result = (PID)linuxSysGetPGID(0);
     return result;
 }
 
 header_function
-pid_t linuxGETPID(void)
+PID linuxSysGetPID(void)
 {
-    pid_t result = (pid_t)linuxSysCall0(__NR_getpid);
+    PID result = (PID)linuxMakeSysCall0(__NR_getpid);
     return result;
 }
 
 header_function
-Sint linuxGETTIMEOFDAY(struct timeval *tv, struct timezone *tz)
+S32 linuxSysGetTimeOfDay(struct timeval *tv, struct timezone *tz)
 {
-    Sint result = (Sint)linuxSysCall2(__NR_gettimeofday, tv, tz);
+    S32 result = (S32)linuxMakeSysCall2(__NR_gettimeofday, tv, tz);
     return result;
 }
 
 header_function
-Sint linuxIOCTL (Sint fd, U64 req, void *value)
+S32 linuxSysIoctl (S32 fd, U64 req, void *value)
 {
-    Sint result = (Sint)linuxSysCall3(__NR_ioctl, fd, req, value);
+    S32 result = (S32)linuxMakeSysCall3(__NR_ioctl, fd, req, value);
     return result;
 }
 
 header_function
-Sint linuxKILL(pid_t pid, Sint signal)
+S32 linuxSysKill (PID pid, S32 signal)
 {
-    Sint result = (Sint)linuxSysCall2(__NR_kill, pid, signal);
+    S32 result = (S32)linuxMakeSysCall2(__NR_kill, pid, signal);
     return result;
 }
 
 header_function
-Sint linuxLINK (Char *old, Char *new)
+S32 linuxSysLink (Char *old, Char *new)
 {
-    Sint result;
+    S32 result;
 #ifdef __NR_linkat
-    result = (Sint)linuxSysCall5(__NR_linkat, AT_FDCWD, old, AT_FDCWD, new, 0);
+    result = (S32)linuxMakeSysCall5(__NR_linkat, AT_FDCWD, old, AT_FDCWD, new, 0);
 #else
-    result = (Sint)linuxSysCall2(__NR_link, old, new);
+    result = (S32)linuxMakeSysCall2(__NR_link, old, new);
 #endif
     return result;
 }
 
 header_function
-off_t linuxLSEEK (Sint fd, off_t offset, Sint whence)
+Offset linuxSysLseek (S32 fd, Offset offset, S32 whence)
 {
-    Sint result = (Sint)linuxSysCall3(__NR_lseek, fd, offset, whence);
+    S32 result = (S32)linuxMakeSysCall3(__NR_lseek, fd, offset, whence);
     return result;
 }
 
 header_function
-Sint linuxMKDIR (Char *path, mode_t mode)
+S32 linuxSysMkdir (Char *path, Mode mode)
 {
-    Sint result;
+    S32 result;
 #ifdef __NR_mkdirat
-    result = (Sint)linuxSysCall3(__NR_mkdirat, AT_FDCWD, path, mode);
+    result = (S32)linuxMakeSysCall3(__NR_mkdirat, AT_FDCWD, path, mode);
 #else
-    result = (Sint)linuxSysCall2(__NR_mkdir, path, mode);
+    result = (S32)linuxMakeSysCall2(__NR_mkdir, path, mode);
 #endif
     return result;
 }
 
 header_function
-long linux_mknod(const char *path, mode_t mode, dev_t dev)
+S64 linuxSysMknod (Char *path, Mode mode, Dev dev)
 {
+    S64 result;
 #ifdef __NR_mknodat
-    return linuxSysCall4(__NR_mknodat, AT_FDCWD, path, mode, dev);
+    result = linuxMakeSysCall4(__NR_mknodat, AT_FDCWD, path, mode, dev);
 #else
-    return linuxSysCall3(__NR_mknod, path, mode, dev);
+    result = linuxMakeSysCall3(__NR_mknod, path, mode, dev);
 #endif
+    return result;
 }
 
 header_function
-int linux_mount(const char *src, const char *tgt, const char *fst,
-                unsigned long flags, const void *data)
+Uptr linuxSysMMap (void *start, Size length, S32 protection, S32 flags, S32 fd, Offset offset)
 {
-    return linuxSysCall5(__NR_mount, src, tgt, fst, flags, data);
+    Uptr result;
+#ifdef __NR_mmap2
+    // NOTE(naman): This is always 4 KiB by spec (see mmap2(2))
+    result = (Uptr)linuxMakeSysCall6(__NR_mmap2, start, length,
+                                     protection, flags, fd, offset/KiB(4));
+#else
+    result = (Uptr)linuxMakeSysCall6(__NR_mmap, start, length, protection, flags, fd, offset);
+#endif
+    return result;
 }
 
 header_function
-int linux_open(const char *path, int flags, mode_t mode)
+S32 linuxSysMUnmap (void *start, Size length)
 {
+    S32 result = (S32)linuxMakeSysCall2(__NR_munmap, start, length);
+    return result;
+}
+
+
+header_function
+S32 linuxSysMount (Char *src, Char *tgt, Char *fst,
+                   U64 flags, void *data)
+{
+    S32 result = (S32)linuxMakeSysCall5(__NR_mount, src, tgt, fst, flags, data);
+    return result;
+}
+
+header_function
+S32 linuxSysOpen(Char *path, S32 flags, Mode mode)
+{
+    S32 result;
 #ifdef __NR_openat
-    return linuxSysCall4(__NR_openat, AT_FDCWD, path, flags, mode);
+    result = (S32)linuxMakeSysCall4(__NR_openat, AT_FDCWD, path, flags, mode);
 #else
-    return linuxSysCall3(__NR_open, path, flags, mode);
+    result = (S32)linuxMakeSysCall3(__NR_open, path, flags, mode);
 #endif
+    return result;
 }
 
 header_function
-int linux_pivot_root(const char *new, const char *old)
+S32 linuxSysPivotRoot(Char *new, Char *old)
 {
-    return linuxSysCall2(__NR_pivot_root, new, old);
+    S32 result = (S32)linuxMakeSysCall2(__NR_pivot_root, new, old);
+    return result;
 }
 
-static __attribute__((unused))
-int sys_poll(struct pollfd *fds, int nfds, int timeout)
+header_function
+S32 linuxSysPoll(Poll_FD *fds, S32 nfds, S32 timeout)
 {
+    S32 result;
 #if defined(__NR_ppoll)
     struct timespec t;
 
@@ -1617,40 +1651,46 @@ int sys_poll(struct pollfd *fds, int nfds, int timeout)
         t.tv_sec  = timeout / 1000;
         t.tv_nsec = (timeout % 1000) * 1000000;
     }
-    return my_syscall4(__NR_ppoll, fds, nfds, (timeout >= 0) ? &t : NULL, NULL);
+    result = (S32)linuxMakeSysCall4(__NR_ppoll, fds, nfds, (timeout >= 0) ? &t : NULL, NULL);
 #else
-    return my_syscall3(__NR_poll, fds, nfds, timeout);
+    result = (S32)linuxMakeSysCall3(__NR_poll, fds, nfds, timeout);
 #endif
+    return result;
 }
 
 header_function
-ssize_t linux_read(int fd, void *buf, size_t count)
+SSize linuxSysRead(S32 fd, void *buf, Size count)
 {
-    return linuxSysCall3(__NR_read, fd, buf, count);
+    SSize result = linuxMakeSysCall3(__NR_read, fd, buf, count);
+    return result;
 }
 
 header_function
-ssize_t linux_reboot(int magic1, int magic2, int cmd, void *arg)
+SSize linuxSysReboot (S32 magic1, S32 magic2, S32 cmd, void *arg)
 {
-    return linuxSysCall4(__NR_reboot, magic1, magic2, cmd, arg);
+    SSize result = linuxMakeSysCall4(__NR_reboot, magic1, magic2, cmd, arg);
+    return result;
 }
 
 header_function
-int linux_sched_yield(void)
+S32 linuxSysSchedYield (void)
 {
-    return linuxSysCall0(__NR_sched_yield);
+    S32 result = (S32)linuxMakeSysCall0(__NR_sched_yield);
+    return result;
 }
 
 header_function
-int linux_select(int nfds, fd_set *rfds, fd_set *wfds, fd_set *efds, struct timeval *timeout)
+S32 linuxSysSelect (S32 nfds, FD_Set *rfds, FD_Set *wfds, FD_Set *efds, Time_Value *timeout)
 {
+    S32 result;
+
 #if defined(__ARCH_WANT_SYS_OLD_SELECT) && !defined(__NR__newselect)
     struct sel_arg_struct {
-        unsigned long n;
+        U64 n;
         fd_set *r, *w, *e;
         struct timeval *t;
     } arg = { .n = nfds, .r = rfds, .w = wfds, .e = efds, .t = timeout };
-    return linuxSysCall1(__NR_select, &arg);
+    result = linuxMakeSysCall1(__NR_select, &arg);
 #elif defined(__ARCH_WANT_SYS_PSELECT6) && defined(__NR_pselect6)
     struct timespec t;
 
@@ -1658,110 +1698,125 @@ int linux_select(int nfds, fd_set *rfds, fd_set *wfds, fd_set *efds, struct time
         t.tv_sec  = timeout->tv_sec;
         t.tv_nsec = timeout->tv_usec * 1000;
     }
-    return linuxSysCall6(__NR_pselect6, nfds, rfds, wfds, efds, timeout ? &t : NULL, NULL);
+    result = linuxMakeSysCall6(__NR_pselect6, nfds, rfds, wfds, efds, timeout ? &t : NULL, NULL);
 #else
 #ifndef __NR__newselect
 #define __NR__newselect __NR_select
 #endif
-    return linuxSysCall5(__NR__newselect, nfds, rfds, wfds, efds, timeout);
+    result = (S32)linuxMakeSysCall5(__NR__newselect, nfds, rfds, wfds, efds, timeout);
 #endif
+
+    return result;
 }
 
 header_function
-int linux_setpgid(pid_t pid, pid_t pgid)
+S32 linuxSysSetPGID (PID pid, PID pgid)
 {
-    return linuxSysCall2(__NR_setpgid, pid, pgid);
+    S32 result = (S32)linuxMakeSysCall2(__NR_setpgid, pid, pgid);
+    return result;
 }
 
 header_function
-pid_t linux_setsid(void)
+PID linuxSysSetSID (void)
 {
-    return linuxSysCall0(__NR_setsid);
+    PID result = (PID)linuxMakeSysCall0(__NR_setsid);
+    return result;
 }
 
 header_function
-int linux_stat(const char *path, struct stat *buf)
+S32 linuxSysStat (Char *path, Stat *buf)
 {
     struct sys_stat_struct stat;
-    long ret;
+    S32 result;
 
 #ifdef __NR_newfstatat
     /* only solution for arm64 */
-    ret = linuxSysCall4(__NR_newfstatat, AT_FDCWD, path, &stat, 0);
+    result = (S32)linuxMakeSysCall4(__NR_newfstatat, AT_FDCWD, path, &stat, 0);
 #else
-    ret = linuxSysCall2(__NR_stat, path, &stat);
+    result = (S32)linuxMakeSysCall2(__NR_stat, path, &stat);
 #endif
-    buf->st_dev     = stat.st_dev;
+    buf->st_dev     = (Dev)stat.st_dev;
     buf->st_ino     = stat.st_ino;
     buf->st_mode    = stat.st_mode;
     buf->st_nlink   = stat.st_nlink;
     buf->st_uid     = stat.st_uid;
     buf->st_gid     = stat.st_gid;
-    buf->st_rdev    = stat.st_rdev;
+    buf->st_rdev    = (Dev)stat.st_rdev;
     buf->st_size    = stat.st_size;
     buf->st_blksize = stat.st_blksize;
     buf->st_blocks  = stat.st_blocks;
-    buf->st_atime   = stat.st_atime;
-    buf->st_mtime   = stat.st_mtime;
-    buf->st_ctime   = stat.st_ctime;
-    return ret;
+    buf->st_atime   = (Time)stat.st_atime;
+    buf->st_mtime   = (Time)stat.st_mtime;
+    buf->st_ctime   = (Time)stat.st_ctime;
+
+    return result;
 }
 
 
 header_function
-int linux_symlink(const char *old, const char *new)
+S32 linuxSysSymlink (Char *old, Char *new)
 {
+    S32 result;
 #ifdef __NR_symlinkat
-    return linuxSysCall3(__NR_symlinkat, old, AT_FDCWD, new);
+    result = (S32)linuxMakeSysCall3(__NR_symlinkat, old, AT_FDCWD, new);
 #else
-    return linuxSysCall2(__NR_symlink, old, new);
+    result = (S32)linuxMakeSysCall2(__NR_symlink, old, new);
 #endif
+    return result;
 }
 
 header_function
-mode_t linux_umask(mode_t mode)
+Mode linuxSysUmask (Mode mode)
 {
-    return linuxSysCall1(__NR_umask, mode);
+    Mode result = (Mode)linuxMakeSysCall1(__NR_umask, mode);
+    return result;
 }
 
 header_function
-int linux_umount2(const char *path, int flags)
+S32 linuxSysUmount2 (Char *path, S32 flags)
 {
-    return linuxSysCall2(__NR_umount2, path, flags);
+    S32 result = (S32)linuxMakeSysCall2(__NR_umount2, path, flags);
+    return result;
 }
 
 header_function
-int linux_unlink(const char *path)
+S32 linuxSysUnlink (Char *path)
 {
+    S32 result;
 #ifdef __NR_unlinkat
-    return linuxSysCall3(__NR_unlinkat, AT_FDCWD, path, 0);
+    result = (S32)linuxMakeSysCall3(__NR_unlinkat, AT_FDCWD, path, 0);
 #else
-    return linuxSysCall1(__NR_unlink, path);
+    result = (S32)linuxMakeSysCall1(__NR_unlink, path);
 #endif
+    return result;
 }
 
 header_function
-pid_t linux_wait4(pid_t pid, int *status, int options, struct rusage *rusage)
+PID linuxSysWait4 (PID pid, S32 *status, S32 options, RUsage *rusage)
 {
-    return linuxSysCall4(__NR_wait4, pid, status, options, rusage);
+    PID result = (PID)linuxMakeSysCall4(__NR_wait4, pid, status, options, rusage);
+    return result;
 }
 
 header_function
-pid_t linux_waitpid(pid_t pid, int *status, int options)
+PID linuxSysWaitPID (PID pid, S32 *status, S32 options)
 {
-    return linux_wait4(pid, status, options, 0);
+    PID result = linuxSysWait4(pid, status, options, 0);
+    return result;
 }
 
 header_function
-pid_t linux_wait(int *status)
+PID linuxSysWait (S32 *status)
 {
-    return linux_waitpid(-1, status, 0);
+    PID result = (PID)linuxSysWaitPID(-1, status, 0);
+    return result;
 }
 
 header_function
-ssize_t linux_write(int fd, const void *buf, size_t count)
+SSize linuxSysWrite (S32 fd, void *buf, Size count)
 {
-    return linuxSysCall3(__NR_write, fd, buf, count);
+    SSize result = linuxMakeSysCall3(__NR_write, fd, buf, count);
+    return result;
 }
 
 
@@ -1771,27 +1826,29 @@ ssize_t linux_write(int fd, const void *buf, size_t count)
  */
 
 header_function
-int brk(void *addr)
+S32 brk (void *addr)
 {
-    void *ret = sys_brk(addr);
+    void *ret = linuxSysBrk(addr);
 
     if (!ret) {
         errno = ENOMEM;
         return -1;
     }
+
     return 0;
 }
 
-static __attribute__((noreturn,unused))
-void exit(int status)
+header_function
+noreturn
+void exit (S32 status)
 {
-    sys_exit(status);
+    linuxSysExit(status);
 }
 
 header_function
-int chdir(const char *path)
+S32 chdir(Char *path)
 {
-    int ret = sys_chdir(path);
+    S32 ret = linuxSysChdir(path);
 
     if (ret < 0) {
         errno = -ret;
@@ -1801,9 +1858,9 @@ int chdir(const char *path)
 }
 
 header_function
-int chmod(const char *path, mode_t mode)
+S32 chmod(Char *path, Mode mode)
 {
-    int ret = sys_chmod(path, mode);
+    S32 ret = linuxSysChmod(path, mode);
 
     if (ret < 0) {
         errno = -ret;
@@ -1813,9 +1870,9 @@ int chmod(const char *path, mode_t mode)
 }
 
 header_function
-int chown(const char *path, uid_t owner, gid_t group)
+S32 chown(Char *path, UID owner, GID group)
 {
-    int ret = sys_chown(path, owner, group);
+    S32 ret = linuxSysChown(path, owner, group);
 
     if (ret < 0) {
         errno = -ret;
@@ -1825,9 +1882,9 @@ int chown(const char *path, uid_t owner, gid_t group)
 }
 
 header_function
-int chroot(const char *path)
+S32 chroot(Char *path)
 {
-    int ret = sys_chroot(path);
+    S32 ret = linuxSysChroot(path);
 
     if (ret < 0) {
         errno = -ret;
@@ -1837,9 +1894,9 @@ int chroot(const char *path)
 }
 
 header_function
-int close(int fd)
+S32 close(S32 fd)
 {
-    int ret = sys_close(fd);
+    S32 ret = linuxSysClose(fd);
 
     if (ret < 0) {
         errno = -ret;
@@ -1849,21 +1906,21 @@ int close(int fd)
 }
 
 static __attribute__((unused))
-int dup(int fd)
+S32 dup(S32 fd)
 {
-    int ret = sys_dup(fd);
+    S32 ret = linuxSysDup(fd);
 
     if (ret < 0) {
-        SET_ERRNO(-ret);
+        errno = -ret;
         ret = -1;
     }
     return ret;
 }
 
 header_function
-int dup2(int old, int new)
+S32 dup2(S32 old, S32 new)
 {
-    int ret = sys_dup2(old, new);
+    S32 ret = linuxSysDup2(old, new);
 
     if (ret < 0) {
         errno = -ret;
@@ -1874,12 +1931,12 @@ int dup2(int old, int new)
 
 #ifdef __NR_dup3
 static __attribute__((unused))
-int dup3(int old, int new, int flags)
+S32 dup3(S32 old, S32 new, S32 flags)
 {
-    int ret = sys_dup3(old, new, flags);
+    S32 ret = linuxSysDup3(old, new, flags);
 
     if (ret < 0) {
-        SET_ERRNO(-ret);
+        errno = -ret;
         ret = -1;
     }
     return ret;
@@ -1887,9 +1944,9 @@ int dup3(int old, int new, int flags)
 #endif
 
 header_function
-int execve(const char *filename, char *const argv[], char *const envp[])
+S32 execve(Char *filename, Char *argv[], Char *envp[])
 {
-    int ret = sys_execve(filename, argv, envp);
+    S32 ret = linuxSysExecve(filename, argv, envp);
 
     if (ret < 0) {
         errno = -ret;
@@ -1899,9 +1956,9 @@ int execve(const char *filename, char *const argv[], char *const envp[])
 }
 
 header_function
-pid_t fork(void)
+PID fork(void)
 {
-    pid_t ret = sys_fork();
+    PID ret = linuxSysFork();
 
     if (ret < 0) {
         errno = -ret;
@@ -1911,9 +1968,9 @@ pid_t fork(void)
 }
 
 header_function
-int fsync(int fd)
+S32 fsync(S32 fd)
 {
-    int ret = sys_fsync(fd);
+    S32 ret = linuxSysFsync(fd);
 
     if (ret < 0) {
         errno = -ret;
@@ -1923,9 +1980,9 @@ int fsync(int fd)
 }
 
 header_function
-int getdents64(int fd, struct linux_dirent64 *dirp, int count)
+S32 getdents64(S32 fd, struct Directory_Entry64 *dirp, S32 count)
 {
-    int ret = sys_getdents64(fd, dirp, count);
+    S32 ret = linuxSysGetDEnts64(fd, dirp, count);
 
     if (ret < 0) {
         errno = -ret;
@@ -1935,21 +1992,9 @@ int getdents64(int fd, struct linux_dirent64 *dirp, int count)
 }
 
 static __attribute__((unused))
-pid_t getpgid(pid_t pid)
+PID getpgid(PID pid)
 {
-    pid_t ret = sys_getpgid(pid);
-
-    if (ret < 0) {
-        SET_ERRNO(-ret);
-        ret = -1;
-    }
-    return ret;
-}
-
-header_function
-pid_t getpgrp(void)
-{
-    pid_t ret = sys_getpgrp();
+    PID ret = linuxSysGetPGID(pid);
 
     if (ret < 0) {
         errno = -ret;
@@ -1959,9 +2004,9 @@ pid_t getpgrp(void)
 }
 
 header_function
-pid_t getpid(void)
+PID getpgrp(void)
 {
-    pid_t ret = sys_getpid();
+    PID ret = linuxSysGetpgrp();
 
     if (ret < 0) {
         errno = -ret;
@@ -1971,9 +2016,9 @@ pid_t getpid(void)
 }
 
 header_function
-int gettimeofday(struct timeval *tv, struct timezone *tz)
+PID getpid(void)
 {
-    int ret = sys_gettimeofday(tv, tz);
+    PID ret = linuxSysGetPID();
 
     if (ret < 0) {
         errno = -ret;
@@ -1983,9 +2028,9 @@ int gettimeofday(struct timeval *tv, struct timezone *tz)
 }
 
 header_function
-int ioctl(int fd, unsigned long req, void *value)
+S32 gettimeofday(struct timeval *tv, struct timezone *tz)
 {
-    int ret = sys_ioctl(fd, req, value);
+    S32 ret = linuxSysGetTimeOfDay(tv, tz);
 
     if (ret < 0) {
         errno = -ret;
@@ -1995,9 +2040,9 @@ int ioctl(int fd, unsigned long req, void *value)
 }
 
 header_function
-int kill(pid_t pid, int signal)
+S32 ioctl(S32 fd, U64 req, void *value)
 {
-    int ret = sys_kill(pid, signal);
+    S32 ret = linuxSysIoctl(fd, req, value);
 
     if (ret < 0) {
         errno = -ret;
@@ -2007,9 +2052,9 @@ int kill(pid_t pid, int signal)
 }
 
 header_function
-int link(const char *old, const char *new)
+S32 kill(PID pid, S32 signal)
 {
-    int ret = sys_link(old, new);
+    S32 ret = linuxSysKill(pid, signal);
 
     if (ret < 0) {
         errno = -ret;
@@ -2019,9 +2064,9 @@ int link(const char *old, const char *new)
 }
 
 header_function
-off_t lseek(int fd, off_t offset, int whence)
+S32 link(Char *old, Char *new)
 {
-    off_t ret = sys_lseek(fd, offset, whence);
+    S32 ret = linuxSysLink(old, new);
 
     if (ret < 0) {
         errno = -ret;
@@ -2031,9 +2076,21 @@ off_t lseek(int fd, off_t offset, int whence)
 }
 
 header_function
-int mkdir(const char *path, mode_t mode)
+Offset lseek(S32 fd, Offset offset, S32 whence)
 {
-    int ret = sys_mkdir(path, mode);
+    Offset ret = linuxSysLseek(fd, offset, whence);
+
+    if (ret < 0) {
+        errno = -(Sint)ret;
+        ret = -1;
+    }
+    return ret;
+}
+
+header_function
+S32 mkdir(Char *path, Mode mode)
+{
+    S32 ret = linuxSysMkdir(path, mode);
 
     if (ret < 0) {
         errno = -ret;
@@ -2043,9 +2100,96 @@ int mkdir(const char *path, mode_t mode)
 }
 
 header_function
-int mknod(const char *path, mode_t mode, dev_t dev)
+S32 mknod(Char *path, Mode mode, Dev dev)
 {
-    int ret = sys_mknod(path, mode, dev);
+    S32 ret = (S32)linuxSysMknod(path, mode, dev);
+
+    if (ret < 0) {
+        errno = -ret;
+        ret = -1;
+    }
+    return ret;
+}
+
+#define MAP_FAILED ((void *) -1)
+
+#define MAP_SHARED     0x01
+#define MAP_PRIVATE    0x02
+#define MAP_SHARED_VALIDATE 0x03
+#define MAP_TYPE       0x0f
+#define MAP_FIXED      0x10
+#define MAP_ANON       0x20
+#define MAP_ANONYMOUS  MAP_ANON
+#define MAP_NORESERVE  0x4000
+#define MAP_GROWSDOWN  0x0100
+#define MAP_DENYWRITE  0x0800
+#define MAP_EXECUTABLE 0x1000
+#define MAP_LOCKED     0x2000
+#define MAP_POPULATE   0x8000
+#define MAP_NONBLOCK   0x10000
+#define MAP_STACK      0x20000
+#define MAP_HUGETLB    0x40000
+#define MAP_SYNC       0x80000
+#define MAP_FIXED_NOREPLACE 0x100000
+#define MAP_FILE       0
+
+#define MAP_HUGE_SHIFT 26
+#define MAP_HUGE_MASK  0x3f
+#define MAP_HUGE_64KB  (16 << 26)
+#define MAP_HUGE_512KB (19 << 26)
+#define MAP_HUGE_1MB   (20 << 26)
+#define MAP_HUGE_2MB   (21 << 26)
+#define MAP_HUGE_8MB   (23 << 26)
+#define MAP_HUGE_16MB  (24 << 26)
+#define MAP_HUGE_32MB  (25 << 26)
+#define MAP_HUGE_256MB (28 << 26)
+#define MAP_HUGE_512MB (29 << 26)
+#define MAP_HUGE_1GB   (30 << 26)
+#define MAP_HUGE_2GB   (31 << 26)
+#define MAP_HUGE_16GB  (34U << 26)
+
+#define PROT_NONE      0
+#define PROT_READ      1
+#define PROT_WRITE     2
+#define PROT_EXEC      4
+#define PROT_GROWSDOWN 0x01000000
+#define PROT_GROWSUP   0x02000000
+
+#define MS_ASYNC       1
+#define MS_INVALIDATE  2
+#define MS_SYNC        4
+
+header_function
+void* mmap(void *start, Size length, S32 protection, S32 flags, S32 fd, Offset offset)
+{
+    if ((U64)offset & (KiB(4) - 1)) {
+        errno = EINVAL;
+        return MAP_FAILED;
+    }
+
+    if (length >= PTRDIFF_MAX) {
+        errno = ENOMEM;
+        return MAP_FAILED;
+    }
+
+    Uptr result = linuxSysMMap(start, length, protection, flags, fd, offset);
+
+    return (void *)result;
+}
+
+header_function
+S32 munmap (void *start, size_t length)
+{
+    S32 result = linuxSysMUnmap(start, length);
+    return result;
+}
+
+header_function
+S32 mount(Char *src, Char *tgt,
+          Char *fst, U64 flags,
+          void *data)
+{
+    S32 ret = linuxSysMount(src, tgt, fst, flags, data);
 
     if (ret < 0) {
         errno = -ret;
@@ -2055,11 +2199,9 @@ int mknod(const char *path, mode_t mode, dev_t dev)
 }
 
 header_function
-int mount(const char *src, const char *tgt,
-          const char *fst, unsigned long flags,
-          const void *data)
+S32 open(Char *path, S32 flags, Mode mode)
 {
-    int ret = sys_mount(src, tgt, fst, flags, data);
+    S32 ret = linuxSysOpen(path, flags, mode);
 
     if (ret < 0) {
         errno = -ret;
@@ -2069,9 +2211,9 @@ int mount(const char *src, const char *tgt,
 }
 
 header_function
-int open(const char *path, int flags, mode_t mode)
+S32 pivot_root(Char *new, Char *old)
 {
-    int ret = sys_open(path, flags, mode);
+    S32 ret = linuxSysPivotRoot(new, old);
 
     if (ret < 0) {
         errno = -ret;
@@ -2081,9 +2223,9 @@ int open(const char *path, int flags, mode_t mode)
 }
 
 header_function
-int pivot_root(const char *new, const char *old)
+S32 poll(Poll_FD *fds, S32 nfds, S32 timeout)
 {
-    int ret = sys_pivot_root(new, old);
+    S32 ret = linuxSysPoll(fds, nfds, timeout);
 
     if (ret < 0) {
         errno = -ret;
@@ -2093,33 +2235,21 @@ int pivot_root(const char *new, const char *old)
 }
 
 header_function
-int poll(struct pollfd *fds, int nfds, int timeout)
+SSize read(S32 fd, void *buf, Size count)
 {
-    int ret = sys_poll(fds, nfds, timeout);
+    SSize ret = linuxSysRead(fd, buf, count);
 
     if (ret < 0) {
-        errno = -ret;
+        errno = -(S32)ret;
         ret = -1;
     }
     return ret;
 }
 
 header_function
-ssize_t read(int fd, void *buf, size_t count)
+S32 reboot(S32 cmd)
 {
-    ssize_t ret = sys_read(fd, buf, count);
-
-    if (ret < 0) {
-        errno = -ret;
-        ret = -1;
-    }
-    return ret;
-}
-
-header_function
-int reboot(int cmd)
-{
-    int ret = sys_reboot(LINUX_REBOOT_MAGIC1, LINUX_REBOOT_MAGIC2, cmd, 0);
+    S32 ret = (S32)linuxSysReboot((S32)LINUX_REBOOT_MAGIC1, LINUX_REBOOT_MAGIC2, cmd, 0);
 
     if (ret < 0) {
         errno = -ret;
@@ -2134,17 +2264,17 @@ void *sbrk(intptr_t inc)
     void *ret;
 
     /* first call to find current end */
-    if ((ret = sys_brk(0)) && (sys_brk(ret + inc) == ret + inc))
-        return ret + inc;
+    if ((ret = linuxSysBrk(0)) && (linuxSysBrk((Char*)ret + inc) == (Char*)ret + inc))
+        return (Char*)ret + inc;
 
     errno = ENOMEM;
     return (void *)-1;
 }
 
 header_function
-int sched_yield(void)
+S32 sched_yield(void)
 {
-    int ret = sys_sched_yield();
+    S32 ret = linuxSysSchedYield();
 
     if (ret < 0) {
         errno = -ret;
@@ -2154,9 +2284,9 @@ int sched_yield(void)
 }
 
 header_function
-int select(int nfds, fd_set *rfds, fd_set *wfds, fd_set *efds, struct timeval *timeout)
+S32 select(S32 nfds, FD_Set *rfds, FD_Set *wfds, FD_Set *efds, Time_Value *timeout)
 {
-    int ret = sys_select(nfds, rfds, wfds, efds, timeout);
+    S32 ret = linuxSysSelect(nfds, rfds, wfds, efds, timeout);
 
     if (ret < 0) {
         errno = -ret;
@@ -2166,9 +2296,9 @@ int select(int nfds, fd_set *rfds, fd_set *wfds, fd_set *efds, struct timeval *t
 }
 
 header_function
-int setpgid(pid_t pid, pid_t pgid)
+S32 setpgid(PID pid, PID pgid)
 {
-    int ret = sys_setpgid(pid, pgid);
+    S32 ret = linuxSysSetPGID(pid, pgid);
 
     if (ret < 0) {
         errno = -ret;
@@ -2178,9 +2308,9 @@ int setpgid(pid_t pid, pid_t pgid)
 }
 
 header_function
-pid_t setsid(void)
+PID setsid(void)
 {
-    pid_t ret = sys_setsid();
+    PID ret = linuxSysSetSID();
 
     if (ret < 0) {
         errno = -ret;
@@ -2190,20 +2320,20 @@ pid_t setsid(void)
 }
 
 header_function
-unsigned int sleep(unsigned int seconds)
+U32 sleep(U32 seconds)
 {
-    struct timeval my_timeval = { seconds, 0 };
+    Time_Value time_value = { seconds, 0 };
 
-    if (sys_select(0, 0, 0, 0, &my_timeval) < 0)
-        return my_timeval.tv_sec + !!my_timeval.tv_usec;
+    if (linuxSysSelect(0, 0, 0, 0, &time_value) < 0)
+        return (U32)time_value.tv_sec + !!time_value.tv_usec;
     else
         return 0;
 }
 
 header_function
-int stat(const char *path, struct stat *buf)
+S32 stat(Char *path, Stat *buf)
 {
-    int ret = sys_stat(path, buf);
+    S32 ret = linuxSysStat(path, buf);
 
     if (ret < 0) {
         errno = -ret;
@@ -2213,9 +2343,9 @@ int stat(const char *path, struct stat *buf)
 }
 
 header_function
-int symlink(const char *old, const char *new)
+S32 symlink(Char *old, Char *new)
 {
-    int ret = sys_symlink(old, new);
+    S32 ret = linuxSysSymlink(old, new);
 
     if (ret < 0) {
         errno = -ret;
@@ -2225,21 +2355,21 @@ int symlink(const char *old, const char *new)
 }
 
 header_function
-int tcsetpgrp(int fd, pid_t pid)
+S32 tcsetpgrp(S32 fd, PID pid)
 {
     return ioctl(fd, TIOCSPGRP, &pid);
 }
 
 header_function
-mode_t umask(mode_t mode)
+Mode umask(Mode mode)
 {
-    return sys_umask(mode);
+    return linuxSysUmask(mode);
 }
 
 header_function
-int umount2(const char *path, int flags)
+S32 umount2(Char *path, S32 flags)
 {
-    int ret = sys_umount2(path, flags);
+    S32 ret = linuxSysUmount2(path, flags);
 
     if (ret < 0) {
         errno = -ret;
@@ -2249,9 +2379,9 @@ int umount2(const char *path, int flags)
 }
 
 header_function
-int unlink(const char *path)
+S32 unlink(Char *path)
 {
-    int ret = sys_unlink(path);
+    S32 ret = linuxSysUnlink(path);
 
     if (ret < 0) {
         errno = -ret;
@@ -2261,9 +2391,9 @@ int unlink(const char *path)
 }
 
 header_function
-pid_t wait4(pid_t pid, int *status, int options, struct rusage *rusage)
+PID wait4(PID pid, S32 *status, S32 options, RUsage *rusage)
 {
-    pid_t ret = sys_wait4(pid, status, options, rusage);
+    PID ret = linuxSysWait4(pid, status, options, rusage);
 
     if (ret < 0) {
         errno = -ret;
@@ -2273,9 +2403,9 @@ pid_t wait4(pid_t pid, int *status, int options, struct rusage *rusage)
 }
 
 header_function
-pid_t waitpid(pid_t pid, int *status, int options)
+PID waitpid(PID pid, S32 *status, S32 options)
 {
-    pid_t ret = sys_waitpid(pid, status, options);
+    PID ret = linuxSysWaitPID(pid, status, options);
 
     if (ret < 0) {
         errno = -ret;
@@ -2285,9 +2415,9 @@ pid_t waitpid(pid_t pid, int *status, int options)
 }
 
 header_function
-pid_t wait(int *status)
+PID wait(S32 *status)
 {
-    pid_t ret = sys_wait(status);
+    PID ret = linuxSysWait(status);
 
     if (ret < 0) {
         errno = -ret;
@@ -2297,172 +2427,20 @@ pid_t wait(int *status)
 }
 
 header_function
-ssize_t write(int fd, const void *buf, size_t count)
+SSize write(S32 fd, void *buf, size_t count)
 {
-    ssize_t ret = sys_write(fd, buf, count);
+    SSize ret = linuxSysWrite(fd, buf, count);
 
     if (ret < 0) {
-        errno = -ret;
+        errno = -(S32)ret;
         ret = -1;
     }
     return ret;
-}
-
-/* some size-optimized reimplementations of a few common str* and mem*
- * functions. They're marked static, except memcpy() and raise() which are used
- * by libgcc on ARM, so they are marked weak instead in order not to cause an
- * error when building a program made of multiple files (not recommended).
- */
-
-header_function
-void *memmove(void *dst, const void *src, size_t len)
-{
-    ssize_t pos = (dst <= src) ? -1 : (long)len;
-    void *ret = dst;
-
-    while (len--) {
-        pos += (dst <= src) ? 1 : -1;
-        ((char *)dst)[pos] = ((char *)src)[pos];
-    }
-    return ret;
-}
-
-header_function
-void *memset(void *dst, int b, size_t len)
-{
-    char *p = dst;
-
-    while (len--)
-        *(p++) = b;
-    return dst;
-}
-
-header_function
-int memcmp(const void *s1, const void *s2, size_t n)
-{
-    size_t ofs = 0;
-    char c1 = 0;
-
-    while (ofs < n && !(c1 = ((char *)s1)[ofs] - ((char *)s2)[ofs])) {
-        ofs++;
-    }
-    return c1;
-}
-
-header_function
-char *strcpy(char *dst, const char *src)
-{
-    char *ret = dst;
-
-    while ((*dst++ = *src++));
-    return ret;
-}
-
-header_function
-char *strchr(const char *s, int c)
-{
-    while (*s) {
-        if (*s == (char)c)
-            return (char *)s;
-        s++;
-    }
-    return NULL;
-}
-
-header_function
-char *strrchr(const char *s, int c)
-{
-    const char *ret = NULL;
-
-    while (*s) {
-        if (*s == (char)c)
-            ret = s;
-        s++;
-    }
-    return (char *)ret;
-}
-
-header_function
-size_t nolibc_strlen(const char *str)
-{
-    size_t len;
-
-    for (len = 0; str[len]; len++);
-    return len;
-}
-
-#define strlen(str) ({                          \
-            __builtin_constant_p((str)) ?       \
-                __builtin_strlen((str)) :       \
-                nolibc_strlen((str));           \
-        })
-
-header_function
-int isdigit(int c)
-{
-    return (unsigned int)(c - '0') <= 9;
-}
-
-header_function
-long atol(const char *s)
-{
-    unsigned long ret = 0;
-    unsigned long d;
-    int neg = 0;
-
-    if (*s == '-') {
-        neg = 1;
-        s++;
-    }
-
-    while (1) {
-        d = (*s++) - '0';
-        if (d > 9)
-            break;
-        ret *= 10;
-        ret += d;
-    }
-
-    return neg ? -ret : ret;
-}
-
-header_function
-int atoi(const char *s)
-{
-    return atol(s);
-}
-
-header_function
-const char *ltoa(long in)
-{
-    /* large enough for -9223372036854775808 */
-    static char buffer[21];
-    char       *pos = buffer + sizeof(buffer) - 1;
-    int         neg = in < 0;
-    unsigned long n = neg ? -in : in;
-
-    *pos-- = '\0';
-    do {
-        *pos-- = '0' + n % 10;
-        n /= 10;
-        if (pos < buffer)
-            return pos + 1;
-    } while (n);
-
-    if (neg)
-        *pos-- = '-';
-    return pos + 1;
-}
-
-__attribute__((weak,unused))
-void *memcpy(void *dst, const void *src, size_t len)
-{
-    return memmove(dst, src, len);
 }
 
 /* needed by libgcc for divide by zero */
-__attribute__((weak,unused))
-int raise(int signal)
+header_function
+S32 raise(S32 signal)
 {
     return kill(getpid(), signal);
 }
@@ -2470,25 +2448,17 @@ int raise(int signal)
 /* Here come a few helper functions */
 
 header_function
-void FD_ZERO(fd_set *set)
+void FD_SET(S32 fd, FD_Set *set)
 {
-    memset(set, 0, sizeof(*set));
-}
-
-header_function
-void FD_SET(int fd, fd_set *set)
-{
-    if (fd < 0 || fd >= FD_SETSIZE)
+    if (fd < 0 || fd >= FD_SETSIZE) {
         return;
-    set->fd32[fd / 32] |= 1 << (fd & 31);
+    } else {
+        set->fd32[fd / 32] |= 1 << (fd & 31);
+        return;
+    }
 }
 
-/* WARNING, it only deals with the 4096 first majors and 256 first minors */
-header_function
-dev_t makedev(unsigned int major, unsigned int minor)
-{
-    return ((major & 0xfff) << 8) | (minor & 0xff);
-}
+Sint main (Sint, Char *[]);
 
 #define NLIB_LINUX_H_INCLUDE_GUARD
 #endif

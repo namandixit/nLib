@@ -67,8 +67,8 @@ header_function B64 mathIsPowerOf2U64 (U64 x) { B64 b = (x & (x - 1)) == 0; retu
         )(x)
 
 
-header_function U32 mathNextPowerOf2U32 (U32 x) { U32 y = mathIsPowerOf2U32(x) ? (1U << (mathLog2U32(x) + 1U)) : x; return y; }
-header_function U64 mathNextPowerOf2U64 (U64 x) { U64 y = mathIsPowerOf2U64(x) ? (1LLU << (mathLog2U64(x) + 1LLU)) : x; return y; }
+header_function U32 mathNextPowerOf2U32 (U32 x) { U32 y = mathIsPowerOf2U32(x) ? x : (1U << (mathLog2U32(x) + 1U)); return y; }
+header_function U64 mathNextPowerOf2U64 (U64 x) { U64 y = mathIsPowerOf2U64(x) ? x : (1LLU << (mathLog2U64(x) + 1LLU)); return y; }
 
 # define mathPrevPowerOf2(x) mathGeneric((x),                    \
                                         U32 : mathPrevPowerOf2U32 \

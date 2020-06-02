@@ -1,11 +1,12 @@
 /*
  * Creator: Naman Dixit
  * Notice: © Copyright 2019 Naman Dixit
+ * SPDX-License-Identifier: BSL-1.0 OR Unlicense
  */
 
 /* Parts of the file are using a modified version of the Ryu's C implementation.
  * Original work Copyright 2018 Ulf Adams
- *
+ * See https://github.com/ulfjack/ryu/blob/master/LICENSE-Boost for more details
  */
 
 /* Define:

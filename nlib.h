@@ -537,6 +537,7 @@ typedef struct Sbuf_Header {
     Size cap; // NOTE(naman): Maximum number of elements that can be stored
     Size len; // NOTE(naman): Count of elements actually stored
     void *userdata;
+    B64 fixed; // Can't use allocations/reallocation
     Byte buf[];
 } Sbuf_Header;
 
@@ -545,12 +546,21 @@ typedef struct Sbuf_Header {
 # define sbuf_Len(sb)         ((sb) ? sbuf_GetHeader(sb)->len : 0U)
 # define sbuf_Cap(sb)         ((sb) ? sbuf_GetHeader(sb)->cap : 0U)
 
+# define sbufCreate(t, m, s)  sbuf_CreateFixed(sizeof(t), m, s)
+// NOTE(naman): In sbufAdd, we check if there is enough space even after growing the sbuf
+// to deal with fixed sbufs (since sbuf_Grow will simply return in that case).
+// Also, if there wasn;t enough space, we return existing length just to avoid returning void
+// which is not allowed by C99.
 # define sbufAdd(sb, ...)     ((sb) = sbuf_Grow((sb), sizeof(*(sb))),   \
-                               (sb)[sbuf_Len(sb)] = (__VA_ARGS__),      \
-                               ((sbuf_GetHeader(sb))->len)++)
-# define sbufDelete(sb)       ((sb) ?                                   \
+                               ((sbuf_Len(sb) + 1) <= sbuf_Cap(sb) ?     \
+                                ((sb)[sbuf_Len(sb)] = (__VA_ARGS__),    \
+                                 ((sbuf_GetHeader(sb))->len)++) :        \
+                                (claim(!(sbuf_GetHeader(sb)->fixed) &&   \
+                                       "Fixed sbuf's space full"),      \
+                                 (sbuf_GetHeader(sb))->len)))
+# define sbufDelete(sb)       ((sb) && !(sbuf_GetHeader(sb)->fixed) ?    \
                                (sbufMemoryDeallocate(sbuf_GetHeader(sb)), (sb) = NULL) : \
-                               0)
+                               ((sb) ? ((sb) = NULL) : 0))
 # define sbufClear(sb)        ((sb) ?                                   \
                                (memset((sb), 0, sbufSizeof(sb)),        \
                                 sbuf_GetHeader(sb)->len = 0) :          \
@@ -576,8 +586,22 @@ typedef struct Sbuf_Header {
 # endif
 
 header_function
+void* sbuf_CreateFixed (Size elem_size, void *memory, Size memory_size)
+{
+    Sbuf_Header *header = memory;
+
+    header->cap = (memory_size - sizeof(*header)) / elem_size;
+    header->len = 0;
+    header->fixed = true;
+
+    return header->buf;
+}
+
+header_function
 void* sbuf_Grow (void *buf, Size elem_size)
 {
+    if ((buf != NULL) && sbuf_GetHeader(buf)->fixed) return buf;
+
     if ((sbuf_Len(buf) + 1) <= sbuf_Cap(buf)) {
         return buf;
     } else {
@@ -604,6 +628,8 @@ void* sbuf_Grow (void *buf, Size elem_size)
 header_function
 void* sbuf_Resize (void *buf, Size elem_count, Size elem_size)
 {
+    if ((buf != NULL) && sbuf_GetHeader(buf)->fixed) return buf;
+
     Size new_cap = elem_count;
 
     Size new_size = (new_cap * elem_size) + sizeof(Sbuf_Header);

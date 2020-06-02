@@ -1,7 +1,7 @@
 /*
  * Creator: Naman Dixit
  * Notice: © Copyright 2020 Naman Dixit
- * SPDX-License-Identifier: BSL-1.0 OR Unlicense
+ * SPDX-License-Identifier: 0BSD OR BSL-1.0 OR Unlicense
  */
 
 #if !defined(NLIB_DEBUG_H_INCLUDE_GUARD)

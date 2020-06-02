@@ -9,7 +9,7 @@
  */
 
 // Takes 12151 bytes (11.86 KiB) without the unit test
-// Command: readelf -s test.linux.x64.libc | perl -ne 'if(/(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)/) { print $3 . " " . $8. "\n";}'|sort -n | grep -i print
+// Command: readelf -s test.linux.x64.libc | perl -ne 'if(/(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)/) { print $3 . " " . $8. "\n";}' |sort -n | grep -i print | awk '{count=count+$1}END{print count/1024}'
 
 #if defined(NLIB_PRINT_INTERFACE_ONLY)
 

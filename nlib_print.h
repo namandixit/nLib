@@ -3,6 +3,11 @@
  * Notice: © Copyright 2019 Naman Dixit
  */
 
+/* Parts of the file are using a modified version of the Ryu's C implementation.
+ * Original work Copyright 2018 Ulf Adams
+ *
+ */
+
 /* Define:
  * NLIB_PRINT_RYU_FLOAT for Ryu float->str algorithm (default)
  * NLIB_PRINT_BAD_FLOAT for cheap <U64 algorithm
@@ -579,6 +584,11 @@ Size printStringVarArg (Char *buffer, Char *format, va_list va)
                         B32 power_of_e_nonsense = false;
                         Sint print_exponent = 0;
 
+                        // NOTE(naman): We just overload 'F' to remove lower bound too
+                        if (capital && (flags & Print_Flags_FLOAT_FIXED)) {
+                            flags |= Print_Flags_FLOAT_NO_LOW_BOUND;
+                        }
+
                         { // Limit the "range" of float
                             // log10(2^64) = 19 = max integral F64 storable in U64 without
                             // loss of information
@@ -624,8 +634,7 @@ Size printStringVarArg (Char *buffer, Char *format, va_list va)
                                 }
                             }
 
-                            if (true) {
-//                            if (!(flags & Print_Flags_FLOAT_NO_LOW_BOUND)) {
+                            if (!(flags & Print_Flags_FLOAT_NO_LOW_BOUND)) {
                                 // 10^-(precision-1)
                                 // (so that we get atleast one digit)
                                 F64 powers_of_10[20] = {
@@ -1174,11 +1183,6 @@ Size printStringVarArg (Char *buffer, Char *format, va_list va)
                                 len += 2;
                             }
 
-                        }
-
-                        // Factional part
-                        if (flags & Print_Flags_FLOAT_FIXED) {
-                        } else if (flags & Print_Flags_FLOAT_EXP) {
                         }
 #  endif
                     }

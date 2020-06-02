@@ -3,6 +3,11 @@
  * Notice: © Copyright 2019 Naman Dixit
  */
 
+/* Define:
+ * NLIB_PRINT_RYU_FLOAT for Ryu float->str algorithm (default)
+ * NLIB_PRINT_BAD_FLOAT for cheap <U64 algorithm
+ */
+
 // Takes 12151 bytes (11.86 KiB) without the unit test
 // Command: readelf -s test.linux.x64.libc | perl -ne 'if(/(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)/) { print $3 . " " . $8. "\n";}'|sort -n | grep -i print
 
@@ -35,19 +40,25 @@ header_function Size errv (Char *format, va_list ap);
 
 #elif !defined(NLIB_PRINT_H_INCLUDE_GUARD)
 
-# if !defined(NLIB_PRINT_BAD_FLOAT)
+# if !defined(NLIB_PRINT_RYU_FLOAT) && !defined(NLIB_PRINT_BAD_FLOAT)
+#  define NLIB_PRINT_RYU_FLOAT
+# endif
+
+# if defined(NLIB_PRINT_RYU_FLOAT)
 #  include "nlib_ryu.h"
-# endif // defined(NLIB_PRINT_BAD_FLOAT)
+# endif // defined(NLIB_PRINT_RYU_FLOAT)
 
 typedef enum Print_Flags {
-    Print_Flags_LEFT_JUSTIFIED     = 1u << 0,
-    Print_Flags_ALTERNATE_FORM     = 1u << 1,
-    Print_Flags_LEADING_PLUS       = 1u << 2,
-    Print_Flags_LEADING_SPACE      = 1u << 3,
-    Print_Flags_LEADING_ZERO       = 1u << 4,
-    Print_Flags_INT64              = 1u << 5,
-    Print_Flags_NEGATIVE           = 1u << 6,
-    Print_Flags_FLOAT_NO_LOW_BOUND = 1u << 7,
+    Print_Flags_LEFT_JUSTIFIED = 1u << 0,
+    Print_Flags_ALTERNATE_FORM = 1u << 1,
+    Print_Flags_LEADING_PLUS   = 1u << 2,
+    Print_Flags_LEADING_SPACE  = 1u << 3,
+    Print_Flags_LEADING_ZERO   = 1u << 4,
+    Print_Flags_INT64          = 1u << 5,
+    Print_Flags_NEGATIVE       = 1u << 6,
+    Print_Flags_FLOAT_FIXED    = 1u << 7,
+    Print_Flags_FLOAT_EXP      = 1u << 8,
+    Print_Flags_FLOAT_HEX      = 1u << 9,
 } Print_Flags;
 
 header_function
@@ -156,15 +167,15 @@ Size printStringVarArg (Char *buffer, Char *format, va_list va)
                 } break;
             }
 
-#  define NLIB_PRINT_SIZE 512ULL // big enough for e308 (with commas) or e-307
+#  define NLIB_PRINT_SIZE 2048ULL
             Char num_str[NLIB_PRINT_SIZE];
             Char *str = NULL;
 
             Char head_str[8] = {0};
             Size head_index = 0;
 
-//            Char tail_str[8] = {0};
-//            Size tail_index = 0;
+            Char tail_str[8] = {0};
+            Size tail_index = 0;
 
             Size len = 0;
 
@@ -460,15 +471,21 @@ Size printStringVarArg (Char *buffer, Char *format, va_list va)
                     len = (((Uptr)num_str + NLIB_PRINT_SIZE) - (Uptr)str);
                 } break;
 
-#  if defined(NLIB_PRINT_BAD_FLOAT)
-                case 'F': { // Only upper bound for scientific notation
-                    flags |= Print_Flags_FLOAT_NO_LOW_BOUND;
-                } fallthrough;
-
-                case 'f': { // floating-point number
-                    if (precision < 0) {
-                        precision = 6;
+                case 'f': case 'F':
+                case 'e': case 'E':
+                case 'a': case 'A': {
+                    switch (fmt[0]) {
+                        case 'f': case 'F': { flags |= Print_Flags_FLOAT_FIXED;   } break;
+                        case 'e': case 'E': { flags |= Print_Flags_FLOAT_EXP;     } break;
+                        case 'a': case 'A': { flags |= Print_Flags_FLOAT_HEX;     } break;
                     }
+
+                    B32 capital = false;
+                    switch (fmt[0]) {
+                        case 'F': case 'E': case 'A': { capital = true;  } break;
+                    }
+
+                    if (precision < 0) precision = 6;
 
                     F64 f64 = va_arg(va, F64);
                     union FU64 { F64 f; U64 u;} fu64 = {.f = f64};
@@ -481,41 +498,86 @@ Size printStringVarArg (Char *buffer, Char *format, va_list va)
                        --------------------------------------------
                     */
 
-#   define            MANTISSA_BITS 52
-#   define            EXPONENT_BITS 11
-#   define            BIAS 1023
+#  define            F64_MANTISSA_BITS 52
+#  define            F64_EXPONENT_BITS 11
+#  define            F64_BIAS 1023
 
                     // Is the top bit set?
-                    B32 negative  = ((bits >> (MANTISSA_BITS + EXPONENT_BITS)) & 1) != 0;
+                    B32 negative  = ((bits >> (F64_MANTISSA_BITS + F64_EXPONENT_BITS)) & 1) != 0;
                     // Remove all mantissa bits ------------------ and then reset the sign bit
-                    U32 exponent_biased = (((U32)(bits >> MANTISSA_BITS)) &
-                                           ((1U << EXPONENT_BITS) - 1U));
+                    U32 exponent_biased = (((U32)(bits >> F64_MANTISSA_BITS)) &
+                                           ((1U << F64_EXPONENT_BITS) - 1U));
+                    U32 exponent = exponent_biased - F64_BIAS;
                     // Reset all bits except for the mantissa bits
-                    U64 mantissa  = bits & ((1ULL << MANTISSA_BITS) - 1ULL);
+                    U64 mantissa  = bits & ((1ULL << F64_MANTISSA_BITS) - 1ULL);
 
+                    // TODO(naman): Remove this later
+                    unused_variable(exponent);
 
                     if (negative) {
                         flags |= Print_Flags_NEGATIVE;
                     }
 
-                    if (exponent_biased == 0x7FF) { // Handle NaN and Inf
-                        str = num_str + NLIB_PRINT_SIZE;
+                    { // Leading String
+                        if (flags & Print_Flags_NEGATIVE) {
+                            head_str[head_index++] = '-';
+                        } else if (flags & Print_Flags_LEADING_PLUS) {
+                            head_str[head_index++] = '+';
+                        } else if (flags & Print_Flags_LEADING_SPACE) {
+                            if (!(flags & Print_Flags_NEGATIVE)) {
+                                head_str[head_index++] = ' ';
+                            }
+                        }
 
-                        if (mantissa) {
-                            *--str = 'N';
-                            *--str = 'a';
-                            *--str = 'N';
+                        if (flags & Print_Flags_LEADING_ZERO) {
+                            head_str[head_index++] = '0';
+                        }
+                    }
+
+                    if (exponent_biased == 0x7FF) { // Handle NaN and Inf
+                        if (capital) {
+                            if (mantissa) {
+                                str = "NAN";
+                            } else {
+                                str = "INF";
+                            }
                         } else {
-                            *--str = 'f';
-                            *--str = 'n';
-                            *--str = 'I';
+                            if (mantissa) {
+                                str = "nan";
+                            } else {
+                                str = "inf";
+                            }
+                        }
+
+                        len = 3;
+                    }
+
+                    if (exponent_biased == 0 && mantissa == 0) {
+                        str = num_str;
+
+                        *str++ = '0';
+
+                        if (precision > 0) {
+                            *str++ = '.';
+                            trailing_zeroes += precision;
+                        }
+
+                        len = (Size)(Dptr)(str - num_str);
+                        str = num_str;
+
+                        if (flags & Print_Flags_FLOAT_EXP) {
+                            tail_str[tail_index++] = 'e';
+                            tail_str[tail_index++] = '+';
+                            tail_str[tail_index++] = '0';
+                            tail_str[tail_index++] = '0';
                         }
                     }
 
                     if (str == NULL) {
+#  if defined(NLIB_PRINT_BAD_FLOAT)
                         F64 value = (f64 < 0) ? -f64 : f64;
                         B32 power_of_e_nonsense = false;
-                        Sint exponent = 0;
+                        Sint print_exponent = 0;
 
                         { // Limit the "range" of float
                             // log10(2^64) = 19 = max integral F64 storable in U64 without
@@ -526,84 +588,118 @@ Size printStringVarArg (Char *buffer, Char *format, va_list va)
                                 power_of_e_nonsense = true;
                                 if (value >= 1e256) {
                                     value /= 1e256;
-                                    exponent += 256;
+                                    print_exponent += 256;
                                 }
                                 if (value >= 1e128) {
                                     value /= 1e128;
-                                    exponent += 128;
+                                    print_exponent += 128;
                                 }
                                 if (value >= 1e64) {
                                     value /= 1e64;
-                                    exponent += 64;
+                                    print_exponent += 64;
                                 }
                                 if (value >= 1e32) {
                                     value /= 1e32;
-                                    exponent += 32;
+                                    print_exponent += 32;
                                 }
                                 if (value >= 1e16) {
                                     value /= 1e16;
-                                    exponent += 16;
+                                    print_exponent += 16;
                                 }
                                 if (value >= 1e8) {
                                     value /= 1e8;
-                                    exponent += 8;
+                                    print_exponent += 8;
                                 }
                                 if (value >= 1e4) {
                                     value /= 1e4;
-                                    exponent += 4;
+                                    print_exponent += 4;
                                 }
                                 if (value >= 1e2) {
                                     value /= 1e2;
-                                    exponent += 2;
+                                    print_exponent += 2;
                                 }
                                 if (value >= 1e1) {
                                     value /= 1e1;
-                                    exponent += 1;
+                                    print_exponent += 1;
                                 }
                             }
 
-                            if (!(flags & Print_Flags_FLOAT_NO_LOW_BOUND)) {
+                            if (true) {
+//                            if (!(flags & Print_Flags_FLOAT_NO_LOW_BOUND)) {
                                 // 10^-(precision-1)
                                 // (so that we get atleast one digit)
-                                F64 lower_threshold = pow(10.0, 1.0 - (F64)precision);
+                                F64 powers_of_10[20] = {
+                                    1.000000,
+                                    10.000000,
+                                    100.000000,
+                                    1000.000000,
+                                    10000.000000,
+                                    100000.000000,
+                                    1000000.000000,
+                                    10000000.000000,
+                                    100000000.000000,
+                                    1000000000.000000,
+                                    10000000000.000000,
+                                    100000000000.000000,
+                                    1000000000000.000000,
+                                    10000000000000.000000,
+                                    100000000000000.000000,
+                                    1000000000000000.000000,
+                                    10000000000000000.000000,
+                                    100000000000000000.000000,
+                                    1000000000000000000.000000,
+                                    10000000000000000000.000000,
+                                };
+
+                                F64 lower_threshold;
+                                // lower_threshold = pow(10.0, 1.0 - (F64)precision);
+                                S32 power = 1 - precision;
+                                if (power < 20) {
+                                    lower_threshold = powers_of_10[power];
+                                } else {
+                                    lower_threshold = 1.0;
+                                    for (Sint i = power; i > 0; i--) {
+                                        lower_threshold *= 10.0;
+                                    }
+                                }
 
                                 if (value > 0 && value <= lower_threshold) {
                                     power_of_e_nonsense = true;
                                     if (value < 1e-255) {
                                         value *= 1e256;
-                                        exponent -= 256;
+                                        print_exponent -= 256;
                                     }
                                     if (value < 1e-127) {
                                         value *= 1e128;
-                                        exponent -= 128;
+                                        print_exponent -= 128;
                                     }
                                     if (value < 1e-63) {
                                         value *= 1e64;
-                                        exponent -= 64;
+                                        print_exponent -= 64;
                                     }
                                     if (value < 1e-31) {
                                         value *= 1e32;
-                                        exponent -= 32;
+                                        print_exponent -= 32;
                                     }
                                     if (value < 1e-15) {
                                         value *= 1e16;
-                                        exponent -= 16;
+                                        print_exponent -= 16;
                                     }
                                     if (value < 1e-7) {
                                         value *= 1e8;
-                                        exponent -= 8;
+                                        print_exponent -= 8;
                                     }
                                     if (value < 1e-3) {
                                         value *= 1e4;
-                                        exponent -= 4;
+                                        print_exponent -= 4;
                                     }
                                     if (value < 1e-1) {
                                         value *= 1e2;
-                                        exponent -= 2;
+                                        print_exponent -= 2;
                                     }
                                     if (value < 1e0) {
                                         value *= 1e1;
-                                        exponent -= 1;
+                                        print_exponent -= 1;
                                     }
                                 }
                             }
@@ -622,8 +718,8 @@ Size printStringVarArg (Char *buffer, Char *format, va_list va)
                             if (decimal_part >= 10000000000000000000ULL) { // 19 zeroes
                                 decimal_part = 0;
                                 integral_part++;
-                                if (exponent != 0 && integral_part >= 10) {
-                                    exponent++;
+                                if (print_exponent != 0 && integral_part >= 10) {
+                                    print_exponent++;
                                     integral_part = 1;
                                 }
                             }
@@ -631,10 +727,10 @@ Size printStringVarArg (Char *buffer, Char *format, va_list va)
 
                         str = num_str + NLIB_PRINT_SIZE;
 
-                        { // Write exponent (if needed)
+                        { // Write print_exponent (if needed)
                             if (power_of_e_nonsense) {
                                 // convert to string
-                                Sint num_dec = (exponent > 0) ? exponent : -exponent;
+                                Sint num_dec = (print_exponent > 0) ? print_exponent : -print_exponent;
 
                                 Char *str_now = str;
 
@@ -651,7 +747,7 @@ Size printStringVarArg (Char *buffer, Char *format, va_list va)
                                     *--str = '0';
                                 }
 
-                                if (exponent < 0) {
+                                if (print_exponent < 0) {
                                     *--str = '-';
                                 } else {
                                     *--str = '+';
@@ -717,110 +813,379 @@ Size printStringVarArg (Char *buffer, Char *format, va_list va)
                                 integral_part = integral_part / 10;
                             } while (integral_part);
                         }
-                    }
 
-                    // get the length that we copied
-                    len = (((Uptr)num_str + NLIB_PRINT_SIZE) - (Uptr)str);
+                        // get the length that we copied
+                        len = (((Uptr)num_str + NLIB_PRINT_SIZE) - (Uptr)str);
 
-                    if (len == 0) {
-                        *--str = '0';
-                        len = 1;
-                    }
-
-                    if (flags & Print_Flags_NEGATIVE) {
-                        head_str[head_index++] = '-';
-                    } else if (flags & Print_Flags_LEADING_PLUS) {
-                        head_str[head_index++] = '+';
-                    } else if (flags & Print_Flags_LEADING_SPACE) {
-                        if (!(flags & Print_Flags_NEGATIVE)) {
-                            head_str[head_index++] = ' ';
+                        if (len == 0) {
+                            *--str = '0';
+                            len = 1;
                         }
-                    }
+#  elif defined(NLIB_PRINT_RYU_FLOAT)
+                        str = num_str;
+//                      Sint ryu_len = ryu_d2fixed_buffered_n(f64, (U32)precision, str);
+//                      len = (Size)ryu_len;
 
-                    if (flags & Print_Flags_LEADING_ZERO) {
-                        head_str[head_index++] = '0';
-                    }
+                        S32 e2;
+                        U64 m2;
 
-                    precision = 0;
-
-                } break;
-#  else
-                case 'f':
-                case 'F': {
-                    if (precision < 0) {
-                        precision = 6;
-                    }
-
-                    F64 f64 = va_arg(va, F64);
-                    union FU64 { F64 f; U64 u;} fu64 = {.f = f64};
-                    U64 bits = fu64.u;
-
-                    /* NOTE(naman): 64-bit IEEE-754 Floating Point structure
-                       ____________________________________________
-                       |  Sign bit | Exponent bits | Mantissa bits|
-                       |     1     |       11      |      52      |
-                       --------------------------------------------
-                    */
-
-#   define            MANTISSA_BITS 52
-#   define            EXPONENT_BITS 11
-#   define            BIAS 1023
-
-                    // Is the top bit set?
-                    B32 negative  = ((bits >> (MANTISSA_BITS + EXPONENT_BITS)) & 1) != 0;
-                    // Remove all mantissa bits ------------------ and then reset the sign bit
-                    U32 exponent_biased = (((U32)(bits >> MANTISSA_BITS)) &
-                                           ((1U << EXPONENT_BITS) - 1U));
-                    // Reset all bits except for the mantissa bits
-                    U64 mantissa  = bits & ((1ULL << MANTISSA_BITS) - 1ULL);
-
-                    if (negative) {
-                        flags |= Print_Flags_NEGATIVE;
-                    }
-
-                    if (exponent_biased == 0x7FF) { // Handle NaN and Inf
-                        str = num_str + NLIB_PRINT_SIZE;
-
-                        if (mantissa) {
-                            *--str = 'N';
-                            *--str = 'a';
-                            *--str = 'N';
+                        if (exponent_biased == 0) {
+                            e2 = 1 - F64_BIAS - F64_MANTISSA_BITS;
+                            m2 = mantissa;
                         } else {
-                            *--str = 'f';
-                            *--str = 'n';
-                            *--str = 'I';
+                            e2 = (S32)exponent_biased - F64_BIAS - F64_MANTISSA_BITS;
+                            m2 = (1ULL << F64_MANTISSA_BITS) | mantissa;
                         }
-                    }
 
-                    {
-                    }
+#   define INDEX_FOR_EXPONENT(e) ((e) + 15) / 16
+#   define POW_10_BITS_FOR_INDEX(index) (16 * (index) + RYU_POW10_ADDITIONAL_BITS)
+// +1 for ceil, +16 for mantissa, +8 to round up when dividing by 9
+#   define LENGTH_FOR_INDEX(index) ((ryu_log10Pow2(16 * ((S32)index)) + 1 + 16 + 8) / 9)
 
-                    // get the length that we copied
-                    len = (((Uptr)num_str + NLIB_PRINT_SIZE) - (Uptr)str);
+                        if (flags & Print_Flags_FLOAT_FIXED) {
+                            B32 has_seen_non_zero_digit = false;
 
-                    if (len == 0) {
-                        *--str = '0';
-                        len = 1;
-                    }
+                            if (e2 >= -52) {
+                                U32 index = e2 < 0 ? 0 : INDEX_FOR_EXPONENT((U32)e2);
+                                U32 p10_bits = POW_10_BITS_FOR_INDEX(index);
+                                S32 index_length = LENGTH_FOR_INDEX(index);
 
-                    if (flags & Print_Flags_NEGATIVE) {
-                        head_str[head_index++] = '-';
-                    } else if (flags & Print_Flags_LEADING_PLUS) {
-                        head_str[head_index++] = '+';
-                    } else if (flags & Print_Flags_LEADING_SPACE) {
-                        if (!(flags & Print_Flags_NEGATIVE)) {
-                            head_str[head_index++] = ' ';
+                                for (S32 i = index_length - 1; i >= 0; --i) {
+                                    U32 j = p10_bits - (U32)e2;
+                                    // Temporary: j is usually around 128, and by shifting a bit, we push it to 128 or above, which is
+                                    // a slightly faster code path in ryu_mulShift_mod1e9. Instead, we can just increase the multipliers.
+                                    const U64 *table_lookup = RYU_POW10_SPLIT[RYU_POW10_OFFSET[index] + i];
+                                    U32 digits = ryu_mulShift_mod1e9(m2 << 8,
+                                                                     table_lookup,
+                                                                     (S32)(j + 8));
+                                    if (has_seen_non_zero_digit) {
+                                        ryu_append_nine_digits(digits, str + len);
+                                        len += 9;
+                                    } else if (digits != 0) {
+                                        U32 olength = ryu_decimalLength9(digits);
+                                        ryu_append_n_digits(olength, digits, str + len);
+                                        len += olength;
+                                        has_seen_non_zero_digit = true;
+                                    } else {
+                                        // skip the digits
+                                    }
+                                }
+                            }
+
+                            if (!has_seen_non_zero_digit) {
+                                str[len++] = '0';
+                            }
+
+                            if (precision > 0) {
+                                str[len++] = '.';
+                            }
+
+                            if (e2 >= 0) {
+                                if (precision > 0) {
+                                    trailing_zeroes += precision;
+                                }
+                            } else {
+                                S32 idx = -e2 / 16;
+
+                                U32 blocks = ((U32)precision / 9) + 1;
+                                U32 i = 0;
+
+                                if (blocks <= RYU_MIN_BLOCK_2[idx]) {
+                                    i = blocks;
+                                    trailing_zeroes += precision;
+                                } else if (i < RYU_MIN_BLOCK_2[idx]) {
+                                    i = RYU_MIN_BLOCK_2[idx];
+                                    trailing_zeroes += 9 * i;
+                                }
+
+                                // 0 = don't round up; 1 = round up unconditionally; 2 = round up if odd.
+                                Sint round_up = 0;
+
+                                for (; i < blocks; ++i) {
+                                    S32 j = RYU_ADDITIONAL_BITS_2 + (-e2 - 16 * idx);
+                                    U32 p = RYU_POW10_OFFSET_2[idx] + i - RYU_MIN_BLOCK_2[idx];
+
+                                    if (p >= RYU_POW10_OFFSET_2[idx + 1]) {
+                                        // If the remaining digits are all 0, then we might as well use memset.
+                                        // No rounding required in this case.
+                                        U32 fill = (U32)precision - 9 * i;
+                                        trailing_zeroes += fill;
+                                        break;
+                                    }
+
+                                    // Temporary: j is usually around 128, and by shifting a bit, we push it to 128 or above, which is
+                                    // a slightly faster code path in ryu_mulShift_mod1e9. Instead, we can just increase the multipliers.
+                                    U32 digits = ryu_mulShift_mod1e9(m2 << 8, RYU_POW10_SPLIT_2[p], j + 8);
+
+                                    if (i < blocks - 1) {
+                                        ryu_append_nine_digits(digits, str + len);
+                                        len += 9;
+                                    } else {
+                                        U32 maximum = (U32)precision - 9 * i;
+                                        U32 last_digit = 0;
+
+                                        for (U32 k = 0; k < 9 - maximum; ++k) {
+                                            last_digit = digits % 10;
+                                            digits /= 10;
+                                        }
+
+                                        if (last_digit != 5) {
+                                            round_up = last_digit > 5;
+                                        } else {
+                                            // Is m * 10^(additionalDigits + 1) / 2^(-e2) integer?
+                                            S32 required_twos = -e2 - (S32) precision - 1;
+                                            B32 any_trailing_zeros = (required_twos <= 0)
+                                                || (required_twos < 60 &&
+                                                    ryu_multipleOfPowerOf2(m2,
+                                                                           (U32)required_twos));
+                                            round_up = any_trailing_zeros ? 2 : 1;
+                                        }
+
+                                        if (maximum > 0) {
+                                            ryu_append_c_digits(maximum, digits, str + len);
+                                            len += maximum;
+                                        }
+
+                                        break;
+                                    }
+                                }
+
+                                if (round_up != 0) {
+                                    Sint round_index = (Sint)len;
+                                    Sint dot_index = 0; // '.' can't be located at index 0
+                                    while (true) {
+                                        --round_index;
+                                        Char c;
+# if defined(COMPILER_CLANG)
+#  pragma clang diagnostic push
+#  pragma clang diagnostic ignored "-Wcomma"
+# endif
+                                        if (round_index == -1 || (c = str[round_index], c == '-')) {
+                                            str[round_index + 1] = '1';
+                                            if (dot_index > 0) {
+                                                str[dot_index] = '0';
+                                                str[dot_index + 1] = '.';
+                                            }
+                                            str[len++] = '0';
+                                            break;
+                                        }
+# if defined(COMPILER_CLANG)
+#  pragma clang diagnostic pop
+# endif
+                                        if (c == '.') {
+                                            dot_index = round_index;
+                                            continue;
+                                        } else if (c == '9') {
+                                            str[round_index] = '0';
+                                            round_up = 1;
+                                            continue;
+                                        } else {
+                                            if (round_up == 2 && c % 2 == 0) {
+                                                break;
+                                            }
+                                            str[round_index] = c + 1;
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                        } else if (flags & Print_Flags_FLOAT_EXP) {
+                            B32 print_decimal_point = precision > 0;
+                            ++precision;
+
+                            U32 digits = 0;
+                            U32 printed_digits = 0;
+                            U32 available_digits = 0;
+                            S32 exp = 0;
+
+                            if (e2 >= -52) {
+                                U32 idx = e2 < 0 ? 0 : INDEX_FOR_EXPONENT((U32)e2);
+                                U32 p10bits = POW_10_BITS_FOR_INDEX(idx);
+                                S32 index_length = LENGTH_FOR_INDEX(idx);
+
+                                for (S32 i = index_length - 1; i >= 0; --i) {
+                                    U32 j = p10bits - (U32)e2;
+                                    // Temporary: j is usually around 128, and by shifting a bit, we push it to 128 or above, which is
+                                    // a slightly faster code path in ryu_mulShift_mod1e9. Instead, we can just increase the multipliers.
+                                    const U64 *table_lookup = RYU_POW10_SPLIT[RYU_POW10_OFFSET[idx] + i];
+                                    digits = ryu_mulShift_mod1e9(m2 << 8, table_lookup, (S32)(j + 8));
+
+                                    if (printed_digits != 0) {
+                                        if (printed_digits + 9 > (Uint)precision) {
+                                            available_digits = 9;
+                                            break;
+                                        }
+
+                                        ryu_append_nine_digits(digits, str + len);
+                                        len += 9;
+                                        printed_digits += 9;
+                                    } else if (digits != 0) {
+                                        available_digits = ryu_decimalLength9(digits);
+                                        exp = i * 9 + (S32) available_digits - 1;
+
+                                        if (available_digits > (Uint)precision) {
+                                            break;
+                                        }
+
+                                        if (print_decimal_point) {
+                                            ryu_append_d_digits(available_digits, digits, str + len);
+                                            len += available_digits + 1; // +1 for decimal point
+                                        } else {
+                                            str[len++] = (Char)('0' + digits);
+                                        }
+
+                                        printed_digits = available_digits;
+                                        available_digits = 0;
+                                    }
+                                }
+                            }
+
+                            if (e2 < 0 && available_digits == 0) {
+                                S32 idx = -e2 / 16;
+
+                                for (S32 i = RYU_MIN_BLOCK_2[idx]; i < 200; ++i) {
+                                    S32 j = RYU_ADDITIONAL_BITS_2 + (-e2 - 16 * idx);
+                                    U32 p = RYU_POW10_OFFSET_2[idx] + (U32) i - RYU_MIN_BLOCK_2[idx];
+                                    // Temporary: j is usually around 128, and by shifting a bit, we push it to 128 or above, which is
+                                    // a slightly faster code path in ryu_mulShift_mod1e9. Instead, we can just increase the multipliers.
+                                    digits = (p >= RYU_POW10_OFFSET_2[idx + 1]) ? 0 : ryu_mulShift_mod1e9(m2 << 8, RYU_POW10_SPLIT_2[p], j + 8);
+
+                                    if (printed_digits != 0) {
+                                        if (printed_digits + 9 > (Uint)precision) {
+                                            available_digits = 9;
+                                            break;
+                                        }
+                                        ryu_append_nine_digits(digits, str + len);
+                                        len += 9;
+                                        printed_digits += 9;
+                                    } else if (digits != 0) {
+                                        available_digits = ryu_decimalLength9(digits);
+                                        exp = -(i + 1) * 9 + (S32) available_digits - 1;
+                                        if (available_digits > (Uint)precision) {
+                                            break;
+                                        }
+                                        if (print_decimal_point) {
+                                            ryu_append_d_digits(available_digits, digits, str + len);
+                                            len += available_digits + 1; // +1 for decimal point
+                                        } else {
+                                            str[len++] = (Char)('0' + digits);
+                                        }
+                                        printed_digits = available_digits;
+                                        available_digits = 0;
+                                    }
+                                }
+                            }
+
+                            U32 maximum = (U32)precision - printed_digits;
+
+                            if (available_digits == 0) {
+                                digits = 0;
+                            }
+                            U32 last_digit = 0;
+                            if (available_digits > maximum) {
+                                for (U32 k = 0; k < available_digits - maximum; ++k) {
+                                    last_digit = digits % 10;
+                                    digits /= 10;
+                                }
+                            }
+
+                            // 0 = don't round up; 1 = round up unconditionally; 2 = round up if odd.
+                            Sint round_up = 0;
+                            if (last_digit != 5) {
+                                round_up = last_digit > 5;
+                            } else {
+                                // Is m * 2^e2 * 10^(precision + 1 - exp) integer?
+                                // precision was already increased by 1, so we don't need to write + 1 here.
+                                S32 rexp = (S32) precision - exp;
+                                S32 requiredTwos = -e2 - rexp;
+                                B32 any_trailing_zeros = requiredTwos <= 0
+                                    || (requiredTwos < 60 && ryu_multipleOfPowerOf2(m2, (U32) requiredTwos));
+                                if (rexp < 0) {
+                                    S32 requiredFives = -rexp;
+                                    any_trailing_zeros = any_trailing_zeros && ryu_multipleOfPowerOf5(m2, (U32) requiredFives);
+                                }
+                                round_up = any_trailing_zeros ? 2 : 1;
+                            }
+
+                            if (printed_digits != 0) {
+                                if (digits == 0) {
+                                    memset(str + len, '0', maximum);
+                                } else {
+                                    ryu_append_c_digits(maximum, digits, str + len);
+                                }
+                                len += maximum;
+                            } else {
+                                if (print_decimal_point) {
+                                    ryu_append_d_digits(maximum, digits, str + len);
+                                    len += maximum + 1; // +1 for decimal point
+                                } else {
+                                    str[len++] = (Char)('0' + digits);
+                                }
+                            }
+
+                            if (round_up != 0) {
+                                Sint round_index = (Sint)len;
+                                while (true) {
+                                    --round_index;
+                                    Char c;
+# if defined(COMPILER_CLANG)
+#  pragma clang diagnostic push
+#  pragma clang diagnostic ignored "-Wcomma"
+# endif
+                                    if (round_index == -1 || (c = str[round_index], c == '-')) {
+                                        str[round_index + 1] = '1';
+                                        ++exp;
+                                        break;
+                                    }
+# if defined(COMPILER_CLANG)
+#  pragma clang diagnostic pop
+# endif
+                                    if (c == '.') {
+                                        continue;
+                                    } else if (c == '9') {
+                                        str[round_index] = '0';
+                                        round_up = 1;
+                                        continue;
+                                    } else {
+                                        if (round_up == 2 && c % 2 == 0) {
+                                            break;
+                                        }
+                                        str[round_index] = c + 1;
+                                        break;
+                                    }
+                                }
+                            }
+
+                            str[len++] = 'e';
+                            if (exp < 0) {
+                                str[len++] = '-';
+                                exp = -exp;
+                            } else {
+                                str[len++] = '+';
+                            }
+
+                            if (exp >= 100) {
+                                S32 c = exp % 10;
+                                memcpy(str + len, RYU_DIGIT_TABLE + 2 * (exp / 10), 2);
+                                str[len + 2] = (Char) ('0' + c);
+                                len += 3;
+                            } else {
+                                memcpy(str + len, RYU_DIGIT_TABLE + 2 * exp, 2);
+                                len += 2;
+                            }
+
                         }
-                    }
 
-                    if (flags & Print_Flags_LEADING_ZERO) {
-                        head_str[head_index++] = '0';
+                        // Factional part
+                        if (flags & Print_Flags_FLOAT_FIXED) {
+                        } else if (flags & Print_Flags_FLOAT_EXP) {
+                        }
+#  endif
                     }
 
                     precision = 0;
-
                 } break;
-#  endif
+
                 case '%': {
                     str = num_str;
                     str[0] = '%';
@@ -845,15 +1210,15 @@ Size printStringVarArg (Char *buffer, Char *format, va_list va)
 
             Size head_size = head_index;
             head_index = 0;
-//            Size tail_size = tail_index;
-//            tail_index = 0;
+            Size tail_size = tail_index;
+            tail_index = 0;
 
             // get field_width=leading/trailing space, precision=leading zeros
             if ((Size)precision < len) {
                 precision = (Sint)len;
             }
 
-            Sint zeros_head_tail = precision + (Sint)head_size; // TODO(naman): + trailing_zeroes (related to floats)
+            Sint zeros_head_tail = precision + (Sint)head_size + (Sint)tail_size + trailing_zeroes;
             if (field_width < zeros_head_tail) {
                 field_width = zeros_head_tail;
             }
@@ -881,8 +1246,7 @@ Size printStringVarArg (Char *buffer, Char *format, va_list va)
                     }
                 }
 
-                // copy the head
-                {
+                { // copy the head
                     for (Size j = 0; j < head_size; j++) {
                         if (buffer != NULL) {
                             buf[0] = head_str[head_index++];
@@ -891,13 +1255,12 @@ Size printStringVarArg (Char *buffer, Char *format, va_list va)
                     }
                 }
 
-                // copy leading zeros
                 // TODO(naman): What is this doing?
                 /* U32 c = 0; */
                 /* c = cs >> 24; */
                 /* cs &= 0xffffff; */
                 /* cs = (fl & Print_Flags_THOUSAND_COMMA) ? ((stbsp__uint32)(c - ((pr + cs) % (c + 1)))) : 0; */
-                {
+                { // copy leading zeros
                     for (Size j = 0; j < (Size)precision; j++) {
                         if (buffer != NULL) {
                             buf[0] = '0';
@@ -907,8 +1270,7 @@ Size printStringVarArg (Char *buffer, Char *format, va_list va)
                 }
             }
 
-            // copy the head
-            {
+            { // copy the head
                 if (head_index < head_size) {
                     Size repeat = head_size - head_index;
                     for (Size j = 0; j < repeat; j++) {
@@ -920,8 +1282,7 @@ Size printStringVarArg (Char *buffer, Char *format, va_list va)
                 }
             }
 
-            // copy the string
-            {
+            { // copy the string
                 for (Size j = 0; j < len; j++) {
                     if (buffer != NULL) {
                         buf[0] = str[0];
@@ -931,11 +1292,19 @@ Size printStringVarArg (Char *buffer, Char *format, va_list va)
                 }
             }
 
-            // copy trailing zeroes
-            {
+            { // copy trailing zeroes
                 for (Size j = 0; j < (Size)trailing_zeroes; j++) {
                     if (buffer != NULL) {
                         buf[0] = '0';
+                    }
+                    buf++;
+                }
+            }
+
+            { // copy the tail
+                for (Size j = 0; j < tail_size; j++) {
+                    if (buffer != NULL) {
+                        buf[0] = tail_str[tail_index++];
                     }
                     buf++;
                 }
@@ -1143,7 +1512,7 @@ void printUnitTest (void)
     CHECK2("", "%.0x", 0);
     CHECK2("",  "%.0d", 0);  // glibc gives "" as specified by C99(?)
     CHECK3("33 555", "%d %ld", (short)33, 555l);
-    CHECK4("2 -3 %a", "%zd %td %a", (S64)2, (Dptr)-3, 23);
+    CHECK4("2 -3 %.", "%zd %td %.", (S64)2, (Dptr)-3, 23);
 
     // floating-point numbers
     CHECK2("-3.000000", "%f", -3.0);
@@ -1156,27 +1525,27 @@ void printUnitTest (void)
     CHECK2("0.0       ", "%-10.1f", 0.);
     CHECK2("-0.000000", "%f", -0.);
     CHECK2("0.000001", "%F", 9.09834e-07);
-    /* double pow_2_85 = 38685626227668133590597632.0;
-    CHECK2("38685626227668133600000000.0", "%.1f", pow_2_85); */ //FIXME(naman): Upper bound
+    double pow_2_85 = 38685626227668133590597632.0;
+    CHECK2("38685626227668133600000000.0", "%.1f", pow_2_85); //FIXME(naman): Upper bound
     CHECK2("0.000000500000000000000000", "%.24f", 5e-7);
     CHECK2("0.000000000000000020000000", "%.24f", 2e-17);
     CHECK3("0.0000000100 100000000", "%.10f %.0f", 1e-8, 1e+8);
     CHECK2("100056789.0", "%.1f", 100056789.0);
     CHECK4(" 1.23 %", "%*.*f %%", 5, 2, 1.23);
 
+    CHECK2("-3.000000e+00", "%e", -3.0);
+    CHECK2("4.1E+00", "%.1E", 4.1);
+    CHECK2("-5.20e+00", "%+4.2e", -5.2);
     // TODO(naman): Implement these when proper float support is added
-    /* CHECK2("-3.000000e+00", "%e", -3.0); */
-    /* CHECK2("4.1E+00", "%.1E", 4.1); */
-    /* CHECK2("-5.20e+00", "%+4.2e", -5.2); */
-    /* CHECK3("+0.3 -3", "%+g %+g", 0.3, -3.0); */
-    /* CHECK2("4", "%.1G", 4.1); */
-    /* CHECK2("-5.2", "%+4.2g", -5.2); */
-    /* CHECK2("3e-300", "%g", 3e-300); */
-    /* CHECK2("1", "%.0g", 1.2); */
-    /* CHECK3(" 3.7 3.71", "% .3g %.3g", 3.704, 3.706); */
-    /* CHECK3("2e-315:1e+308", "%g:%g", 2e-315, 1e+308); */
-    /* CHECK2("0x1.0091177587f83p-1022", "%a", 2.23e-308); */
-    /* CHECK2("-0X1.AB0P-5", "%.3A", -0X1.abp-5); */
+//    CHECK3("+0.3 -3", "%+g %+g", 0.3, -3.0);
+//    CHECK2("4", "%.1G", 4.1);
+//    CHECK2("-5.2", "%+4.2g", -5.2);
+//    CHECK2("3e-300", "%g", 3e-300);
+//    CHECK2("1", "%.0g", 1.2);
+//    CHECK3(" 3.7 3.71", "% .3g %.3g", 3.704, 3.706);
+//    CHECK3("2e-315:1e+308", "%g:%g", 2e-315, 1e+308);
+//    CHECK2("0x1.0091177587f83p-1022", "%a", 2.23e-308);
+//    CHECK2("-0X1.AB0P-5", "%.3A", -0X1.abp-5);
 
     CHECK3("Inf NaN", "%f %f", (F64)INFINITY, (F64)NAN);
     CHECK2("NaN", "%.1f", (F64)NAN);

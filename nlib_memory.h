@@ -50,7 +50,7 @@ MEMORY_ALLOCATOR(memVirtual)
             Size header_size = memAlignUp(sizeof(Memory_Virtual_Header));
             Size asked_size = memAlignUp(size);
 
-            Size total_size = header_size + (asked_size * MiB(1));
+            Size total_size = header_size + (asked_size * KiB(1));
 
             void *memory = mmap(NULL, total_size, PROT_READ | PROT_WRITE,
                                 MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);

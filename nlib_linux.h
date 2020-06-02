@@ -1,19 +1,16 @@
 /*
- * Creator: Naman Dixit
- * Notice: © Copyright 2020 Naman Dixit
+ * Original Work Copyright (C) 2017-2018 Willy Tarreau <w@1wt.eu>
+ * Modified Work Copyright (C) 2020 Naman Dixit
+ * SPDX-License-Identifier: LGPL-2.1 OR MIT
  */
 
 /*
  * This file was originally retrieved from: http://git.1wt.eu/git/nolibc.git
- * An old copy of this file was merged into the Kernel and can be found at:
+ * An old copy of this file was merged into the Linux Kernel and can be found at:
  * https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/tree/tools/include/nolibc/nolibc.h
  *
  * To update this file, pull any new changes and diff them against old version (diffing against
  * this file won't work, as this has been changed to fit the nlib conventions).
- *
- * The original license information is as follows:
- ** Copyright (C) 2017-2018 Willy Tarreau <w@1wt.eu>
- ** SPDX-License-Identifier: LGPL-2.1 OR MIT
  */
 
 #if !defined(NLIB_LINUX_H_INCLUDE_GUARD)

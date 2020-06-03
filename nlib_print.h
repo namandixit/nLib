@@ -55,16 +55,17 @@ header_function Size errv (Char *format, va_list ap);
 # endif // defined(NLIB_PRINT_RYU_FLOAT)
 
 typedef enum Print_Flags {
-    Print_Flags_LEFT_JUSTIFIED = 1u << 0,
-    Print_Flags_ALTERNATE_FORM = 1u << 1,
-    Print_Flags_LEADING_PLUS   = 1u << 2,
-    Print_Flags_LEADING_SPACE  = 1u << 3,
-    Print_Flags_LEADING_ZERO   = 1u << 4,
-    Print_Flags_INT64          = 1u << 5,
-    Print_Flags_NEGATIVE       = 1u << 6,
-    Print_Flags_FLOAT_FIXED    = 1u << 7,
-    Print_Flags_FLOAT_EXP      = 1u << 8,
-    Print_Flags_FLOAT_HEX      = 1u << 9,
+    Print_Flags_LEFT_JUSTIFIED     = 1u << 0,
+    Print_Flags_ALTERNATE_FORM     = 1u << 1,
+    Print_Flags_LEADING_PLUS       = 1u << 2,
+    Print_Flags_LEADING_SPACE      = 1u << 3,
+    Print_Flags_LEADING_ZERO       = 1u << 4,
+    Print_Flags_INT64              = 1u << 5,
+    Print_Flags_NEGATIVE           = 1u << 6,
+    Print_Flags_FLOAT_FIXED        = 1u << 7,
+    Print_Flags_FLOAT_EXP          = 1u << 8,
+    Print_Flags_FLOAT_HEX          = 1u << 9,
+    Print_Flags_FLOAT_NO_LOW_BOUND = 1u << 10,
 } Print_Flags;
 
 header_function
@@ -735,6 +736,8 @@ Size printStringVarArg (Char *buffer, Char *format, va_list va)
                         B32 power_of_e_nonsense = false;
                         Sint print_exponent = 0;
 
+                        B32 fmt_exponential = (fmt[0] == 'E') || (fmt[0] == 'e');
+
                         // NOTE(naman): We just overload 'F' to remove lower bound too
                         if (capital && (flags & Print_Flags_FLOAT_FIXED)) {
                             flags |= Print_Flags_FLOAT_NO_LOW_BOUND;
@@ -745,7 +748,7 @@ Size printStringVarArg (Char *buffer, Char *format, va_list va)
                             // loss of information
                             F64 upper_threshold = 1e19;
 
-                            if (value >= upper_threshold) {
+                            if (fmt_exponential || (value >= upper_threshold)) {
                                 power_of_e_nonsense = true;
                                 if (value >= 1e256) {
                                     value /= 1e256;
@@ -785,7 +788,7 @@ Size printStringVarArg (Char *buffer, Char *format, va_list va)
                                 }
                             }
 
-                            if (!(flags & Print_Flags_FLOAT_NO_LOW_BOUND)) {
+                            if (fmt_exponential || !(flags & Print_Flags_FLOAT_NO_LOW_BOUND)) {
                                 // 10^-(precision-1)
                                 // (so that we get atleast one digit)
                                 F64 powers_of_10[20] = {
@@ -823,7 +826,7 @@ Size printStringVarArg (Char *buffer, Char *format, va_list va)
                                     }
                                 }
 
-                                if (value > 0 && value <= lower_threshold) {
+                                if (fmt_exponential || (value > 0 && value <= lower_threshold)) {
                                     power_of_e_nonsense = true;
                                     if (value < 1e-255) {
                                         value *= 1e256;
@@ -913,7 +916,7 @@ Size printStringVarArg (Char *buffer, Char *format, va_list va)
                                     *--str = '+';
                                 }
 
-                                *--str = 'e';
+                                *--str = capital ? 'E' : 'e';
                             }
                         }
 

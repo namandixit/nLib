@@ -1058,7 +1058,8 @@ Size printStringVarArg (Char *buffer, Char *format, va_list va)
                                     trailing_zeroes += precision;
                                 } else if (i < RYU_MIN_BLOCK_2[idx]) {
                                     i = RYU_MIN_BLOCK_2[idx];
-                                    trailing_zeroes += 9 * i;
+                                    memset(str + len, '0', 9 * i);
+                                    len += 9 * i;
                                 }
 
                                 // 0 = don't round up; 1 = round up unconditionally; 2 = round up if odd.

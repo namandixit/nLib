@@ -832,15 +832,15 @@ INTERN_EQUALITY(internStringEquality) {
     Char *sa = a;
     Char **ss = b;
     Char *sb = ss[b_index];
-    B32 result = stringEqual(sa, sb);
+    B32 result = streq(sa, sb);
     return result;
 }
 
 header_function
 Char *internString (Intern_String *is, Char *str)
 {
-    U8 hash1 = internStringPearsonHash(str, stringLength(str), true);
-    U8 hash2 = internStringPearsonHash(str, stringLength(str), false);
+    U8 hash1 = internStringPearsonHash(str, strlen(str), true);
+    U8 hash2 = internStringPearsonHash(str, strlen(str), false);
 
     Size index = 0;
 
@@ -867,8 +867,8 @@ Char *internString (Intern_String *is, Char *str)
 header_function
 Char *internStringCheck (Intern_String *is, Char *str)
 {
-    U8 hash1 = internStringPearsonHash(str, stringLength(str), true);
-    U8 hash2 = internStringPearsonHash(str, stringLength(str), false);
+    U8 hash1 = internStringPearsonHash(str, strlen(str), true);
+    U8 hash2 = internStringPearsonHash(str, strlen(str), false);
 
     Size index = 0;
 

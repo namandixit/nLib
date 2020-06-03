@@ -25,34 +25,34 @@ header_function Size sayv (Char *format, va_list ap);
 header_function Size err  (Char *format, ...);
 header_function Size errv (Char *format, va_list ap);
 
-#if defined(OS_WINDOWS)
-# if defined(BUILD_DEBUG)
-#  define report(...)              printDebugOutput(__VA_ARGS__)
-#  define reportv(format, va_list) printDebugOutput(format, va_list)
-# else // = if !defined(BUILD_DEBUG)
-#  define report(...)              err(stderr, __VA_ARGS__)
-#  define reportv(format, va_list) errv(stderr, format, va_list)
-# endif // defined(BUILD_DEBUG)
-#elif defined(OS_LINUX)
-# if defined(BUILD_DEBUG)
-#  define report(...)              err(__VA_ARGS__)
-#  define reportv(format, va_list) errv(format, va_list)
-# else // = if !defined(BUILD_DEBUG)
-#  define report(...)              err(__VA_ARGS__)
-#  define reportv(format, va_list) errv(format, va_list)
-# endif // defined(BUILD_DEBUG)
-#endif // defined(OS_WINDOWS)
+# if defined(OS_WINDOWS)
+#  if defined(BUILD_DEBUG)
+#   define report(...)              printDebugOutput(__VA_ARGS__)
+#   define reportv(format, va_list) printDebugOutput(format, va_list)
+#  else // = if !defined(BUILD_DEBUG)
+#   define report(...)              err(stderr, __VA_ARGS__)
+#   define reportv(format, va_list) errv(stderr, format, va_list)
+#  endif // defined(BUILD_DEBUG)
+# elif defined(OS_LINUX)
+#  if defined(BUILD_DEBUG)
+#   define report(...)              err(__VA_ARGS__)
+#   define reportv(format, va_list) errv(format, va_list)
+#  else // = if !defined(BUILD_DEBUG)
+#   define report(...)              err(__VA_ARGS__)
+#   define reportv(format, va_list) errv(format, va_list)
+#  endif // defined(BUILD_DEBUG)
+# endif // defined(OS_WINDOWS)
 
 
-#elif !defined(NLIB_PRINT_H_INCLUDE_GUARD)
+# elif !defined(NLIB_PRINT_H_INCLUDE_GUARD)
 
-# if !defined(NLIB_PRINT_RYU_FLOAT) && !defined(NLIB_PRINT_BAD_FLOAT)
-#  define NLIB_PRINT_RYU_FLOAT
-# endif
+#  if !defined(NLIB_PRINT_RYU_FLOAT) && !defined(NLIB_PRINT_BAD_FLOAT)
+#   define NLIB_PRINT_RYU_FLOAT
+#  endif
 
-# if defined(NLIB_PRINT_RYU_FLOAT)
-#  include "nlib_ryu.h"
-# endif // defined(NLIB_PRINT_RYU_FLOAT)
+#  if defined(NLIB_PRINT_RYU_FLOAT)
+#   include "nlib_ryu.h"
+#  endif // defined(NLIB_PRINT_RYU_FLOAT)
 
 typedef enum Print_Flags {
     Print_Flags_LEFT_JUSTIFIED     = 1u << 0,
@@ -986,8 +986,6 @@ Size printStringVarArg (Char *buffer, Char *format, va_list va)
                         }
 #  elif defined(NLIB_PRINT_RYU_FLOAT)
                         str = num_str;
-//                      Sint ryu_len = ryu_d2fixed_buffered_n(f64, (U32)precision, str);
-//                      len = (Size)ryu_len;
 
                         S32 e2;
                         U64 m2;
@@ -1120,10 +1118,10 @@ Size printStringVarArg (Char *buffer, Char *format, va_list va)
                                     while (true) {
                                         --round_index;
                                         Char c;
-# if defined(COMPILER_CLANG)
-#  pragma clang diagnostic push
-#  pragma clang diagnostic ignored "-Wcomma"
-# endif
+#   if defined(COMPILER_CLANG)
+#    pragma clang diagnostic push
+#    pragma clang diagnostic ignored "-Wcomma"
+#   endif
                                         if (round_index == -1 || (c = str[round_index], c == '-')) {
                                             str[round_index + 1] = '1';
                                             if (dot_index > 0) {
@@ -1133,9 +1131,9 @@ Size printStringVarArg (Char *buffer, Char *format, va_list va)
                                             str[len++] = '0';
                                             break;
                                         }
-# if defined(COMPILER_CLANG)
-#  pragma clang diagnostic pop
-# endif
+#   if defined(COMPILER_CLANG)
+#    pragma clang diagnostic pop
+#   endif
                                         if (c == '.') {
                                             dot_index = round_index;
                                             continue;
@@ -1292,18 +1290,18 @@ Size printStringVarArg (Char *buffer, Char *format, va_list va)
                                 while (true) {
                                     --round_index;
                                     Char c;
-# if defined(COMPILER_CLANG)
-#  pragma clang diagnostic push
-#  pragma clang diagnostic ignored "-Wcomma"
-# endif
+#   if defined(COMPILER_CLANG)
+#    pragma clang diagnostic push
+#    pragma clang diagnostic ignored "-Wcomma"
+#   endif
                                     if (round_index == -1 || (c = str[round_index], c == '-')) {
                                         str[round_index + 1] = '1';
                                         ++exp;
                                         break;
                                     }
-# if defined(COMPILER_CLANG)
-#  pragma clang diagnostic pop
-# endif
+#   if defined(COMPILER_CLANG)
+#    pragma clang diagnostic pop
+#   endif
                                     if (c == '.') {
                                         continue;
                                     } else if (c == '9') {
@@ -1320,7 +1318,7 @@ Size printStringVarArg (Char *buffer, Char *format, va_list va)
                                 }
                             }
 
-                            str[len++] = 'e';
+                            str[len++] = capital ? 'E' : 'e';
                             if (exp < 0) {
                                 str[len++] = '-';
                                 exp = -exp;
@@ -1639,8 +1637,9 @@ Size errv (Char *format, va_list ap)
 
 #  if defined(NLIB_TESTS)
 
-#   define CHECK_END(str) utTest(stringEqual(buf, (str)) || ((unsigned) ret == stringLength(str)))
+#   define CHECK_END(str) utTest(streq(buf, (str)) || ((unsigned) ret == strlen(str)))
 #   define SPRINTF printString
+#   define SNPRINTF(b, s, ...) (Sint)printString(b, __VA_ARGS__)
 
 #   define CHECK9(str, v1, v2, v3, v4, v5, v6, v7, v8, v9) do { Size ret = SPRINTF(buf, v1, v2, v3, v4, v5, v6, v7, v8, v9); CHECK_END(str); } while (0)
 #   define CHECK8(str, v1, v2, v3, v4, v5, v6, v7, v8    ) do { Size ret = SPRINTF(buf, v1, v2, v3, v4, v5, v6, v7, v8    ); CHECK_END(str); } while (0)
@@ -1675,6 +1674,7 @@ void printUnitTest (void)
     CHECK2("", "%.0x", 0);
     CHECK2("",  "%.0d", 0);  // glibc gives "" as specified by C99(?)
     CHECK3("33 555", "%d %ld", (short)33, 555l);
+//    CHECK2("9888777666", "%llu", 9888777666llu); // TODO(naman): Implement %llu
     CHECK4("2 -3 %.", "%zd %td %.", (S64)2, (Dptr)-3, 23);
 
     // floating-point numbers
@@ -1682,36 +1682,56 @@ void printUnitTest (void)
     CHECK2("-8.8888888800", "%.10f", -8.88888888);
     CHECK2("880.0888888800", "%.10f", 880.08888888);
     CHECK2("4.1", "%.1f", 4.1);
+#    if defined(NLIB_PRINT_BAD_FLOAT)
     CHECK2(" 0", "% .0F", 0.1);
     CHECK2("0.00", "%.2F", 1e-4);
+    // TODO(naman): Fix the bad float by importing code from Swift
+//   const double pow_2_85 = 38685626227668133590597632.0;
+//   CHECK2("38685626227668133590597632.0", "%.1f", pow_2_85); // exact
+    // FIXME(naman): The below is different from what should get printed, even though
+    // it reads back the same
+    CHECK2("0.000000500000000000000000", "%.24f", 5e-7);
+#    else
+    CHECK2(" 0", "% .0f", 0.1);
+    CHECK2("0.00", "%.2f", 1e-4);
+    const double pow_2_85 = 38685626227668133590597632.0;
+    CHECK2("38685626227668133590597632.0", "%.1f", pow_2_85); // exact
+    CHECK2("0.000000499999999999999977", "%.24f", 5e-7);
+#    endif
     CHECK2("-5.20", "%+4.2f", -5.2);
     CHECK2("0.0       ", "%-10.1f", 0.);
     CHECK2("-0.000000", "%f", -0.);
-    CHECK2("0.000001", "%F", 9.09834e-07);
-    double pow_2_85 = 38685626227668133590597632.0;
-    CHECK2("38685626227668133600000000.0", "%.1f", pow_2_85); //FIXME(naman): Upper bound
-    CHECK2("0.000000500000000000000000", "%.24f", 5e-7);
+    CHECK2("0.000001", "%f", 9.09834e-07);
     CHECK2("0.000000000000000020000000", "%.24f", 2e-17);
     CHECK3("0.0000000100 100000000", "%.10f %.0f", 1e-8, 1e+8);
     CHECK2("100056789.0", "%.1f", 100056789.0);
     CHECK4(" 1.23 %", "%*.*f %%", 5, 2, 1.23);
-
     CHECK2("-3.000000e+00", "%e", -3.0);
     CHECK2("4.1E+00", "%.1E", 4.1);
     CHECK2("-5.20e+00", "%+4.2e", -5.2);
-    // TODO(naman): Implement these when proper float support is added
-//    CHECK3("+0.3 -3", "%+g %+g", 0.3, -3.0);
-//    CHECK2("4", "%.1G", 4.1);
-//    CHECK2("-5.2", "%+4.2g", -5.2);
-//    CHECK2("3e-300", "%g", 3e-300);
-//    CHECK2("1", "%.0g", 1.2);
-//    CHECK3(" 3.7 3.71", "% .3g %.3g", 3.704, 3.706);
-//    CHECK3("2e-315:1e+308", "%g:%g", 2e-315, 1e+308);
-//    CHECK2("0x1.0091177587f83p-1022", "%a", 2.23e-308);
-//    CHECK2("-0X1.AB0P-5", "%.3A", -0X1.abp-5);
 
-    CHECK3("Inf NaN", "%f %f", (F64)INFINITY, (F64)NAN);
-    CHECK2("NaN", "%.1f", (F64)NAN);
+#    if 0 // TODO(naman): Disabled until support for %g is added
+    CHECK3("+0.3 -3", "%+g %+g", 0.3, -3.0);
+    CHECK2("4", "%.1G", 4.1);
+    CHECK2("-5.2", "%+4.2g", -5.2);
+    CHECK2("3e-300", "%g", 3e-300);
+    CHECK2("1", "%.0g", 1.2);
+    CHECK3(" 3.7 3.71", "% .3g %.3g", 3.704, 3.706);
+    CHECK3("2e-315:1e+308", "%g:%g", 2e-315, 1e+308);
+#    endif
+
+    CHECK4("inf INF nan", "%f %F %f", (double)INFINITY, (double)INFINITY, (double)NAN);
+    CHECK2("nan", "%.1f", (double)NAN);
+
+    // hex floats
+    CHECK2("0x1.8ffb72e8p+6", "%a", 0x1.fedcbap0+98);
+    CHECK2("0x1.375a015a32bc4p+1", "%a", 2.43243424324234234);
+    CHECK2("0x1.fedcbap+98", "%a", 0x1.fedcbap+98);
+    CHECK2("0x1.999999999999a0p-4", "%.14a", 0.1);
+    CHECK2("0x0.ff8p-1022", "%a", 0x1.ffp-1023);
+    CHECK2("0x1.0p-1022", "%.1a", 0x1.ffp-1023);
+    CHECK2("0x1.0091177587f83p-1022", "%a", 2.23e-308);
+    CHECK2("-0X1.AB0P-5", "%.3A", -0X1.abp-5);
 
     // %p
     CHECK2("0000000000000000", "%p", (void*) NULL);
@@ -1720,62 +1740,58 @@ void printUnitTest (void)
     CHECK3("aaa ", "%.3s %n", "aaaaaaaaaaaaa", &n);
     utTest(n == 4);
 
-#if 0
     // snprintf
-    assert(SNPRINTF(buf, 100, " %s     %d",  "b", 123) == 10);
-    assert(strcmp(buf, " b     123") == 0);
-    assert(SNPRINTF(buf, 100, "%f", pow_2_75) == 30);
-    assert(strncmp(buf, "37778931862957161709568.000000", 17) == 0);
+    claim(SNPRINTF(buf, 100, " %s     %d",  "b", 123) == 10);
+    claim(strcmp(buf, " b     123") == 0);
+    const double pow_2_75 = 37778931862957161709568.0;
+    claim(SNPRINTF(buf, 100, "%f", pow_2_75) == 30);
+    claim(strncmp(buf, "37778931862957161709568.000000", 17) == 0);
     n = SNPRINTF(buf, 10, "number %f", 123.456789);
-    assert(strcmp(buf, "number 12") == 0);
-    assert(n == 17);  // written vs would-be written bytes
+    // TODO(naman): Implement snprintf interface
+    // claim(strcmp(buf, "number 12") == 0);
+    claim(n == 17);  // written vs would-be written bytes
     n = SNPRINTF(buf, 0, "7 chars");
-    assert(n == 7);
+    claim(n == 7);
     // stb_sprintf uses internal buffer of 512 chars - test longer string
-    assert(SPRINTF(buf, "%d  %600s", 3, "abc") == 603);
-    assert(strlen(buf) == 603);
-    SNPRINTF(buf, 550, "%d  %600s", 3, "abc");
-    assert(strlen(buf) == 549);
-    assert(SNPRINTF(buf, 600, "%510s     %c", "a", 'b') == 516);
+    claim(SPRINTF(buf, "%d  %600s", 3, "abc") == 603);
+    claim(strlen(buf) == 603);
+    // TODO(naman): Implement snprintf interface
+    //(void)SNPRINTF(buf, 550, "%d  %600s", 3, "abc");
+    //claim(strlen(buf) == 549);
+    claim(SNPRINTF(buf, 600, "%510s     %c", "a", 'b') == 516);
 
     // length check
-    assert(SNPRINTF(NULL, 0, " %s     %d",  "b", 123) == 10);
+    claim(SNPRINTF(NULL, 0, " %s     %d",  "b", 123) == 10);
 
-    // ' modifier. Non-standard, but supported by glibc.
-#if !USE_STB
+#    if defined(NLIB_PRINT_TEST_AGAINST_LIBC)
     setlocale(LC_NUMERIC, "");  // C locale does not group digits
-#endif
+#    endif
+    // ' modifier. Non-standard, but supported by glibc.
+    // TODO(naman): Implement ' modifier
+#    if 0
     CHECK2("1,200,000", "%'d", 1200000);
     CHECK2("-100,006,789", "%'d", -100006789);
-#if !defined(_MSC_VER) || _MSC_VER >= 1600
     CHECK2("9,888,777,666", "%'lld", 9888777666ll);
-#endif
     CHECK2("200,000,000.000000", "%'18f", 2e8);
     CHECK2("100,056,789", "%'.0f", 100056789.0);
     CHECK2("100,056,789.0", "%'.1f", 100056789.0);
-#if USE_STB  // difference in leading zeros
-    CHECK2("000,001,200,000", "%'015d", 1200000);
-#else
     CHECK2("0000001,200,000", "%'015d", 1200000);
-#endif
+#    endif
 
     // things not supported by glibc
-#if USE_STB
+#    if 0
     CHECK2("null", "%s", (char*) NULL);
     CHECK2("123,4abc:", "%'x:", 0x1234ABC);
     CHECK2("100000000", "%b", 256);
     CHECK3("0b10 0B11", "%#b %#B", 2, 3);
-#if !defined(_MSC_VER) || _MSC_VER >= 1600
     CHECK4("2 3 4", "%I64d %I32d %Id", 2ll, 3, 4ll);
-#endif
     CHECK3("1k 2.54 M", "%$_d %$.2d", 1000, 2536000);
     CHECK3("2.42 Mi 2.4 M", "%$$.2d %$$$d", 2536000, 2536000);
 
     // different separators
     stbsp_set_separators(' ', ',');
     CHECK2("12 345,678900", "%'f", 12345.6789);
-#endif
-#endif
+#    endif
 }
 
 #endif // defined(NLIB_TESTS)

@@ -10,8 +10,7 @@ Sint main (Sint argc, Char *argv[])
 {
     unused_variable(argc);
     unused_variable(argv);
-//    say("%e", -3.0);
-//    say("\n");
+
 # if !defined(NLIB_NO_LIBC)
 # endif
     sbufUnitTest(); // Uses sbufPrint, so tests might clash with printUnitTest

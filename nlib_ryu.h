@@ -607,6 +607,10 @@ U32 ryu_mulShift_mod1e9 (U64 m, U64* mul, S32 j) {
 }
 #endif // RYU_HAS_UINT128_TYPE
 
+// Convert `digits` to a sequence of decimal digits. Append the digits to the result.
+// The caller has to guarantee that:
+//   10^(olength-1) <= digits < 10^olength
+// e.g., by passing `olength` as `decimalLength9(digits)`.
 header_function
 void ryu_append_n_digits (U32 olength, U32 digits, Char* result) {
     U32 i = 0;
@@ -637,6 +641,10 @@ void ryu_append_n_digits (U32 olength, U32 digits, Char* result) {
     }
 }
 
+// Convert `digits` to a sequence of decimal digits. Print the first digit, followed by a decimal
+// dot '.' followed by the remaining digits. The caller has to guarantee that:
+//   10^(olength-1) <= digits < 10^olength
+// e.g., by passing `olength` as `decimalLength9(digits)`.
 header_function
 void ryu_append_d_digits (U32 olength, U32 digits, Char* result) {
     U32 i = 0;
@@ -670,20 +678,26 @@ void ryu_append_d_digits (U32 olength, U32 digits, Char* result) {
     }
 }
 
+// Convert `digits` to decimal and write the last `count` decimal digits to result.
+// If `digits` contains additional digits, then those are silently ignored.
 header_function
 void ryu_append_c_digits (U32 count, U32 digits, Char* result) {
+    // Copy pairs of digits from RYU_DIGIT_TABLE.
     U32 i = 0;
     for (; i < count - 1; i += 2) {
         U32 c = (digits % 100) << 1;
         digits /= 100;
         memcpy(result + count - i - 2, RYU_DIGIT_TABLE + c, 2);
     }
+    // Generate the last digit if count is odd.
     if (i < count) {
         Char c = (Char) ('0' + (digits % 10));
         result[count - i - 1] = c;
     }
 }
 
+// Convert `digits` to decimal and write the last 9 decimal digits to result.
+// If `digits` contains additional digits, then those are silently ignored.
 header_function
 void ryu_append_nine_digits (U32 digits, Char* result) {
     if (digits == 0) {

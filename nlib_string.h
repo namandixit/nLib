@@ -6,8 +6,9 @@
 
 #if !defined(NLIB_STRING_H_INCLUDE_GUARD)
 
+# if defined(NLIB_NO_LIBC)
 header_function
-Sint stringCompare (Char *s1, Char *s2)
+Sint strcmp (const Char *s1, const Char *s2)
 {
     while(s1[0]) {
         if (s1[0] != s2[0]) break;
@@ -19,7 +20,7 @@ Sint stringCompare (Char *s1, Char *s2)
 }
 
 header_function
-Sint stringCompareCount (Char *s1, Char *s2, Size count)
+Sint strncmp (const Char *s1, const Char *s2, Size count)
 {
     Sint result = 0;
 
@@ -35,22 +36,7 @@ Sint stringCompareCount (Char *s1, Char *s2, Size count)
 }
 
 header_function
-B32 stringEqual (Char *str1, Char *str2)
-{
-    B32 result = (stringCompare(str1, str2) == 0);
-    return result;
-}
-
-header_function
-B32 stringEqualCount (Char *str1, Char *str2, Size count)
-{
-    B32 result = (stringCompareCount(str1, str2, count) == 0);
-    return result;
-}
-
-
-header_function
-Size stringLength (Char *s)
+Size strlen (const Char *s)
 {
     Size len = 0;
 
@@ -62,17 +48,32 @@ Size stringLength (Char *s)
 
     return len;
 }
+# endif
 
 header_function
-Size stringPrefix (Char *str, Char *pre)
+B32 streq (const Char *str1, const Char *str2)
 {
-    Size lenpre = stringLength(pre);
-    Size lenstr = stringLength(str);
+    B32 result = (strcmp(str1, str2) == 0);
+    return result;
+}
+
+header_function
+B32 strneq (const Char *str1, const Char *str2, Size count)
+{
+    B32 result = (strncmp(str1, str2, count) == 0);
+    return result;
+}
+
+header_function
+Size strprefix (Char *str, Char *pre)
+{
+    Size lenpre = strlen(pre);
+    Size lenstr = strlen(str);
 
     if (lenstr < lenpre) {
         return 0;
     } else {
-        if (stringEqualCount(pre, str, lenpre)) {
+        if (strneq(pre, str, lenpre)) {
             return lenpre;
         } else {
             return 0;
@@ -81,15 +82,15 @@ Size stringPrefix (Char *str, Char *pre)
 }
 
 header_function
-Size stringSuffix (Char *str, Char *suf)
+Size strsuffix (Char *str, Char *suf)
 {
-    Size lensuf = stringLength(suf);
-    Size lenstr = stringLength(str);
+    Size lensuf = strlen(suf);
+    Size lenstr = strlen(str);
 
     if (lenstr < lensuf) {
         return 0;
     } else {
-        if (stringEqualCount(suf, str + (lenstr - lensuf), lensuf)) {
+        if (strneq(suf, str + (lenstr - lensuf), lensuf)) {
             return lensuf;
         } else {
             return 0;

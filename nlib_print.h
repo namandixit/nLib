@@ -491,7 +491,7 @@ Size printStringVarArg (Char *buffer, Char *format, va_list va)
                         case 'F': case 'E': case 'A': { capital = true;  } break;
                     }
 
-                    if (precision < 0) precision = 6;
+                    if ((precision < 0) && !(flags & Print_Flags_FLOAT_HEX)) precision = 6;
 
                     F64 f64 = va_arg(va, F64);
                     union FU64 { F64 f; U64 u;} fu64 = {.f = f64};
@@ -513,12 +513,9 @@ Size printStringVarArg (Char *buffer, Char *format, va_list va)
                     // Remove all mantissa bits ------------------ and then reset the sign bit
                     U32 exponent_biased = (((U32)(bits >> F64_MANTISSA_BITS)) &
                                            ((1U << F64_EXPONENT_BITS) - 1U));
-                    U32 exponent = exponent_biased - F64_BIAS;
+                    S32 exponent = (S32)exponent_biased - F64_BIAS;
                     // Reset all bits except for the mantissa bits
                     U64 mantissa  = bits & ((1ULL << F64_MANTISSA_BITS) - 1ULL);
-
-                    // TODO(naman): Remove this later
-                    unused_variable(exponent);
 
                     if (negative) {
                         flags |= Print_Flags_NEGATIVE;
@@ -535,7 +532,8 @@ Size printStringVarArg (Char *buffer, Char *format, va_list va)
                             }
                         }
 
-                        if (flags & Print_Flags_LEADING_ZERO) {
+                        if ((flags & Print_Flags_LEADING_ZERO) &&
+                            !(flags & Print_Flags_FLOAT_HEX)) {
                             head_str[head_index++] = '0';
                         }
                     }
@@ -556,9 +554,13 @@ Size printStringVarArg (Char *buffer, Char *format, va_list va)
                         }
 
                         len = 3;
-                    }
+                    } else if (exponent_biased == 0 && mantissa == 0) {
+                        if (flags & Print_Flags_FLOAT_HEX) {
+                            head_str[head_index++] = '0';
+                            head_str[head_index++] = capital ? 'X' : 'x';
+                            head_str[head_index++] = '0';
+                        }
 
-                    if (exponent_biased == 0 && mantissa == 0) {
                         str = num_str;
 
                         *str++ = '0';
@@ -572,10 +574,158 @@ Size printStringVarArg (Char *buffer, Char *format, va_list va)
                         str = num_str;
 
                         if (flags & Print_Flags_FLOAT_EXP) {
-                            tail_str[tail_index++] = 'e';
+                            tail_str[tail_index++] = capital ? 'E' : 'e';
                             tail_str[tail_index++] = '+';
                             tail_str[tail_index++] = '0';
                             tail_str[tail_index++] = '0';
+                        } else if (flags & Print_Flags_FLOAT_HEX) {
+                            tail_str[tail_index++] = capital ? 'P' : 'p';
+                            tail_str[tail_index++] = '+';
+                            tail_str[tail_index++] = '0';
+                        }
+                    }
+
+                    if ((str == NULL) && (flags & Print_Flags_FLOAT_HEX)) {
+                        S32 ex = exponent;
+                        B32 denormal = false;
+
+                        if ((exponent_biased == 0) && (mantissa != 0)) { // Denormals
+                            denormal = true;
+                            ex = -1022;
+                        }
+
+                        head_str[head_index++] = '0';
+                        head_str[head_index++] = capital ? 'X' : 'x';
+
+                        if (mantissa || precision) {
+                            U64 man = mantissa;
+                            S32 pr = precision > 0 ? precision : 13;
+
+                            if (denormal == false) {
+                                // NOTE(naman): This sets the 53rd bit
+                                man |= 1ULL << 52;
+                            }
+
+                            /* NOTE(naman): This makes it so that the MSB of mantissa is on
+                             * 60th bit, and the normal/denormal bit (that we set above)
+                             * is on 61st.
+                             *
+                             *    bitsInF64 - (bitsInHex * (MANTISSA_BITS/bitsInHex + 1))
+                             * => 64 - (4 * (13 + 1))
+                             * => 8
+                             * (1 at the end comes to handle the 53rd bit)
+                             */
+                            man <<= 8;
+
+                            // NOTE(naman): This will do the rounding if the precision is
+                            // smaller. It does this by incrementing the MSB of mantissa
+                            // that won't be printed. Doing that will send a carry forward
+                            // if the hex associated with that MSB was >= 8; and not if it was
+                            // < 7. Similarly, the carry will propagate further, rounding each
+                            // hex to its nearest value, with ties away from zero.
+                            if (pr < 13) {
+                                const U64 one_at_unprinted_msb_if_precision_is[13] = {
+                                    576460752303423488ULL, // 800000000000000
+                                    36028797018963968ULL,  // 80000000000000
+                                    2251799813685248ULL,   // 8000000000000
+                                    140737488355328ULL,    // 800000000000
+                                    8796093022208ULL,      // 80000000000
+                                    549755813888ULL,       // 8000000000
+                                    34359738368ULL,        // 800000000
+                                    2147483648ULL,         // 80000000
+                                    134217728ULL,          // 8000000
+                                    8388608ULL,            // 800000
+                                    524288ULL,             // 80000
+                                    32768ULL,              // 8000
+                                    2048ULL,               // 800
+                                };
+
+                                U64 one_at_unprinted_msb  = one_at_unprinted_msb_if_precision_is[pr];
+
+                                U64 ones_after_unprinted_msb = one_at_unprinted_msb - 1ULL;
+                                U64 zeroes_at_unprinted = ((Size)-1) ^ ((ones_after_unprinted_msb << 1) | 1);
+                                U64 one_at_printed_lsb = one_at_unprinted_msb << 1;
+
+                                // https://indepth.dev/how-to-round-binary-numbers/
+                                U64 lower = man & zeroes_at_unprinted;
+                                U64 middle = lower | one_at_unprinted_msb;
+                                U64 upper = lower + one_at_printed_lsb;
+
+                                if (man < middle) {
+                                    man = lower;
+                                } else if (man > middle) {
+                                    man = upper;
+                                } else {
+                                    if ((lower & one_at_printed_lsb) == 0) {
+                                        man = lower;
+                                    } else {
+                                        man = upper;
+                                    }
+                                }
+
+#  if 0 // Rounding as implemented in stb_printf.h
+                                U64 one_at_60th_pos = 1ULL << 59;
+                                U64 count_printed_bits = (U64)pr * 4ULL;
+                                U64 one_at_unprinted_msb = (one_at_60th_pos >> count_printed_bits);
+
+                                man += one_at_unprinted_msb;
+#  endif
+                            }
+
+                            str = num_str;
+                            Char *hexs = capital ? "0123456789ABCDEF" : "0123456789abcdef";
+
+                            // NOTE(naman): This prints 0/1 depending on normal/denormal status
+                            *str++ = hexs[(man >> 60) & 0xF];
+                            man <<= 4;
+
+                            if (precision) *str++ = '.';
+
+                            S32 n = pr;
+
+                            if (n > 13) n = 13;
+                            if (pr > (S32)n) trailing_zeroes = pr - n;
+
+                            U32 count_of_end_zeroes = 0;
+                            while (n--) {
+                                if ((man >> 60) & 0xF) {
+                                    count_of_end_zeroes = 0;
+                                } else {
+                                    count_of_end_zeroes++;
+                                }
+
+                                *str++ = hexs[(man >> 60) & 0xF];
+                                man <<= 4;
+                            }
+
+                            if (precision >= 0) {
+                                count_of_end_zeroes = 0;
+                            }
+
+                            len = (Size)(Dptr)(str - num_str - count_of_end_zeroes);
+                            str = num_str;
+                        } else {
+                            len = 0;
+                        }
+
+                        {
+                            tail_str[tail_index++] = capital ? 'P' : 'p';
+                            tail_str[tail_index++] = ex > 0 ? '+' : '-';
+                            ex = ex > 0 ? ex : -ex;
+
+                            Char es[4] = {0};
+                            Char *ep = &es[elemin(es)];
+                            Char el = 0;
+                            while (ex) {
+                                *--ep = (Char)(ex % 10) + '0';
+                                el++;
+                                ex /= 10;
+                            }
+
+                            while (el) {
+                                el--;
+                                tail_str[tail_index++] = *ep++;
+                            }
                         }
                     }
 

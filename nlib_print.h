@@ -1491,7 +1491,11 @@ Size printStringVarArg (Char *buffer, Char *format, va_list va)
     }
     buf++;
 
-    return (Size)(Uptr)(buf - buffer);
+    Size length = (Size)(Uptr)(buf - buffer);
+    // NOTE(naman): sprintf(3) specs that the return value is the number of bytes written
+    // excluding the null byte.
+    Size result = length - 1;
+    return result;
 }
 
 #  if defined(OS_WINDOWS)
@@ -1504,7 +1508,7 @@ Size printConsole (Sint fd, Char *format, va_list ap)
     va_copy(ap2, ap);
 
     Size buffer_size = printStringVarArg(NULL, format, ap1);
-    Char *buffer = nlib_Malloc(buffer_size);
+    Char *buffer = nlib_Malloc(buffer_size + 1);
     printStringVarArg(buffer, format, ap2);
 
     HANDLE out_stream;
@@ -1535,7 +1539,7 @@ Size printDebugOutput (Char *format, va_list ap)
     va_copy(ap2, ap);
 
     Size buffer_size = printStringVarArg(NULL, format, ap1);
-    Char *buffer = nlib_Malloc(buffer_size);
+    Char *buffer = nlib_Malloc(buffer_size + 1);
     printStringVarArg(buffer, format, ap2);
 
     LPWSTR wcstr = unicodeWin32UTF16FromUTF8(buffer);
@@ -1560,7 +1564,7 @@ Size printConsole (Sint fd, Char *format, va_list ap)
     va_copy(ap2, ap);
 
     Size buffer_size = printStringVarArg(NULL, format, ap1);
-    Char *buffer = memAlloc(buffer_size);
+    Char *buffer = memAlloc(buffer_size + 1);
     printStringVarArg(buffer, format, ap2);
 
 #   if defined(NLIB_NO_LIBC)

@@ -663,13 +663,13 @@ Char* sbuf_Print(Char *buf, Char *fmt, ...)
     Size size = printStringVarArg(NULL, fmt, args);
     va_end(args);
 
-    sbufResize(buf, sbufElemin(buf) + size);
+    sbufResize(buf, sbufElemin(buf) + size + 1);
 
     va_start(args, fmt);
     printStringVarArg(sbufEnd(buf), fmt, args);
     va_end(args);
 
-    sbuf_GetHeader(buf)->len += (size - 1);
+    sbuf_GetHeader(buf)->len += size;
     return buf;
 }
 # if defined(COMPILER_CLANG)
@@ -703,7 +703,7 @@ void sbufUnitTest (void)
     sbufPrint(stream, "Still here? %d\n", 420);
     sbufPrint(stream, "GO AWAY!!!\n");
 
-    utTest(stringEqual(stream, "Hello, World!\nStill here? 420\nGO AWAY!!!\n"));
+    utTest(streq(stream, "Hello, World!\nStill here? 420\nGO AWAY!!!\n"));
 }
 # endif
 

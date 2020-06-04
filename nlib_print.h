@@ -51,7 +51,7 @@ header_function Size errv (Char *format, va_list ap);
 #  endif
 
 #  if defined(NLIB_PRINT_RYU_FLOAT)
-#   include "nlib_ryu.h"
+#   include "nlib_print_ryu.h"
 #  endif // defined(NLIB_PRINT_RYU_FLOAT)
 
 typedef enum Print_Flags {

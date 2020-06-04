@@ -24,7 +24,7 @@
 
 #if !defined(NLIB_RYU_H_INCLUDE_GUARD)
 
-# include "nlib_ryu_tables.h"
+# include "nlib_print_ryu_tables.h"
 
 // Returns the number of decimal digits in v, which must not contain more than 9 digits.
 header_function

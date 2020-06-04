@@ -19,11 +19,11 @@
 
 #if defined(NLIB_PRINT_INTERFACE_ONLY)
 
-header_function Size printStringVarArg (Char *, Char *, va_list);
-header_function Size say  (Char *format, ...);
-header_function Size sayv (Char *format, va_list ap);
-header_function Size err  (Char *format, ...);
-header_function Size errv (Char *format, va_list ap);
+header_function Size printStringVarArg (Char *, Char const *, va_list);
+header_function Size say  (Char const *format, ...);
+header_function Size sayv (Char const *format, va_list ap);
+header_function Size err  (Char const *format, ...);
+header_function Size errv (Char const *format, va_list ap);
 
 # if defined(OS_WINDOWS)
 #  if defined(BUILD_DEBUG)
@@ -69,9 +69,9 @@ typedef enum Print_Flags {
 } Print_Flags;
 
 header_function
-Size printStringVarArg (Char *buffer, Char *format, va_list va)
+Size printStringVarArg (Char *buffer, Char const *format, va_list va)
 {
-    Char *fmt = format;
+    Char const *fmt = format;
     Char *buf = buffer;
 
     while (true) {
@@ -85,7 +85,7 @@ Size printStringVarArg (Char *buffer, Char *format, va_list va)
         }
 
         if (fmt[0] == '%') {
-            Char *format_pointer = fmt;
+            Char const *format_pointer = fmt;
 
             fmt++;
 
@@ -674,7 +674,7 @@ Size printStringVarArg (Char *buffer, Char *format, va_list va)
                             }
 
                             str = num_str;
-                            Char *hexs = capital ? "0123456789ABCDEF" : "0123456789abcdef";
+                            Char const *hexs = capital ? "0123456789ABCDEF" : "0123456789abcdef";
 
                             // NOTE(naman): This prints 0/1 depending on normal/denormal status
                             *str++ = hexs[(man >> 60) & 0xF];
@@ -1499,7 +1499,7 @@ Size printStringVarArg (Char *buffer, Char *format, va_list va)
 #  if defined(OS_WINDOWS)
 
 header_function
-Size printConsole (Sint fd, Char *format, va_list ap)
+Size printConsole (Sint fd, Char const *format, va_list ap)
 {
     va_list ap1, ap2;
     va_copy(ap1, ap);
@@ -1530,7 +1530,7 @@ Size printConsole (Sint fd, Char *format, va_list ap)
 }
 
 header_function
-Size printDebugOutput (Char *format, va_list ap)
+Size printDebugOutput (Char const *format, va_list ap)
 {
     va_list ap1, ap2;
     va_copy(ap1, ap);
@@ -1555,14 +1555,14 @@ Size printDebugOutput (Char *format, va_list ap)
 #  elif defined(OS_LINUX)
 
 header_function
-Size printConsole (Sint fd, Char *format, va_list ap)
+Size printConsole (Sint fd, Char const *format, va_list ap)
 {
     va_list ap1, ap2;
     va_copy(ap1, ap);
     va_copy(ap2, ap);
 
     Size buffer_size = printStringVarArg(NULL, format, ap1);
-    Char *buffer = memAlloc(buffer_size + 1);
+    Char *buffer = (Char *)memAlloc(buffer_size + 1);
     printStringVarArg(buffer, format, ap2);
 
 #   if defined(NLIB_NO_LIBC)
@@ -1586,7 +1586,7 @@ Size printConsole (Sint fd, Char *format, va_list ap)
 #  endif
 
 header_function
-Size printString (Char *buffer, Char *format, ...)
+Size printString (Char *buffer, Char const *format, ...)
 {
     va_list ap;
 
@@ -1598,7 +1598,7 @@ Size printString (Char *buffer, Char *format, ...)
 }
 
 header_function
-Size say (Char *format, ...)
+Size say (Char const *format, ...)
 {
     va_list ap;
 
@@ -1610,14 +1610,14 @@ Size say (Char *format, ...)
 }
 
 header_function
-Size sayv (Char *format, va_list ap)
+Size sayv (Char const *format, va_list ap)
 {
     Size buffer_size = printConsole(1, format, ap);
     return buffer_size;
 }
 
 header_function
-Size err (Char *format, ...)
+Size err (Char const *format, ...)
 {
     va_list ap;
 
@@ -1629,7 +1629,7 @@ Size err (Char *format, ...)
 }
 
 header_function
-Size errv (Char *format, va_list ap)
+Size errv (Char const *format, va_list ap)
 {
     Size buffer_size = printConsole(2, format, ap);
     return buffer_size;

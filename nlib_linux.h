@@ -1,12 +1,11 @@
 /*
- * Original Work Copyright (C) 2017-2018 Willy Tarreau <w@1wt.eu>
- * Modified Work Copyright (C) 2020 Naman Dixit
+ * Copyright (C) 2017-2018 Willy Tarreau <w@1wt.eu>
  * SPDX-License-Identifier: LGPL-2.1 OR MIT
  */
 
 /*
  * This file was originally retrieved from: http://git.1wt.eu/git/nolibc.git
- * An old copy of this file was merged into the Linux Kernel and can be found at:
+ * An old copy of this file was merged into the Kernel and can be found at:
  * https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/tree/tools/include/nolibc/nolibc.h
  *
  * To update this file, pull any new changes and diff them against old version (diffing against
@@ -81,46 +80,46 @@
 
 global_variable thread_local S32 errno;
 
-typedef   signed long       SSize;
-typedef   struct timeval    Time_Value;
+typedef   signed long       ssize_t;
+typedef   struct timeval    timeval;
 
 /* for stat() */
-typedef unsigned int          Dev;
-typedef unsigned long         Ino;
-typedef unsigned int          Mode;
-typedef   signed int          PID;
-typedef unsigned int          UID;
-typedef unsigned int          GID;
-typedef unsigned long         NLink;
-typedef   signed long         Offset;
-typedef   signed long         Block_Size;
-typedef   signed long         Block_Count;
-typedef   signed long         Time;
+typedef unsigned int          dev_t;
+typedef unsigned long         ino_t;
+typedef unsigned int          mode_t;
+typedef   signed int          pid_t;
+typedef unsigned int          uid_t;
+typedef unsigned int          gid_t;
+typedef unsigned long         nlink_t;
+typedef   signed long         offset_t;
+typedef   signed long         blksize_t;
+typedef   signed long         blkcnt_t;
+typedef   signed long         time_t;
 
 /* for poll() */
-typedef struct Poll_FD {
+typedef struct pollfd {
     S32 fd;
     S16 events;
     S16 revents;
-} Poll_FD;
+} pollfd;
 
 /* for getdents64() */
-typedef struct Directory_Entry64 {
+typedef struct dirent64 {
     U64  d_ino;
     S64  d_off;
     U16  d_reclen;
     Byte d_type;
     Char d_name[];
-} Directory_Entry64;
+} dirent64;
 
 /* commonly an fd_set represents 256 FDs */
 #define FD_SETSIZE 256
-typedef struct { U32 fd32[FD_SETSIZE/32]; } FD_Set;
+typedef struct { U32 fd32[FD_SETSIZE/32]; } fd_set;
 
 /* needed by wait4() */
-typedef struct RUsage {
-    Time_Value ru_utime;
-    Time_Value ru_stime;
+typedef struct rusage {
+    timeval ru_utime;
+    timeval ru_stime;
     S64        ru_maxrss;
     S64        ru_ixrss;
     S64        ru_idrss;
@@ -135,7 +134,7 @@ typedef struct RUsage {
     S64        ru_nsignals;
     S64        ru_nvcsw;
     S64        ru_nivcsw;
-} RUsage;
+} rusage;
 
 /* stat flags (WARNING, octal here) */
 #define S_IFDIR       0040000
@@ -186,21 +185,21 @@ typedef struct RUsage {
 /* The format of the struct as returned by the libc to the application, which
  * significantly differs from the format returned by the stat() syscall flavours.
  */
-typedef struct Stat {
-    Dev         st_dev;     /* ID of device containing file */
-    Ino         st_ino;     /* inode number */
-    Mode        st_mode;    /* protection */
-    NLink       st_nlink;   /* number of hard links */
-    UID         st_uid;     /* user ID of owner */
-    GID         st_gid;     /* group ID of owner */
-    Dev         st_rdev;    /* device ID (if special file) */
-    Offset      st_size;    /* total size, in bytes */
-    Block_Size  st_blksize; /* blocksize for file system I/O */
-    Block_Count st_blocks;  /* number of 512B blocks allocated */
-    Time        st_atime;   /* time of last access */
-    Time        st_mtime;   /* time of last modification */
-    Time        st_ctime;   /* time of last status change */
-} Stat;
+struct stat {
+    dev_t         st_dev;     /* ID of device containing file */
+    ino_t         st_ino;     /* inode number */
+    mode_t        st_mode;    /* protection */
+    nlink_t       st_nlink;   /* number of hard links */
+    uid_t         st_uid;     /* user ID of owner */
+    gid_t         st_gid;     /* group ID of owner */
+    dev_t         st_rdev;    /* device ID (if special file) */
+    offset_t      st_size;    /* total size, in bytes */
+    blksize_t  st_blksize; /* blocksize for file system I/O */
+    blkcnt_t st_blocks;  /* number of 512B blocks allocated */
+    time_t        st_atime;   /* time of last access */
+    time_t        st_mtime;   /* time of last modification */
+    time_t        st_ctime;   /* time of last status change */
+};
 
 #define WEXITSTATUS(status)   (((status) & 0xff00) >> 8)
 #define WIFEXITED(status)     (((status) & 0x7f) == 0)
@@ -1400,7 +1399,7 @@ S32 linuxSysChdir (Char *path)
 }
 
 header_function
-S32 linuxSysChmod (Char *path, Mode mode)
+S32 linuxSysChmod (Char *path, mode_t mode)
 {
     S32 result;
 #if defined(__NR_fchmodat)
@@ -1413,7 +1412,7 @@ S32 linuxSysChmod (Char *path, Mode mode)
 }
 
 header_function
-S32 linuxSysChown (Char *path, UID owner, GID group)
+S32 linuxSysChown (Char *path, uid_t owner, gid_t group)
 {
     S32 result;
 #if defined(__NR_fchownat)
@@ -1474,17 +1473,17 @@ S32 linuxSysExecve (Char *filename, Char *argv[], Char *envp[])
 }
 
 header_function
-PID linuxSysFork (void)
+pid_t linuxSysFork (void)
 {
-    PID result;
+    pid_t result;
 #ifdef __NR_clone
     /* note: some archs only have clone() and not fork(). Different archs
      * have a different API, but most archs have the flags on first arg and
      * will not use the rest with no other flag.
      */
-    result = (PID)linuxMakeSysCall5(__NR_clone, SIGCHLD, 0, 0, 0, 0);
+    result = (pid_t)linuxMakeSysCall5(__NR_clone, SIGCHLD, 0, 0, 0, 0);
 #else
-    result = (PID)linuxMakeSysCall0(__NR_fork);
+    result = (pid_t)linuxMakeSysCall0(__NR_fork);
 #endif
     return result;
 }
@@ -1497,30 +1496,30 @@ S32 linuxSysFsync (S32 fd)
 }
 
 header_function
-S32 linuxSysGetDEnts64 (S32 fd, struct Directory_Entry64 *dirp, S32 count)
+S32 linuxSysGetDEnts64 (S32 fd, struct dirent64 *dirp, S32 count)
 {
     S32 result = (S32)linuxMakeSysCall3(__NR_getdents64, fd, dirp, count);
     return result;
 }
 
 header_function
-PID linuxSysGetPGID (PID pid)
+pid_t linuxSysGetPGID (pid_t pid)
 {
-    PID result = (PID)linuxMakeSysCall1(__NR_getpgid, pid);
+    pid_t result = (pid_t)linuxMakeSysCall1(__NR_getpgid, pid);
     return result;
 }
 
 header_function
-PID linuxSysGetpgrp (void)
+pid_t linuxSysGetpgrp (void)
 {
-    PID result = (PID)linuxSysGetPGID(0);
+    pid_t result = (pid_t)linuxSysGetPGID(0);
     return result;
 }
 
 header_function
-PID linuxSysGetPID(void)
+pid_t linuxSysGetPID(void)
 {
-    PID result = (PID)linuxMakeSysCall0(__NR_getpid);
+    pid_t result = (pid_t)linuxMakeSysCall0(__NR_getpid);
     return result;
 }
 
@@ -1539,7 +1538,7 @@ S32 linuxSysIoctl (S32 fd, U64 req, void *value)
 }
 
 header_function
-S32 linuxSysKill (PID pid, S32 signal)
+S32 linuxSysKill (pid_t pid, S32 signal)
 {
     S32 result = (S32)linuxMakeSysCall2(__NR_kill, pid, signal);
     return result;
@@ -1558,14 +1557,14 @@ S32 linuxSysLink (Char *old, Char *new)
 }
 
 header_function
-Offset linuxSysLseek (S32 fd, Offset offset, S32 whence)
+offset_t linuxSysLseek (S32 fd, offset_t offset, S32 whence)
 {
     S32 result = (S32)linuxMakeSysCall3(__NR_lseek, fd, offset, whence);
     return result;
 }
 
 header_function
-S32 linuxSysMkdir (Char *path, Mode mode)
+S32 linuxSysMkdir (Char *path, mode_t mode)
 {
     S32 result;
 #ifdef __NR_mkdirat
@@ -1577,7 +1576,7 @@ S32 linuxSysMkdir (Char *path, Mode mode)
 }
 
 header_function
-S64 linuxSysMknod (Char *path, Mode mode, Dev dev)
+S64 linuxSysMknod (Char *path, mode_t mode, dev_t dev)
 {
     S64 result;
 #ifdef __NR_mknodat
@@ -1589,7 +1588,7 @@ S64 linuxSysMknod (Char *path, Mode mode, Dev dev)
 }
 
 header_function
-Uptr linuxSysMMap (void *start, Size length, S32 protection, S32 flags, S32 fd, Offset offset)
+Uptr linuxSysMMap (void *start, Size length, S32 protection, S32 flags, S32 fd, offset_t offset)
 {
     Uptr result;
 #ifdef __NR_mmap2
@@ -1619,7 +1618,7 @@ S32 linuxSysMount (Char *src, Char *tgt, Char *fst,
 }
 
 header_function
-S32 linuxSysOpen(Char *path, S32 flags, Mode mode)
+S32 linuxSysOpen(Char *path, S32 flags, mode_t mode)
 {
     S32 result;
 #ifdef __NR_openat
@@ -1638,7 +1637,7 @@ S32 linuxSysPivotRoot(Char *new, Char *old)
 }
 
 header_function
-S32 linuxSysPoll(Poll_FD *fds, S32 nfds, S32 timeout)
+S32 linuxSysPoll(pollfd *fds, S32 nfds, S32 timeout)
 {
     S32 result;
 #if defined(__NR_ppoll)
@@ -1656,16 +1655,16 @@ S32 linuxSysPoll(Poll_FD *fds, S32 nfds, S32 timeout)
 }
 
 header_function
-SSize linuxSysRead(S32 fd, void *buf, Size count)
+ssize_t linuxSysRead(S32 fd, void *buf, Size count)
 {
-    SSize result = linuxMakeSysCall3(__NR_read, fd, buf, count);
+    ssize_t result = linuxMakeSysCall3(__NR_read, fd, buf, count);
     return result;
 }
 
 header_function
-SSize linuxSysReboot (S32 magic1, S32 magic2, S32 cmd, void *arg)
+ssize_t linuxSysReboot (S32 magic1, S32 magic2, S32 cmd, void *arg)
 {
-    SSize result = linuxMakeSysCall4(__NR_reboot, magic1, magic2, cmd, arg);
+    ssize_t result = linuxMakeSysCall4(__NR_reboot, magic1, magic2, cmd, arg);
     return result;
 }
 
@@ -1677,7 +1676,7 @@ S32 linuxSysSchedYield (void)
 }
 
 header_function
-S32 linuxSysSelect (S32 nfds, FD_Set *rfds, FD_Set *wfds, FD_Set *efds, Time_Value *timeout)
+S32 linuxSysSelect (S32 nfds, fd_set *rfds, fd_set *wfds, fd_set *efds, timeval *timeout)
 {
     S32 result;
 
@@ -1707,21 +1706,21 @@ S32 linuxSysSelect (S32 nfds, FD_Set *rfds, FD_Set *wfds, FD_Set *efds, Time_Val
 }
 
 header_function
-S32 linuxSysSetPGID (PID pid, PID pgid)
+S32 linuxSysSetPGID (pid_t pid, pid_t pgid)
 {
     S32 result = (S32)linuxMakeSysCall2(__NR_setpgid, pid, pgid);
     return result;
 }
 
 header_function
-PID linuxSysSetSID (void)
+pid_t linuxSysSetSID (void)
 {
-    PID result = (PID)linuxMakeSysCall0(__NR_setsid);
+    pid_t result = (pid_t)linuxMakeSysCall0(__NR_setsid);
     return result;
 }
 
 header_function
-S32 linuxSysStat (Char *path, Stat *buf)
+S32 linuxSysStat (Char *path, struct stat *buf)
 {
     struct sys_stat_struct stat;
     S32 result;
@@ -1732,19 +1731,19 @@ S32 linuxSysStat (Char *path, Stat *buf)
 #else
     result = (S32)linuxMakeSysCall2(__NR_stat, path, &stat);
 #endif
-    buf->st_dev     = (Dev)stat.st_dev;
+    buf->st_dev     = (dev_t)stat.st_dev;
     buf->st_ino     = stat.st_ino;
     buf->st_mode    = stat.st_mode;
     buf->st_nlink   = stat.st_nlink;
     buf->st_uid     = stat.st_uid;
     buf->st_gid     = stat.st_gid;
-    buf->st_rdev    = (Dev)stat.st_rdev;
+    buf->st_rdev    = (dev_t)stat.st_rdev;
     buf->st_size    = stat.st_size;
     buf->st_blksize = stat.st_blksize;
     buf->st_blocks  = stat.st_blocks;
-    buf->st_atime   = (Time)stat.st_atime;
-    buf->st_mtime   = (Time)stat.st_mtime;
-    buf->st_ctime   = (Time)stat.st_ctime;
+    buf->st_atime   = (time_t)stat.st_atime;
+    buf->st_mtime   = (time_t)stat.st_mtime;
+    buf->st_ctime   = (time_t)stat.st_ctime;
 
     return result;
 }
@@ -1763,9 +1762,9 @@ S32 linuxSysSymlink (Char *old, Char *new)
 }
 
 header_function
-Mode linuxSysUmask (Mode mode)
+mode_t linuxSysUmask (mode_t mode)
 {
-    Mode result = (Mode)linuxMakeSysCall1(__NR_umask, mode);
+    mode_t result = (mode_t)linuxMakeSysCall1(__NR_umask, mode);
     return result;
 }
 
@@ -1789,30 +1788,30 @@ S32 linuxSysUnlink (Char *path)
 }
 
 header_function
-PID linuxSysWait4 (PID pid, S32 *status, S32 options, RUsage *rusage)
+pid_t linuxSysWait4 (pid_t pid, S32 *status, S32 options, rusage *rusage)
 {
-    PID result = (PID)linuxMakeSysCall4(__NR_wait4, pid, status, options, rusage);
+    pid_t result = (pid_t)linuxMakeSysCall4(__NR_wait4, pid, status, options, rusage);
     return result;
 }
 
 header_function
-PID linuxSysWaitPID (PID pid, S32 *status, S32 options)
+pid_t linuxSysWaitPID (pid_t pid, S32 *status, S32 options)
 {
-    PID result = linuxSysWait4(pid, status, options, 0);
+    pid_t result = linuxSysWait4(pid, status, options, 0);
     return result;
 }
 
 header_function
-PID linuxSysWait (S32 *status)
+pid_t linuxSysWait (S32 *status)
 {
-    PID result = (PID)linuxSysWaitPID(-1, status, 0);
+    pid_t result = (pid_t)linuxSysWaitPID(-1, status, 0);
     return result;
 }
 
 header_function
-SSize linuxSysWrite (S32 fd, void *buf, Size count)
+ssize_t linuxSysWrite (S32 fd, void *buf, Size count)
 {
-    SSize result = linuxMakeSysCall3(__NR_write, fd, buf, count);
+    ssize_t result = linuxMakeSysCall3(__NR_write, fd, buf, count);
     return result;
 }
 
@@ -1855,7 +1854,7 @@ S32 chdir(Char *path)
 }
 
 header_function
-S32 chmod(Char *path, Mode mode)
+S32 chmod(Char *path, mode_t mode)
 {
     S32 ret = linuxSysChmod(path, mode);
 
@@ -1867,7 +1866,7 @@ S32 chmod(Char *path, Mode mode)
 }
 
 header_function
-S32 chown(Char *path, UID owner, GID group)
+S32 chown(Char *path, uid_t owner, gid_t group)
 {
     S32 ret = linuxSysChown(path, owner, group);
 
@@ -1953,9 +1952,9 @@ S32 execve(Char *filename, Char *argv[], Char *envp[])
 }
 
 header_function
-PID fork(void)
+pid_t fork(void)
 {
-    PID ret = linuxSysFork();
+    pid_t ret = linuxSysFork();
 
     if (ret < 0) {
         errno = -ret;
@@ -1977,7 +1976,7 @@ S32 fsync(S32 fd)
 }
 
 header_function
-S32 getdents64(S32 fd, struct Directory_Entry64 *dirp, S32 count)
+S32 getdents64(S32 fd, struct dirent64 *dirp, S32 count)
 {
     S32 ret = linuxSysGetDEnts64(fd, dirp, count);
 
@@ -1989,9 +1988,9 @@ S32 getdents64(S32 fd, struct Directory_Entry64 *dirp, S32 count)
 }
 
 static __attribute__((unused))
-PID getpgid(PID pid)
+pid_t getpgid(pid_t pid)
 {
-    PID ret = linuxSysGetPGID(pid);
+    pid_t ret = linuxSysGetPGID(pid);
 
     if (ret < 0) {
         errno = -ret;
@@ -2001,9 +2000,9 @@ PID getpgid(PID pid)
 }
 
 header_function
-PID getpgrp(void)
+pid_t getpgrp(void)
 {
-    PID ret = linuxSysGetpgrp();
+    pid_t ret = linuxSysGetpgrp();
 
     if (ret < 0) {
         errno = -ret;
@@ -2013,9 +2012,9 @@ PID getpgrp(void)
 }
 
 header_function
-PID getpid(void)
+pid_t getpid(void)
 {
-    PID ret = linuxSysGetPID();
+    pid_t ret = linuxSysGetPID();
 
     if (ret < 0) {
         errno = -ret;
@@ -2049,7 +2048,7 @@ S32 ioctl(S32 fd, U64 req, void *value)
 }
 
 header_function
-S32 kill(PID pid, S32 signal)
+S32 kill(pid_t pid, S32 signal)
 {
     S32 ret = linuxSysKill(pid, signal);
 
@@ -2073,9 +2072,9 @@ S32 link(Char *old, Char *new)
 }
 
 header_function
-Offset lseek(S32 fd, Offset offset, S32 whence)
+offset_t lseek(S32 fd, offset_t offset, S32 whence)
 {
-    Offset ret = linuxSysLseek(fd, offset, whence);
+    offset_t ret = linuxSysLseek(fd, offset, whence);
 
     if (ret < 0) {
         errno = -(Sint)ret;
@@ -2085,7 +2084,7 @@ Offset lseek(S32 fd, Offset offset, S32 whence)
 }
 
 header_function
-S32 mkdir(Char *path, Mode mode)
+S32 mkdir(Char *path, mode_t mode)
 {
     S32 ret = linuxSysMkdir(path, mode);
 
@@ -2097,7 +2096,7 @@ S32 mkdir(Char *path, Mode mode)
 }
 
 header_function
-S32 mknod(Char *path, Mode mode, Dev dev)
+S32 mknod(Char *path, mode_t mode, dev_t dev)
 {
     S32 ret = (S32)linuxSysMknod(path, mode, dev);
 
@@ -2157,7 +2156,7 @@ S32 mknod(Char *path, Mode mode, Dev dev)
 #define MS_SYNC        4
 
 header_function
-void* mmap(void *start, Size length, S32 protection, S32 flags, S32 fd, Offset offset)
+void* mmap(void *start, Size length, S32 protection, S32 flags, S32 fd, offset_t offset)
 {
     if ((U64)offset & (KiB(4) - 1)) {
         errno = EINVAL;
@@ -2196,7 +2195,7 @@ S32 mount(Char *src, Char *tgt,
 }
 
 header_function
-S32 open(Char *path, S32 flags, Mode mode)
+S32 open(Char *path, S32 flags, mode_t mode)
 {
     S32 ret = linuxSysOpen(path, flags, mode);
 
@@ -2220,7 +2219,7 @@ S32 pivot_root(Char *new, Char *old)
 }
 
 header_function
-S32 poll(Poll_FD *fds, S32 nfds, S32 timeout)
+S32 poll(pollfd *fds, S32 nfds, S32 timeout)
 {
     S32 ret = linuxSysPoll(fds, nfds, timeout);
 
@@ -2232,9 +2231,9 @@ S32 poll(Poll_FD *fds, S32 nfds, S32 timeout)
 }
 
 header_function
-SSize read(S32 fd, void *buf, Size count)
+ssize_t read(S32 fd, void *buf, Size count)
 {
-    SSize ret = linuxSysRead(fd, buf, count);
+    ssize_t ret = linuxSysRead(fd, buf, count);
 
     if (ret < 0) {
         errno = -(S32)ret;
@@ -2281,7 +2280,7 @@ S32 sched_yield(void)
 }
 
 header_function
-S32 select(S32 nfds, FD_Set *rfds, FD_Set *wfds, FD_Set *efds, Time_Value *timeout)
+S32 select(S32 nfds, fd_set *rfds, fd_set *wfds, fd_set *efds, timeval *timeout)
 {
     S32 ret = linuxSysSelect(nfds, rfds, wfds, efds, timeout);
 
@@ -2293,7 +2292,7 @@ S32 select(S32 nfds, FD_Set *rfds, FD_Set *wfds, FD_Set *efds, Time_Value *timeo
 }
 
 header_function
-S32 setpgid(PID pid, PID pgid)
+S32 setpgid(pid_t pid, pid_t pgid)
 {
     S32 ret = linuxSysSetPGID(pid, pgid);
 
@@ -2305,9 +2304,9 @@ S32 setpgid(PID pid, PID pgid)
 }
 
 header_function
-PID setsid(void)
+pid_t setsid(void)
 {
-    PID ret = linuxSysSetSID();
+    pid_t ret = linuxSysSetSID();
 
     if (ret < 0) {
         errno = -ret;
@@ -2319,7 +2318,7 @@ PID setsid(void)
 header_function
 U32 sleep(U32 seconds)
 {
-    Time_Value time_value = { seconds, 0 };
+    timeval time_value = { seconds, 0 };
 
     if (linuxSysSelect(0, 0, 0, 0, &time_value) < 0)
         return (U32)time_value.tv_sec + !!time_value.tv_usec;
@@ -2328,7 +2327,7 @@ U32 sleep(U32 seconds)
 }
 
 header_function
-S32 stat(Char *path, Stat *buf)
+S32 stat(Char *path, struct stat *buf)
 {
     S32 ret = linuxSysStat(path, buf);
 
@@ -2352,13 +2351,13 @@ S32 symlink(Char *old, Char *new)
 }
 
 header_function
-S32 tcsetpgrp(S32 fd, PID pid)
+S32 tcsetpgrp(S32 fd, pid_t pid)
 {
     return ioctl(fd, TIOCSPGRP, &pid);
 }
 
 header_function
-Mode umask(Mode mode)
+mode_t umask(mode_t mode)
 {
     return linuxSysUmask(mode);
 }
@@ -2388,9 +2387,9 @@ S32 unlink(Char *path)
 }
 
 header_function
-PID wait4(PID pid, S32 *status, S32 options, RUsage *rusage)
+pid_t wait4(pid_t pid, S32 *status, S32 options, rusage *rusage)
 {
-    PID ret = linuxSysWait4(pid, status, options, rusage);
+    pid_t ret = linuxSysWait4(pid, status, options, rusage);
 
     if (ret < 0) {
         errno = -ret;
@@ -2400,9 +2399,9 @@ PID wait4(PID pid, S32 *status, S32 options, RUsage *rusage)
 }
 
 header_function
-PID waitpid(PID pid, S32 *status, S32 options)
+pid_t waitpid(pid_t pid, S32 *status, S32 options)
 {
-    PID ret = linuxSysWaitPID(pid, status, options);
+    pid_t ret = linuxSysWaitPID(pid, status, options);
 
     if (ret < 0) {
         errno = -ret;
@@ -2412,9 +2411,9 @@ PID waitpid(PID pid, S32 *status, S32 options)
 }
 
 header_function
-PID wait(S32 *status)
+pid_t wait(S32 *status)
 {
-    PID ret = linuxSysWait(status);
+    pid_t ret = linuxSysWait(status);
 
     if (ret < 0) {
         errno = -ret;
@@ -2424,9 +2423,9 @@ PID wait(S32 *status)
 }
 
 header_function
-SSize write(S32 fd, void *buf, size_t count)
+ssize_t write(S32 fd, void *buf, size_t count)
 {
-    SSize ret = linuxSysWrite(fd, buf, count);
+    ssize_t ret = linuxSysWrite(fd, buf, count);
 
     if (ret < 0) {
         errno = -(S32)ret;
@@ -2445,7 +2444,7 @@ S32 raise(S32 signal)
 /* Here come a few helper functions */
 
 header_function
-void FD_SET(S32 fd, FD_Set *set)
+void FD_SET(S32 fd, fd_set *set)
 {
     if (fd < 0 || fd >= FD_SETSIZE) {
         return;

@@ -60,7 +60,7 @@ MEMORY_ALLOCATOR(memVirtual)
             Size allocated_size = allocated_pages * KiB(4);
             Size usable_size = allocated_size - header_size;
 
-            Memory_Virtual_Header *header = memory;
+            Memory_Virtual_Header *header = (Memory_Virtual_Header *)memory;
             header->asked_size = asked_size;
             header->usable_size = usable_size;
             header->total_size = total_size;
@@ -74,7 +74,7 @@ MEMORY_ALLOCATOR(memVirtual)
             Size header_size = memAlignUp(sizeof(Memory_Virtual_Header));
             Size asked_size = memAlignUp(size);
 
-            Memory_Virtual_Header *old_header = (void*)((Byte*)old_ptr - header_size);
+            Memory_Virtual_Header *old_header = (Memory_Virtual_Header *)(void*)((Byte*)old_ptr - header_size);
 
             if (old_header->usable_size >= asked_size) {
                 return old_ptr;
@@ -92,7 +92,7 @@ MEMORY_ALLOCATOR(memVirtual)
             Size allocated_size = allocated_pages * KiB(4);
             Size usable_size = allocated_size - header_size;
 
-            Memory_Virtual_Header *header = memory;
+            Memory_Virtual_Header *header = (Memory_Virtual_Header *)memory;
             header->asked_size = asked_size;
             header->usable_size = usable_size;
             header->total_size = total_size;
@@ -108,7 +108,7 @@ MEMORY_ALLOCATOR(memVirtual)
         case Memory_Allocator_Mode_DEALLOCATE: {
             Size header_size = memAlignUp(sizeof(Memory_Virtual_Header));
 
-            Memory_Virtual_Header *header = (void*)((Byte*)old_ptr - header_size);
+            Memory_Virtual_Header *header = (Memory_Virtual_Header *)(void*)((Byte*)old_ptr - header_size);
             munmap(header, header->total_size);
 
             return NULL;
@@ -130,18 +130,30 @@ MEMORY_ALLOCATOR(memVirtual)
 
 # if defined(COMPILER_CLANG)
 #  pragma clang diagnostic push
-#  pragma clang diagnostic ignored "-Wexpansion-to-defined"
-#  pragma clang diagnostic ignored "-Wstrict-prototypes"
-#  pragma clang diagnostic ignored "-Wpadded"
-#  pragma clang diagnostic ignored "-Wsign-conversion"
-#  pragma clang diagnostic ignored "-Wnull-pointer-arithmetic"
-#  pragma clang diagnostic ignored "-Wcast-align"
-#  pragma clang diagnostic ignored "-Wextra-semi-stmt"
-#  pragma clang diagnostic ignored "-Wshorten-64-to-32"
-#  pragma clang diagnostic ignored "-Wint-to-pointer-cast"
-#  pragma clang diagnostic ignored "-Wbad-function-cast"
-#  pragma clang diagnostic ignored "-Wreserved-id-macro"
-#  pragma clang diagnostic ignored "-Wmissing-prototypes"
+#  if defined(LANG_C)
+#   pragma clang diagnostic ignored "-Wexpansion-to-defined"
+#   pragma clang diagnostic ignored "-Wstrict-prototypes"
+#   pragma clang diagnostic ignored "-Wpadded"
+#   pragma clang diagnostic ignored "-Wsign-conversion"
+#   pragma clang diagnostic ignored "-Wnull-pointer-arithmetic"
+#   pragma clang diagnostic ignored "-Wcast-align"
+#   pragma clang diagnostic ignored "-Wextra-semi-stmt"
+#   pragma clang diagnostic ignored "-Wshorten-64-to-32"
+#   pragma clang diagnostic ignored "-Wint-to-pointer-cast"
+#   pragma clang diagnostic ignored "-Wbad-function-cast"
+#   pragma clang diagnostic ignored "-Wreserved-id-macro"
+#   pragma clang diagnostic ignored "-Wmissing-prototypes"
+#  elif defined(LANG_CPP)
+#   pragma clang diagnostic ignored "-Wzero-as-null-pointer-constant"
+#   pragma clang diagnostic ignored "-Wexpansion-to-defined"
+#   pragma clang diagnostic ignored "-Wreserved-id-macro"
+#   pragma clang diagnostic ignored "-Wpadded"
+#   pragma clang diagnostic ignored "-Wsign-conversion"
+#   pragma clang diagnostic ignored "-Wnull-pointer-arithmetic"
+#   pragma clang diagnostic ignored "-Wcast-align"
+#   pragma clang diagnostic ignored "-Wextra-semi-stmt"
+#   pragma clang diagnostic ignored "-Wshorten-64-to-32"
+#  endif
 # endif
 
 # if defined(COMPILER_GCC)
@@ -186,12 +198,12 @@ MEMORY_ALLOCATOR(memDL)
 
     switch (mode) {
         case Memory_Allocator_Mode_ALLOCATE: {
-            Size *memory = dlmalloc(size);
+            void *memory = dlmalloc(size);
             return memory;
         } break;
 
         case Memory_Allocator_Mode_REALLOCATE: {
-            Size *memory = dlrealloc(old_ptr, size);
+            void *memory = dlrealloc(old_ptr, size);
             return memory;
         } break;
 
@@ -425,10 +437,10 @@ MEMORY_ALLOCATOR(memBuddy)
                 Size buddy_size = memAlignUp(sizeof(not_buddy));
                 Size total_size = arena_size + total_bits_size + buddy_size;
 
-                Byte *memory = mmap(NULL, total_size, PROT_READ | PROT_WRITE,
-                                    MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
+                Byte *memory = (Byte *)mmap(NULL, total_size, PROT_READ | PROT_WRITE,
+                                            MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
 
-                Memory_Buddy_Data *buddy = (void*)memory;
+                Memory_Buddy_Data *buddy = (Memory_Buddy_Data *)(void*)memory;
                 Byte *arena = memory + buddy_size;
                 Byte *free_bits = arena + arena_size;
                 Byte *split_bits = free_bits + size_of_free_bits;
@@ -457,7 +469,7 @@ MEMORY_ALLOCATOR(memBuddy)
         } break;
 
         case Memory_Allocator_Mode_DEALLOCATE: {
-            Byte *ptr = old_ptr;
+            Byte *ptr = (Byte *)old_ptr;
 
             if (ptr == NULL) return NULL;
 

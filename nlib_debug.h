@@ -36,8 +36,8 @@
 #  define claim(cond) claim_(cond, #cond, __FILE__, __LINE__)
 header_function
 void claim_ (B32 cond,
-             Char *cond_str,
-             Char *filename, U32 line_num)
+             Char const *cond_str,
+             Char const *filename, U32 line_num)
 {
     if (!cond) {
         report("Claim \"%s\" Failed in %s:%u\n\n",

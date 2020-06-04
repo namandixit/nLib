@@ -70,26 +70,42 @@
 
 # if defined(COMPILER_MSVC)
 #  if !defined(__cplusplus) // TODO(naman): See if this is actually works and is the best way.
-#   define LANGUAGE_C99  // TODO(naman): Update when Microsoft gets off its ass.
+#   define LANG_C       // TODO(naman): Update when Microsoft gets off its ass.
 #  else
-#   error Language not supported
+#   define LANG_CPP
 #  endif
 # endif
 
 # if defined(COMPILER_CLANG) || defined(COMPILER_GCC)
-#  if (__STDC_VERSION__ == 199409)
-#   define LANGUAGE_C89
-#  elif (__STDC_VERSION__ == 199901)
-#   define LANGUAGE_C99
-#  elif (__STDC_VERSION__ == 201112) || (__STDC_VERSION__ == 201710)
-#   define LANGUAGE_C11
+#  if defined(__STDC_VERSION__)
+#   if (__STDC_VERSION__ == 199409)
+#    define LANG_C 1989
+#   elif (__STDC_VERSION__ == 199901)
+#    define LANG_C 1999
+#   elif (__STDC_VERSION__ == 201112) || (__STDC_VERSION__ == 201710)
+#    define LANG_C 2011
+#   else
+#    define LANG_C
+#   endif
+#  elif defined(__cplusplus)
+#   if __cplusplus == 199711L
+#    define LANG_CPP 1998
+#   elif __cplusplus == 201103L
+#    define LANG_CPP 2011
+#   elif __cplusplus == 201402L
+#    define LANG_CPP 2014
+#   elif __cplusplus == 201703L
+#    define LANG_CPP 2017
+#   else
+#    define LANG_CPP
+#   endif
 #  else
 #   error Language not supported
 #  endif
 # endif
 
 # if defined(OS_WINDOWS)
-#  define ENDIAN_BIG
+#  define ENDIAN_LITTLE
 # else
 #  include <endian.h>
 #  if __BYTE_ORDER == __LITTLE_ENDIAN
@@ -99,6 +115,10 @@
 #  else
 #   error Can not determine endianness
 #  endif
+# endif
+
+# if defined(LANG_CPP)
+extern "C" {
 # endif
 
 /* ===========================
@@ -160,9 +180,10 @@ typedef U8                   B8;
 typedef U16                  B16;
 typedef U32                  B32;
 typedef U64                  B64;
-# define true                1U
-# define false               0U
-
+# if defined(LANG_C)
+#  define true                1U
+#  define false               0U
+# endif
 typedef unsigned char        Byte;
 typedef char                 Char;
 
@@ -194,6 +215,10 @@ typedef char                 Char;
 
 # define internal_function static
 # define header_function   static inline
+
+# if defined(LANG_C)
+#  define nullptr NULL
+# endif
 
 /* =======================
  * Compiler Specific Hacks
@@ -243,7 +268,7 @@ typedef union {
 } max_align_t;
 #  endif
 
-#  define thread_local __declspec( thread )
+#  define thread_local __declspec(thread)
 
 #  define swap_endian(x) _byteswap_ulong(x)
 
@@ -251,37 +276,48 @@ typedef union {
 
 # elif defined(COMPILER_CLANG) || defined(COMPILER_GCC)
 
-#   if defined(COMPILER_GCC)
-#    pragma GCC diagnostic push
-#    pragma GCC diagnostic ignored "-Wpedantic"
-#   endif
+#  if defined(COMPILER_GCC)
+#   pragma GCC diagnostic push
+#   pragma GCC diagnostic ignored "-Wpedantic"
+#  endif
 
-#  define max__paste(a, b) a##b
-#  define max__impl(a, b, l) ({                         \
+#  if defined(COMPILER_CLANG) && defined(LANG_CPP)
+#   pragma clang diagnostic push
+#   pragma clang diagnostic ignored "-Wreserved-id-macro"
+#  endif
+
+#   define max__paste(a, b) a##b
+#   define max__impl(a, b, l) ({                         \
             __typeof__(a) max__paste(__a, l) = (a);     \
             __typeof__(b) max__paste(__b, l) = (b);     \
             max__paste(__a, l) > max__paste(__b, l) ?   \
                 max__paste(__a, l) :                    \
                 max__paste(__b, l);                     \
         })
-#  define max(a, b) max__impl(a, b, __COUNTER__)
+#   define max(a, b) max__impl(a, b, __COUNTER__)
 
-#  define min__paste(a, b) a##b
-#  define min__impl(a, b, l) ({                         \
+#   define min__paste(a, b) a##b
+#   define min__impl(a, b, l) ({                         \
             __typeof__(a) min__paste(__a, l) = (a);     \
             __typeof__(b) min__paste(__b, l) = (b);     \
             min__paste(__a, l) < min__paste(__b, l) ?   \
                 min__paste(__a, l) :                    \
                 min__paste(__b, l);                     \
         })
-#  define min(a, b) min__impl(a, b, __COUNTER__)
+#   define min(a, b) min__impl(a, b, __COUNTER__)
 
-#   if defined(COMPILER_GCC)
-#    pragma GCC diagnostic pop
-#   endif
+#  if defined(COMPILER_CLANG) && defined(LANG_CPP)
+#   pragma clang diagnostic pop
+#  endif
 
-#  if defined(LANGUAGE_C11)
+#  if defined(COMPILER_GCC)
+#   pragma GCC diagnostic pop
+#  endif
+
+#  if (defined(LANG_C) && LANG_C >= 2011) && !defined(NLIB_NO_LIBC)
 #   include <stdalign.h>
+#  elif defined(LANG_CPP) && LANG_CPP >= 2011
+//  Don't do anything, stdalign.h's macros are keywords in the C++ language
 #  else
 #   if defined(COMPILER_CLANG)
 #    pragma clang diagnostic push
@@ -298,9 +334,17 @@ typedef union {
 #   if defined(COMPILER_CLANG)
 #    pragma clang diagnostic pop
 #   endif
+#  endif
 
-  /* Malloc Alignment: https://msdn.microsoft.com/en-us/library/ycsb6wwf.aspx
-   */
+#  if ((defined(LANG_C) && LANG_C >= 2011) || (defined(LANG_CPP) && LANG_CPP >= 2011)) && !defined(NLIB_NO_LIBC)
+#   include <threads.h>
+#  else
+#   define thread_local __thread
+#  endif
+
+// NOTE(naman): max_align_t is declared in stddef.h but only in C/C++ >= 11
+#  if (defined(LANG_C) && LANG_C < 2011) || (defined(LANG_CPP) && LANG_CPP < 2011)
+// Malloc Alignment: https://msdn.microsoft.com/en-us/library/ycsb6wwf.aspx
 #   if defined(ARCH_x86)
   // Alignment is 8 bytes
 typedef union {
@@ -315,9 +359,6 @@ typedef union {
 } max_align_t;
 #   endif
 #  endif
-
-
-#  define thread_local __thread
 
 #  define swap_endian(x) __builtin_bswap32(x)
 
@@ -378,25 +419,6 @@ typedef union {
 #   include <unistd.h>
 #   include <string.h>
 #   include <stdio.h>
-typedef   ssize_t             SSize;
-typedef   dev_t               Dev;
-typedef   ino_t               Ino;
-typedef   mode_t              Mode;
-typedef   pid_t               PID;
-typedef   uid_t               UID;
-typedef   gid_t               GID;
-typedef   nlink_t             NLink;
-typedef   off_t               Offset;
-typedef   blksize_t           Block_Size;
-typedef   blkcnt_t            Block_Count;
-typedef   time_t              Time;
-
-typedef   struct pollfd       Poll_FD;
-typedef   struct timeval      Time_Value;
-typedef   struct direct64     Directory_Entry64;
-typedef   struct fd_set       FD_Set;
-typedef   struct rusage       RUsage;
-typedef   struct stat         Stat;
 #  endif
 # endif
 
@@ -505,13 +527,9 @@ U64 randomU64 (U64 seed)
 
 # endif
 
-/* ===================
- * Logging
- */
-
 
 /* ****************************************************************************
- * DATA STRUCTURES ******************************************************************
+ * DATA STRUCTURES ************************************************************
  */
 
 /* ==============
@@ -529,9 +547,11 @@ U64 randomU64 (U64 seed)
  * Size  sbufMaxElemin (T *ptr)
  */
 
-# define sbufMemoryAllocate(s) memVirtual(Memory_Allocator_Mode_ALLOCATE, s, NULL, NULL)
-# define sbufMemoryReallocate(p, s) memVirtual(Memory_Allocator_Mode_REALLOCATE, s, p, NULL)
-# define sbufMemoryDeallocate(p) memVirtual(Memory_Allocator_Mode_DEALLOCATE, 0, p, NULL)
+# if defined(LANG_C)
+
+#  define sbufMemoryAllocate(s) memVirtual(Memory_Allocator_Mode_ALLOCATE, s, NULL, NULL)
+#  define sbufMemoryReallocate(p, s) memVirtual(Memory_Allocator_Mode_REALLOCATE, s, p, NULL)
+#  define sbufMemoryDeallocate(p) memVirtual(Memory_Allocator_Mode_DEALLOCATE, 0, p, NULL)
 
 typedef struct Sbuf_Header {
     Size cap; // NOTE(naman): Maximum number of elements that can be stored
@@ -541,54 +561,54 @@ typedef struct Sbuf_Header {
     Byte buf[];
 } Sbuf_Header;
 
-# define sbuf_GetHeader(sb) ((Sbuf_Header*)(void*)((Byte*)(sb) - offsetof(Sbuf_Header, buf)))
+#  define sbuf_GetHeader(sb) ((Sbuf_Header*)(void*)((Byte*)(sb) - offsetof(Sbuf_Header, buf)))
 
-# define sbuf_Len(sb)         ((sb) ? sbuf_GetHeader(sb)->len : 0U)
-# define sbuf_Cap(sb)         ((sb) ? sbuf_GetHeader(sb)->cap : 0U)
+#  define sbuf_Len(sb)         ((sb) ? sbuf_GetHeader(sb)->len : 0U)
+#  define sbuf_Cap(sb)         ((sb) ? sbuf_GetHeader(sb)->cap : 0U)
 
-# define sbufCreate(t, m, s)  sbuf_CreateFixed(sizeof(t), m, s)
+#  define sbufCreate(t, m, s)  sbuf_CreateFixed(sizeof(t), m, s)
 // NOTE(naman): In sbufAdd, we check if there is enough space even after growing the sbuf
 // to deal with fixed sbufs (since sbuf_Grow will simply return in that case).
 // Also, if there wasn;t enough space, we return existing length just to avoid returning void
 // which is not allowed by C99.
-# define sbufAdd(sb, ...)     ((sb) = sbuf_Grow((sb), sizeof(*(sb))),   \
+#  define sbufAdd(sb, ...)     ((sb) = sbuf_Grow((sb), sizeof(*(sb))),   \
                                ((sbuf_Len(sb) + 1) <= sbuf_Cap(sb) ?     \
                                 ((sb)[sbuf_Len(sb)] = (__VA_ARGS__),    \
                                  ((sbuf_GetHeader(sb))->len)++) :        \
                                 (claim(!(sbuf_GetHeader(sb)->fixed) &&   \
                                        "Fixed sbuf's space full"),      \
                                  (sbuf_GetHeader(sb))->len)))
-# define sbufDelete(sb)       ((sb) && !(sbuf_GetHeader(sb)->fixed) ?    \
+#  define sbufDelete(sb)       ((sb) && !(sbuf_GetHeader(sb)->fixed) ?    \
                                (sbufMemoryDeallocate(sbuf_GetHeader(sb)), (sb) = NULL) : \
                                ((sb) ? ((sb) = NULL) : 0))
-# define sbufClear(sb)        ((sb) ?                                   \
+#  define sbufClear(sb)        ((sb) ?                                   \
                                (memset((sb), 0, sbufSizeof(sb)),        \
                                 sbuf_GetHeader(sb)->len = 0) :          \
                                0)
-# define sbufResize(sb, n)    (((n) > sbufMaxElemin(sb)) ?              \
+#  define sbufResize(sb, n)    (((n) > sbufMaxElemin(sb)) ?              \
                                ((sb) = sbuf_Resize(sb, n, sizeof(*(sb)))) : \
                                0)
 
-# define sbufSizeof(sb)       (sbuf_Len(sb) * sizeof(*(sb)))
-# define sbufElemin(sb)       (sbuf_Len(sb))
-# define sbufMaxSizeof(sb)    (sbuf_Cap(sb) * sizeof(*(sb)))
-# define sbufMaxElemin(sb)    (sbuf_Cap(sb))
-# define sbufEnd(sb)          ((sb) + sbuf_Len(sb))
+#  define sbufSizeof(sb)       (sbuf_Len(sb) * sizeof(*(sb)))
+#  define sbufElemin(sb)       (sbuf_Len(sb))
+#  define sbufMaxSizeof(sb)    (sbuf_Cap(sb) * sizeof(*(sb)))
+#  define sbufMaxElemin(sb)    (sbuf_Cap(sb))
+#  define sbufEnd(sb)          ((sb) + sbuf_Len(sb))
 
-#define sbufPrint(sb, ...) ((sb) = sbuf_Print((sb), __VA_ARGS__))
+# define sbufPrint(sb, ...) ((sb) = sbuf_Print((sb), __VA_ARGS__))
 
-#define sbufUnsortedRemove(sb, i) (((sb)[(i)] = (sb)[sbuf_Len(sb) - 1]), \
+# define sbufUnsortedRemove(sb, i) (((sb)[(i)] = (sb)[sbuf_Len(sb) - 1]), \
                                    ((sbuf_GetHeader(sb)->len)--))
 
-# if defined(COMPILER_CLANG)
-#  pragma clang diagnostic push
-#   pragma clang diagnostic ignored "-Wcast-align"
-# endif
+#  if defined(COMPILER_CLANG)
+#   pragma clang diagnostic push
+#    pragma clang diagnostic ignored "-Wcast-align"
+#  endif
 
 header_function
 void* sbuf_CreateFixed (Size elem_size, void *memory, Size memory_size)
 {
-    Sbuf_Header *header = memory;
+    Sbuf_Header *header = (Sbuf_Header *)memory;
 
     header->cap = (memory_size - sizeof(*header)) / elem_size;
     header->len = 0;
@@ -612,9 +632,9 @@ void* sbuf_Grow (void *buf, Size elem_size)
         Sbuf_Header *new_header = NULL;
 
         if (buf != NULL) {
-            new_header = sbufMemoryReallocate(sbuf_GetHeader(buf), new_size);
+            new_header = (Sbuf_Header *)sbufMemoryReallocate(sbuf_GetHeader(buf), new_size);
         } else {
-            new_header = sbufMemoryAllocate(new_size);
+            new_header = (Sbuf_Header *)sbufMemoryAllocate(new_size);
             *new_header = (Sbuf_Header){.len = 0,
                                         .userdata = NULL};
         }
@@ -637,9 +657,9 @@ void* sbuf_Resize (void *buf, Size elem_count, Size elem_size)
     Sbuf_Header *new_header = NULL;
 
     if (buf != NULL) {
-        new_header = sbufMemoryReallocate(sbuf_GetHeader(buf), new_size);
+        new_header = (Sbuf_Header *)sbufMemoryReallocate(sbuf_GetHeader(buf), new_size);
     } else {
-        new_header = sbufMemoryAllocate(new_size);
+        new_header = (Sbuf_Header *)sbufMemoryAllocate(new_size);
         *new_header = (Sbuf_Header){.cap = 0,
                                     .len = 0,
                                     .userdata = NULL};
@@ -650,10 +670,10 @@ void* sbuf_Resize (void *buf, Size elem_count, Size elem_size)
     return new_header->buf;
 }
 
-# if defined(COMPILER_CLANG)
-#  pragma clang diagnostic push
-#   pragma clang diagnostic ignored "-Wformat-nonliteral"
-# endif
+#  if defined(COMPILER_CLANG)
+#   pragma clang diagnostic push
+#    pragma clang diagnostic ignored "-Wformat-nonliteral"
+#  endif
 header_function
 Char* sbuf_Print(Char *buf, Char *fmt, ...)
 {
@@ -672,11 +692,11 @@ Char* sbuf_Print(Char *buf, Char *fmt, ...)
     sbuf_GetHeader(buf)->len += size;
     return buf;
 }
-# if defined(COMPILER_CLANG)
-#  pragma clang diagnostic pop
-# endif
+#  if defined(COMPILER_CLANG)
+#   pragma clang diagnostic pop
+#  endif
 
-# if defined(NLIB_TESTS)
+#  if defined(NLIB_TESTS)
 header_function
 void sbufUnitTest (void)
 {
@@ -705,13 +725,12 @@ void sbufUnitTest (void)
 
     utTest(streq(stream, "Hello, World!\nStill here? 420\nGO AWAY!!!\n"));
 }
-# endif
+#  endif
 
-# if defined(COMPILER_CLANG)
-#  pragma clang diagnostic pop
-# endif
-
-
+#  if defined(COMPILER_CLANG)
+#   pragma clang diagnostic pop
+#  endif
+# endif // defined(LANG_C)
 
 /* ==========================
  * Interning
@@ -719,7 +738,8 @@ void sbufUnitTest (void)
  * Char* internString (Intern_String *is, Char *str)
  */
 
-#define INTERN_EQUALITY(func_name) B32 func_name (void *a, void *b, Size b_index)
+# if defined(LANG_C)
+#  define INTERN_EQUALITY(func_name) B32 func_name (void *a, void *b, Size b_index)
 typedef INTERN_EQUALITY(Intern_Equality_Function);
 
 typedef struct Intern {
@@ -737,7 +757,9 @@ B32 internCheck (Intern *it, U8 hash1, U8 hash2,
     if (it->lists[hash1].secondary_hashes != NULL) {
         // Our data has probably been inserted already.
         // (or atleast some data with same hash has been inserted :)
-        for (Size i = 0; i < sbufElemin(it->lists[hash1].secondary_hashes); i++) {
+        for (Size i = 0;
+             i < sbufElemin(it->lists[hash1].secondary_hashes);
+             i++) {
             Size index = it->lists[hash1].indices[i];
             if ((it->lists[hash1].secondary_hashes[i] == hash2) && eqf(datum, data, index)) {
                 // This is our data, return it
@@ -880,23 +902,11 @@ Char *internStringCheck (Intern_String *is, Char *str)
     }
 }
 
-# if defined(BUILD_DEBUG)
+#  if defined(BUILD_DEBUG)
 
 header_function
 void internStringDebugPrint (Intern_String *is)
 {
-    /* typedef struct Intern { */
-    /*     struct Intern_List { */
-    /*         Size *indices; */
-    /*         U8 *secondary_hashes; */
-    /*     } lists[256]; */
-    /* } Intern; */
-
-    /* typedef struct Intern_String { */
-    /*     Intern intern; */
-    /*     Char *strings; */
-    /* } Intern_String; */
-
     for (Size i = 0; i < elemin(is->intern.lists); i++) {
         for (Size j = 0; j < sbufElemin(is->intern.lists[i].indices); j++) {
             report("%s\n", is->strings[is->intern.lists[i].indices[j]]);
@@ -904,7 +914,7 @@ void internStringDebugPrint (Intern_String *is)
     }
 }
 
-# endif
+#  endif
 
 typedef struct Intern_Integer {
     Intern intern;
@@ -978,7 +988,7 @@ U64 internIntegerCheck (Intern_Integer *ii, U64 num)
     }
 }
 
-# if defined(NLIB_TESTS)
+#  if defined(NLIB_TESTS)
 header_function
 void internUnitTest (void)
 {
@@ -1005,7 +1015,8 @@ void internUnitTest (void)
 
     return;
 }
-# endif
+#  endif
+# endif // defined(LANG_C)
 
 /* ==========================
  * Hashing Infrastructure
@@ -1082,7 +1093,6 @@ U64 hashUniversal (Hash_Universal h, U64 key)
     return result;
 }
 
-
 /* ==============
  * Hash Table
  */
@@ -1097,6 +1107,8 @@ U64 hashUniversal (Hash_Universal h, U64 key)
  * U64        htRemove (Hash_Table *ht, U64 key);
  */
 
+# if defined(LANG_C)
+
 typedef struct Hash_Table {
     Hash_Universal univ;
     U64 *keys;
@@ -1108,8 +1120,8 @@ typedef struct Hash_Table {
     U64 collision_count;
 } Hash_Table;
 
-# define htMemoryAllocate(s)   memBuddy(Memory_Allocator_Mode_ALLOCATE, s, NULL, NULL)
-# define htMemoryDeallocate(p) memBuddy(Memory_Allocator_Mode_DEALLOCATE, 0, p, NULL)
+#  define htMemoryAllocate(s)   memBuddy(Memory_Allocator_Mode_ALLOCATE, s, NULL, NULL)
+#  define htMemoryDeallocate(p) memBuddy(Memory_Allocator_Mode_DEALLOCATE, 0, p, NULL)
 
 header_function
 Hash_Table ht_Create (Size slots_atleast, Memory_Allocator_Function *allocator,
@@ -1354,7 +1366,7 @@ U64 htRemove (Hash_Table *ht, U64 key)
     return result_value;
 }
 
-# if defined(NLIB_TESTS)
+#  if defined(NLIB_TESTS)
 header_function
 void htUnitTest (void)
 {
@@ -1466,7 +1478,8 @@ void htUnitTest (void)
 
     return;
 }
-# endif
+#  endif
+# endif // defined(LANG_C)
 
 /* ==============
  * Map
@@ -1481,21 +1494,22 @@ void htUnitTest (void)
  * void  mapDelete     (T *ptr)
  */
 
+# if defined(LANG_C)
 typedef struct Map_Userdata {
     Hash_Table table;
     Size *free_list;
 } Map_Userdata;
 
-#define mapInsert(_map, _key, _value) do {                              \
+#  define mapInsert(_map, _key, _value) do {                            \
         Sbuf_Header *shdr = NULL;                                       \
         if ((_map) == NULL) {                                           \
             (_map) = sbuf_Grow((_map),                                  \
                                sizeof(*(_map)));                        \
             shdr = sbuf_GetHeader(_map);                                \
-            (shdr->len)++;                                              \
-            shdr->userdata = memAlloc(sizeof(Map_Userdata));         \
-            *(Map_Userdata*)(shdr->userdata) = (Map_Userdata){0};       \
-            ((Map_Userdata*)shdr->userdata)->table = htCreate();       \
+            (shdr->len)++;                                               \
+            shdr->userdata = memAlloc(sizeof(Map_Userdata));             \
+            *(Map_Userdata*)(shdr->userdata) = (Map_Userdata){0};        \
+            ((Map_Userdata*)shdr->userdata)->table = htCreate();          \
         } else {                                                        \
             shdr = sbuf_GetHeader((_map));                              \
         }                                                               \
@@ -1528,11 +1542,11 @@ B32 mapExists (void *map, U64 key) {
     return false;
 }
 
-#define mapLookup(_map, _key) ((_map)[(htLookup(&((Map_Userdata*)(sbuf_GetHeader(_map))->userdata)->table, \
+#  define mapLookup(_map, _key) ((_map)[(htLookup(&((Map_Userdata*)(sbuf_GetHeader(_map))->userdata)->table, \
                                                 (_key)))])
-#define mapGetRef(_map, _key) (&mapLookup((_map), (_key)))
+#  define mapGetRef(_map, _key) (&mapLookup((_map), (_key)))
 
-#define mapRemove(_map, _key) do {                                      \
+#  define mapRemove(_map, _key) do {                                      \
         if ((_map) != NULL) {                                           \
             Sbuf_Header *shdr = sbuf_GetHeader(_map);                   \
             Size index = htLookup(&((Map_Userdata*)shdr->userdata)->table, \
@@ -1542,7 +1556,7 @@ B32 mapExists (void *map, U64 key) {
         }                                                               \
     } while (0)
 
-# if defined(NLIB_TESTS)
+#  if defined(NLIB_TESTS)
 header_function
 void mapUnitTest (void)
 {
@@ -1610,6 +1624,12 @@ void mapUnitTest (void)
     utTest(mapExists(fm, 0) == false);
 
     return;
+}
+#  endif
+
+# endif // defined(LANG_C)
+
+# if defined(LANG_CPP)
 }
 # endif
 

@@ -26,7 +26,7 @@
 #   endif
 void *memmove(void *dst, const void *src, Size len)
 {
-    SSize pos = (dst <= src) ? -1 : (S64)len;
+    ssize_t pos = (dst <= src) ? -1 : (S64)len;
     void *ret = dst;
 
     while (len--) {

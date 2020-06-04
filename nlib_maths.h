@@ -14,7 +14,7 @@
 # endif
 /* Wrapper for needed math.h functions */
 
-# if defined(LANGUAGE_C11)
+# if defined(LANG_C) && LANG_C >= 2011
 #  define mathGeneric(...) _Generic(...)
 #  else
 #  define mathGeneric(...) claim(false && "Generic function only supported in C11")

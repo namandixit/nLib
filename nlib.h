@@ -117,10 +117,6 @@
 #  endif
 # endif
 
-# if defined(LANG_CPP)
-extern "C" {
-# endif
-
 /* ===========================
  * Standard C Headers Includes
  */
@@ -129,7 +125,7 @@ extern "C" {
 */
 
 // NOTE(naman): These warnings are disabled permanently
-# if defined(COMPILER_CLANG)
+# if defined(COMPILER_CLANG) && defined(LANG_C)
 #  pragma clang diagnostic ignored "-Wgnu-statement-expression" // to use min/max
 # endif
 
@@ -150,6 +146,10 @@ extern "C" {
 # include <stdarg.h>
 # include <stdnoreturn.h>
 # include <float.h>
+
+# if defined(LANG_CPP)
+extern "C" {
+# endif
 
 /* ===============
  * Primitive Types
@@ -286,6 +286,7 @@ typedef union {
 #   pragma clang diagnostic ignored "-Wreserved-id-macro"
 #  endif
 
+#  if defined(LANG_C)
 #   define max__paste(a, b) a##b
 #   define max__impl(a, b, l) ({                         \
             __typeof__(a) max__paste(__a, l) = (a);     \
@@ -305,6 +306,7 @@ typedef union {
                 min__paste(__b, l);                     \
         })
 #   define min(a, b) min__impl(a, b, __COUNTER__)
+#  endif
 
 #  if defined(COMPILER_CLANG) && defined(LANG_CPP)
 #   pragma clang diagnostic pop

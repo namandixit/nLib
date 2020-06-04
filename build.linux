@@ -43,7 +43,6 @@ LibcLanguageFlags="--std=c11 -DBUILD_INTERNAL -DBUILD_SLOW -DBUILD_DEBUG \
                    -D_POSIX_C_SOURCE=200809L -D_DEFAULT_SOURCE"
 LibcLinkerFlags="-o ${TargetPath}.libc \
                   -static-libgcc \
-                  -lm \
                  -Wl,-rpath=\${ORIGIN} -Wl,-z,origin -Wl,--enable-new-dtags \
                  "
 
@@ -65,7 +64,7 @@ NoLibcLanguageFlags="--std=c11 -DBUILD_INTERNAL -DBUILD_SLOW -DBUILD_DEBUG \
                      -DNLIB_NO_LIBC \
                      -D_POSIX_C_SOURCE=200809L -D_DEFAULT_SOURCE"
 NoLibcLinkerFlags="-o ${TargetPath}.nolibc \
-                    -lgcc -lm \
+                    -lgcc \
                    -Wl,-rpath=\${ORIGIN} -Wl,-z,origin -Wl,--enable-new-dtags \
                    "
 

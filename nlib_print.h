@@ -941,10 +941,12 @@ Size printStringVarArg (Char *buffer, Char const *format, va_list va)
 
                                 Uint width_iter = width;
 
-                                // FIXME(naman): Get more decimal digits instead of just
-                                // printing zeroes
-                                for (Uint i = (Uint)precision; i > width; i--) {
-                                    *--tmp = '0';
+                                if ((Size)precision > width) {
+                                    // FIXME(naman): Get more decimal digits instead of just
+                                    // printing zeroes
+                                    Size extra_zeroes = (Size)precision - width;
+                                    memset(tmp - extra_zeroes, '0', extra_zeroes);
+                                    tmp -= extra_zeroes;
                                 }
 
                                 do {
@@ -975,9 +977,7 @@ Size printStringVarArg (Char *buffer, Char const *format, va_list va)
                                 }
 
                                 str -= precision;
-                                for (Size i = 0; i < (Size)precision; i++) {
-                                    str[i] = tmp[i];
-                                }
+                                memcpy(str, tmp, (Size)precision);
 
                                 *--str = '.';
                             }
@@ -1408,21 +1408,14 @@ Size printStringVarArg (Char *buffer, Char const *format, va_list va)
             if ((field_width + precision) > 0) {
                 // copy leading spaces (or when doing %8.4d stuff)
                 if ((flags & Print_Flags_LEFT_JUSTIFIED) == 0) {
-                    for (Size j = 0; j < (Size)field_width; j++) {
-                        if (buffer != NULL) {
-                            buf[0] = ' ';
-                        }
-                        buf++;
-                    }
+                    if (buffer != NULL) memset(buf, ' ', (Size)field_width);
+                    buf += field_width;
                 }
 
                 { // copy the head
-                    for (Size j = 0; j < head_size; j++) {
-                        if (buffer != NULL) {
-                            buf[0] = head_str[head_index++];
-                        }
-                        buf++;
-                    }
+                    if (buffer != NULL) memcpy(buf, head_str, head_size);
+                    buf += head_size;
+                    head_index += head_size;
                 }
 
                 // TODO(naman): What is this doing?
@@ -1431,64 +1424,41 @@ Size printStringVarArg (Char *buffer, Char const *format, va_list va)
                 /* cs &= 0xffffff; */
                 /* cs = (fl & Print_Flags_THOUSAND_COMMA) ? ((stbsp__uint32)(c - ((pr + cs) % (c + 1)))) : 0; */
                 { // copy leading zeros
-                    for (Size j = 0; j < (Size)precision; j++) {
-                        if (buffer != NULL) {
-                            buf[0] = '0';
-                        }
-                        buf++;
-                    }
+                    if (buffer != NULL) memset(buf, '0', (Size)precision);
+                    buf += precision;
                 }
             }
 
             { // copy the head
                 if (head_index < head_size) {
                     Size repeat = head_size - head_index;
-                    for (Size j = 0; j < repeat; j++) {
-                        if (buffer != NULL) {
-                            buf[0] = head_str[head_index++];
-                        }
-                        buf++;
-                    }
+                    if (buffer != NULL) memcpy(buf, head_str, repeat);
+                    buf += repeat;
+                    head_index += repeat;
                 }
             }
 
             { // copy the string
-                for (Size j = 0; j < len; j++) {
-                    if (buffer != NULL) {
-                        buf[0] = str[0];
-                    }
-                    buf++;
-                    str++;
-                }
+                if (buffer != NULL) memcpy(buf, str, len);
+                buf += len;
+                str += len;
             }
 
             { // copy trailing zeroes
-                for (Size j = 0; j < (Size)trailing_zeroes; j++) {
-                    if (buffer != NULL) {
-                        buf[0] = '0';
-                    }
-                    buf++;
-                }
+                if (buffer != NULL) memset(buf, '0', (Size)trailing_zeroes);
+                buf += (Size)trailing_zeroes;
             }
 
             { // copy the tail
-                for (Size j = 0; j < tail_size; j++) {
-                    if (buffer != NULL) {
-                        buf[0] = tail_str[tail_index++];
-                    }
-                    buf++;
-                }
+                if (buffer != NULL) memcpy(buf, tail_str, tail_size);
+                buf += tail_size;
             }
 
             // handle the left justify
             if (flags & Print_Flags_LEFT_JUSTIFIED)
                 if (field_width > 0) {
-                    for (Size j = 0; j < (Size)field_width; j++) {
-                        if (buffer != NULL) {
-                            buf[0] = ' ';
-                        }
-                        buf++;
-                    }
+                    if (buffer != NULL) memset(buf, ' ', (Size)field_width);
+                    buf += field_width;
                 }
 
             fmt++;

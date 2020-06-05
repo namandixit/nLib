@@ -36,7 +36,7 @@ LibcWarningFlags="-Weverything -Wpedantic -pedantic-errors -Werror \
                   -Wno-c++98-compat -Wno-disabled-macro-expansion \
                   "
 LibcCompilerFlags="-iquote ${ProjectRoot}/../../include \
-                   -O2 -fno-strict-aliasing -fwrapv -msse2 \
+                   -g3 -O0 -fno-strict-aliasing -fwrapv -msse2 \
                    "
 LibcLanguageFlags="--std=c11 -DBUILD_INTERNAL -DBUILD_SLOW -DBUILD_DEBUG \
                    -DBUILD_NUMBER=${NEW_BUILD_NUMBER} \

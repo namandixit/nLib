@@ -3,7 +3,7 @@
  * Notice: © Copyright 2019 Naman Dixit
  */
 #define NLIB_TESTS
-//#define NLIB_PRINT_BAD_FLOAT
+#define NLIB_PRINT_RYU_FLOAT
 #include "nlib.h"
 
 Sint main (Sint argc, Char *argv[])

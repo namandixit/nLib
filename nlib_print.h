@@ -11,7 +11,8 @@
 
 /* Define:
  * NLIB_PRINT_RYU_FLOAT for Ryu float->str algorithm (default)
- * NLIB_PRINT_SWIFT_FLOAT for cheap <U64 algorithm
+ * NLIB_PRINT_STB_FLOAT for tiny STB algorithm
+ * NLIB_PRINT_BAD_FLOAT for shitty <U64 algorithm
  * NLIB_PRINT_NO_FLOAT to disable floating point printing
  */
 
@@ -44,16 +45,30 @@ header_function Size errv (Char const *format, va_list ap);
 #  endif // defined(BUILD_DEBUG)
 # endif // defined(OS_WINDOWS)
 
+#elif !defined(NLIB_PRINT_H_INCLUDE_GUARD)
 
-# elif !defined(NLIB_PRINT_H_INCLUDE_GUARD)
-
-# if !defined(NLIB_PRINT_RYU_FLOAT) && !defined(NLIB_PRINT_SWIFT_FLOAT) && !defined(NLIB_PRINT_NO_FLOAT)
+# if \
+    !defined(NLIB_PRINT_RYU_FLOAT) &&  \
+    !defined(NLIB_PRINT_STB_FLOAT) &&  \
+    !defined(NLIB_PRINT_BAD_FLOAT) &&  \
+    !defined(NLIB_PRINT_NO_FLOAT)
 #  define NLIB_PRINT_RYU_FLOAT
 # endif
 
-#  if defined(NLIB_PRINT_RYU_FLOAT)
-#   include "nlib_print_ryu.h"
-#  endif // defined(NLIB_PRINT_RYU_FLOAT)
+# if defined(NLIB_PRINT_RYU_FLOAT)
+#  include "nlib_print_ryu.h"
+# endif // defined(NLIB_PRINT_RYU_FLOAT)
+
+# if defined(NLIB_PRINT_STB_FLOAT)
+#  if defined(COMPILER_CLANG)
+#   pragma clang diagnostic push
+#   pragma clang diagnostic ignored "-Wpadded"
+#  endif
+#  include "nlib_print_stb.h"
+#  if defined(COMPILER_CLANG)
+#   pragma clang diagnostic pop
+#  endif
+# endif // defined(NLIB_PRINT_STB_FLOAT)
 
 typedef enum Print_Flags {
     Print_Flags_LEFT_JUSTIFIED     = 1u << 0,
@@ -66,7 +81,6 @@ typedef enum Print_Flags {
     Print_Flags_FLOAT_FIXED        = 1u << 7,
     Print_Flags_FLOAT_EXP          = 1u << 8,
     Print_Flags_FLOAT_HEX          = 1u << 9,
-    Print_Flags_FLOAT_NO_LOW_BOUND = 1u << 10,
 } Print_Flags;
 
 header_function
@@ -175,8 +189,8 @@ Size printStringVarArg (Char *buffer, Char const *format, va_list va)
                 } break;
             }
 
-#  define NLIB_PRINT_SIZE 2048ULL
-            Char num_str[NLIB_PRINT_SIZE];
+# define PRINT_STR_SIZE 2048ULL
+            Char num_str[PRINT_STR_SIZE];
             Char *str = NULL;
 
             Char head_str[8] = {0};
@@ -211,7 +225,7 @@ Size printStringVarArg (Char *buffer, Char const *format, va_list va)
 
                 case 'c': { // char
                     // get the character
-                    str = num_str + NLIB_PRINT_SIZE - 1;
+                    str = num_str + PRINT_STR_SIZE - 1;
                     *str = (Char)va_arg(va, Sint);
                     len = 1;
                     precision = 0;
@@ -233,7 +247,7 @@ Size printStringVarArg (Char *buffer, Char const *format, va_list va)
                     }
 
                     U64 num_dec = num;
-                    str = num_str + NLIB_PRINT_SIZE;
+                    str = num_str + PRINT_STR_SIZE;
 
                     while (true) {
                         U64 n = num_dec & 0x1;
@@ -242,14 +256,14 @@ Size printStringVarArg (Char *buffer, Char const *format, va_list va)
                         str--;
                         *str = (n == 1) ? '1' : '0';
 
-                        if ((num_dec != 0) || (((num_str + NLIB_PRINT_SIZE) - str) < precision)) {
+                        if ((num_dec != 0) || (((num_str + PRINT_STR_SIZE) - str) < precision)) {
                             continue;
                         } else {
                             break;
                         }
                     }
 
-                    len = (((Uptr)num_str + NLIB_PRINT_SIZE) - (Uptr)str);
+                    len = (((Uptr)num_str + PRINT_STR_SIZE) - (Uptr)str);
 
                     if (flags & Print_Flags_ALTERNATE_FORM) {
                         head_str[head_index++] = '0';
@@ -276,7 +290,7 @@ Size printStringVarArg (Char *buffer, Char const *format, va_list va)
                     }
 
                     U64 num_dec = num;
-                    str = num_str + NLIB_PRINT_SIZE;
+                    str = num_str + PRINT_STR_SIZE;
 
                     while (true) {
                         U64 n = num_dec & 0x7;
@@ -294,14 +308,14 @@ Size printStringVarArg (Char *buffer, Char const *format, va_list va)
                             case 7: *str = '7'; break;
                         }
 
-                        if ((num_dec != 0) || (((num_str + NLIB_PRINT_SIZE) - str) < precision)) {
+                        if ((num_dec != 0) || (((num_str + PRINT_STR_SIZE) - str) < precision)) {
                             continue;
                         } else {
                             break;
                         }
                     }
 
-                    len = (((Uptr)num_str + NLIB_PRINT_SIZE) - (Uptr)str);
+                    len = (((Uptr)num_str + PRINT_STR_SIZE) - (Uptr)str);
 
                     if (flags & Print_Flags_ALTERNATE_FORM) {
                         head_str[head_index++] = '0';
@@ -325,7 +339,7 @@ Size printStringVarArg (Char *buffer, Char const *format, va_list va)
                     }
 
                     U64 num_dec = num;
-                    str = num_str + NLIB_PRINT_SIZE;
+                    str = num_str + PRINT_STR_SIZE;
 
                     if ((num == 0) && (precision == 0)) {
                         break;
@@ -355,14 +369,14 @@ Size printStringVarArg (Char *buffer, Char const *format, va_list va)
                             case 0xF: *str = upper ? 'F' : 'f'; break;
                         }
 
-                        if ((num_dec != 0) || (((num_str + NLIB_PRINT_SIZE) - str) < precision)) {
+                        if ((num_dec != 0) || (((num_str + PRINT_STR_SIZE) - str) < precision)) {
                             continue;
                         } else {
                             break;
                         }
                     }
 
-                    len = (((Uptr)num_str + NLIB_PRINT_SIZE) - (Uptr)str);
+                    len = (((Uptr)num_str + PRINT_STR_SIZE) - (Uptr)str);
 
                     if (flags & Print_Flags_ALTERNATE_FORM) {
                         head_str[head_index++] = '0';
@@ -400,7 +414,7 @@ Size printStringVarArg (Char *buffer, Char const *format, va_list va)
 
                     // convert to string
                     U64 num_dec = num;
-                    str = num_str + NLIB_PRINT_SIZE;
+                    str = num_str + PRINT_STR_SIZE;
 
                     if ((num == 0) && (precision == 0)) {
                         break;
@@ -413,7 +427,7 @@ Size printStringVarArg (Char *buffer, Char const *format, va_list va)
                     }
 
                     // get the length that we copied
-                    len = (((Uptr)num_str + NLIB_PRINT_SIZE) - (Uptr)str);
+                    len = (((Uptr)num_str + PRINT_STR_SIZE) - (Uptr)str);
 
                     if (len == 0) {
                         --str;
@@ -456,7 +470,7 @@ Size printStringVarArg (Char *buffer, Char const *format, va_list va)
                     }
 
                     U64 num_dec = num;
-                    str = num_str + NLIB_PRINT_SIZE;
+                    str = num_str + PRINT_STR_SIZE;
 
                     while (true) {
                         U64 n = num_dec & 0xf;
@@ -482,14 +496,14 @@ Size printStringVarArg (Char *buffer, Char const *format, va_list va)
                             case 0xF: *str = 'F'; break;
                         }
 
-                        if ((num_dec != 0) || (((num_str + NLIB_PRINT_SIZE) - str) < precision)) {
+                        if ((num_dec != 0) || (((num_str + PRINT_STR_SIZE) - str) < precision)) {
                             continue;
                         } else {
                             break;
                         }
                     }
 
-                    len = (((Uptr)num_str + NLIB_PRINT_SIZE) - (Uptr)str);
+                    len = (((Uptr)num_str + PRINT_STR_SIZE) - (Uptr)str);
                 } break;
 
                 case 'f': case 'F':
@@ -519,9 +533,9 @@ Size printStringVarArg (Char *buffer, Char const *format, va_list va)
                        --------------------------------------------
                     */
 
-#  define            F64_MANTISSA_BITS 52
-#  define            F64_EXPONENT_BITS 11
-#  define            F64_BIAS 1023
+# define            F64_MANTISSA_BITS 52
+# define            F64_EXPONENT_BITS 11
+# define            F64_BIAS 1023
 
                     // Is the top bit set?
                     B32 negative  = ((bits >> (F64_MANTISSA_BITS + F64_EXPONENT_BITS)) & 1) != 0;
@@ -677,14 +691,6 @@ Size printStringVarArg (Char *buffer, Char const *format, va_list va)
                                         man = upper;
                                     }
                                 }
-
-#  if 0 // Rounding as implemented in stb_printf.h
-                                U64 one_at_60th_pos = 1ULL << 59;
-                                U64 count_printed_bits = (U64)pr * 4ULL;
-                                U64 one_at_unprinted_msb = (one_at_60th_pos >> count_printed_bits);
-
-                                man += one_at_unprinted_msb;
-#  endif
                             }
 
                             str = num_str;
@@ -745,260 +751,249 @@ Size printStringVarArg (Char *buffer, Char const *format, va_list va)
                     }
 
                     if (str == NULL) {
-#  if defined(NLIB_PRINT_BAD_FLOAT)
-                        F64 value = (f64 < 0) ? -f64 : f64;
-                        B32 power_of_e_nonsense = false;
-                        Sint print_exponent = 0;
+# if defined(NLIB_PRINT_STB_FLOAT)
+                        Char *out = num_str;
+                        S32 tens;
+                        S32 e;
 
-                        B32 fmt_exponential = (fmt[0] == 'E') || (fmt[0] == 'e');
+#  define PRINT_STB_OFFSET 64
+                        {
+                            S64 sbits = (S64)bits;
+                            U32 frac_digits = (U32)precision;
 
-                        // NOTE(naman): We just overload 'F' to remove lower bound too
-                        if (capital && (flags & Print_Flags_FLOAT_FIXED)) {
-                            flags |= Print_Flags_FLOAT_NO_LOW_BOUND;
-                        }
+                            F64 value = negative ? -f64 : f64;
+                            U32 expo = exponent_biased;
 
-                        { // Limit the "range" of float
-                            // log10(2^64) = 19 = max integral F64 storable in U64 without
-                            // loss of information
-                            F64 upper_threshold = 1e19;
-
-                            if (fmt_exponential || (value >= upper_threshold)) {
-                                power_of_e_nonsense = true;
-                                if (value >= 1e256) {
-                                    value /= 1e256;
-                                    print_exponent += 256;
-                                }
-                                if (value >= 1e128) {
-                                    value /= 1e128;
-                                    print_exponent += 128;
-                                }
-                                if (value >= 1e64) {
-                                    value /= 1e64;
-                                    print_exponent += 64;
-                                }
-                                if (value >= 1e32) {
-                                    value /= 1e32;
-                                    print_exponent += 32;
-                                }
-                                if (value >= 1e16) {
-                                    value /= 1e16;
-                                    print_exponent += 16;
-                                }
-                                if (value >= 1e8) {
-                                    value /= 1e8;
-                                    print_exponent += 8;
-                                }
-                                if (value >= 1e4) {
-                                    value /= 1e4;
-                                    print_exponent += 4;
-                                }
-                                if (value >= 1e2) {
-                                    value /= 1e2;
-                                    print_exponent += 2;
-                                }
-                                if (value >= 1e1) {
-                                    value /= 1e1;
-                                    print_exponent += 1;
+                            if ((exponent_biased == 0) && (mantissa != 0)) { // Denormal
+                                // find the right expo for denormals
+                                S64 v = (S64)(1ULL << 51);
+                                while ((sbits & v) == 0) {
+                                    --expo;
+                                    v >>= 1;
                                 }
                             }
 
-                            if (fmt_exponential || !(flags & Print_Flags_FLOAT_NO_LOW_BOUND)) {
-                                // 10^-(precision-1)
-                                // (so that we get atleast one digit)
-                                F64 powers_of_10[20] = {
-                                    1.000000,
-                                    10.000000,
-                                    100.000000,
-                                    1000.000000,
-                                    10000.000000,
-                                    100000.000000,
-                                    1000000.000000,
-                                    10000000.000000,
-                                    100000000.000000,
-                                    1000000000.000000,
-                                    10000000000.000000,
-                                    100000000000.000000,
-                                    1000000000000.000000,
-                                    10000000000000.000000,
-                                    100000000000000.000000,
-                                    1000000000000000.000000,
-                                    10000000000000000.000000,
-                                    100000000000000000.000000,
-                                    1000000000000000000.000000,
-                                    10000000000000000000.000000,
-                                };
+                            { // find the decimal exponent as well as the decimal bits of the value
+                                F64 ph, pl;
 
-                                F64 lower_threshold;
-                                // lower_threshold = pow(10.0, 1.0 - (F64)precision);
-                                S32 power = 1 - precision;
-                                if (power < 20) {
-                                    lower_threshold = powers_of_10[power];
+                                // log10 estimate - very specifically tweaked to hit or undershoot by no more than 1 of log10 of all expos 1..2046
+                                tens = (S32)expo - 1023;
+                                tens = ((tens < 0) ?
+                                        ((tens * 617) / 2048) :
+                                        (((tens * 1233) / 4096) + 1));
+
+                                // move the significant bits into position and stick them into an int
+                                stbfp_raise_to_power10(value, 18 - tens, &ph, &pl);
+
+                                // get full as much precision from F64-F64 as possible
+                                stbfp_ddtoS64(sbits, ph, pl);
+
+                                // check if we undershot
+                                if (((U64)sbits) >= stbfp_tento19th)
+                                    ++tens;
+                            }
+
+                            // now do the rounding in integer land
+                            if (flags & Print_Flags_FLOAT_EXP) {
+                                frac_digits = frac_digits + 1;
+                            } else {
+                                frac_digits = ((U32)tens + frac_digits);
+                            }
+
+                            if ((frac_digits < 24)) {
+                                U32 dg = 1;
+                                if ((U64)sbits >= stbfp_powten[9]) {
+                                    dg = 10;
+                                }
+
+                                while ((U64)sbits >= stbfp_powten[dg]) {
+                                    ++dg;
+                                    if (dg == 20)
+                                        goto noround;
+                                }
+
+                                if (frac_digits < dg) {
+                                    U64 r;
+                                    // add 0.5 at the right position and round
+                                    e = (S32)(dg - frac_digits);
+                                    if ((U32)e >= 24) goto noround;
+
+                                    r = stbfp_powten[e];
+                                    sbits = sbits + ((S64)r / 2);
+                                    if ((U64)sbits >= stbfp_powten[dg]) {
+                                        ++tens;
+                                    }
+                                    sbits /= r;
+                                }
+                            noround:;
+                            }
+
+                            // kill long trailing runs of zeros
+                            if (sbits) {
+                                U32 n;
+                                for (;;) {
+                                    if (sbits <= 0xffffffff)
+                                        break;
+                                    if (sbits % 1000)
+                                        goto donez;
+                                    sbits /= 1000;
+                                }
+                                n = (U32)sbits;
+                                while ((n % 1000) == 0)
+                                    n /= 1000;
+                                sbits = n;
+                            donez:;
+                            }
+
+                            // convert to string
+                            out += PRINT_STB_OFFSET;
+                            e = 0;
+                            for (;;) {
+                                U32 n;
+                                char *o = out - 8;
+                                // do the conversion in chunks of U32s (avoid most 64-bit divides, worth it, constant denomiators be damned)
+                                if (sbits >= 100000000) {
+                                    n = (U32)(sbits % 100000000);
+                                    sbits /= 100000000;
                                 } else {
-                                    lower_threshold = 1.0;
-                                    for (Sint i = power; i > 0; i--) {
-                                        lower_threshold *= 10.0;
-                                    }
+                                    n = (U32)sbits;
+                                    sbits = 0;
                                 }
-
-                                if (fmt_exponential || (value > 0 && value <= lower_threshold)) {
-                                    power_of_e_nonsense = true;
-                                    if (value < 1e-255) {
-                                        value *= 1e256;
-                                        print_exponent -= 256;
+                                while (n) {
+                                    out -= 2;
+                                    *(U16 *)(void*)out = *(const U16 *)(const void*)&stbfp_digitpair.pair[(n % 100) * 2];
+                                    n /= 100;
+                                    e += 2;
+                                }
+                                if (sbits == 0) {
+                                    if ((e) && (out[0] == '0')) {
+                                        ++out;
+                                        --e;
                                     }
-                                    if (value < 1e-127) {
-                                        value *= 1e128;
-                                        print_exponent -= 128;
-                                    }
-                                    if (value < 1e-63) {
-                                        value *= 1e64;
-                                        print_exponent -= 64;
-                                    }
-                                    if (value < 1e-31) {
-                                        value *= 1e32;
-                                        print_exponent -= 32;
-                                    }
-                                    if (value < 1e-15) {
-                                        value *= 1e16;
-                                        print_exponent -= 16;
-                                    }
-                                    if (value < 1e-7) {
-                                        value *= 1e8;
-                                        print_exponent -= 8;
-                                    }
-                                    if (value < 1e-3) {
-                                        value *= 1e4;
-                                        print_exponent -= 4;
-                                    }
-                                    if (value < 1e-1) {
-                                        value *= 1e2;
-                                        print_exponent -= 2;
-                                    }
-                                    if (value < 1e0) {
-                                        value *= 1e1;
-                                        print_exponent -= 1;
-                                    }
+                                    break;
+                                }
+                                while (out != o) {
+                                    *--out = '0';
+                                    ++e;
                                 }
                             }
                         }
 
-                        U64 integral_part = (U64)value;
-                        F64 remainder = value - (F64)integral_part;
+                        // decimal_pos is the number of digits before/after the decimal point.
+                        // If it is positive, it means that the most signification digit is left
+                        // of the decimal point.
+                        // If it is negtive, it means that the most signification digit is right
+                        // of the decimal point.
+                        S32 decimal_pos = tens;
+                        // out contains the decimal representation of all the significant bits
+                        // in the floating-point number.
+                        Char *sn = out;
+                        S32 l = e;
 
-                        F64 remainder_modified = remainder * 1e19;
-                        U64 decimal_part = (U64)remainder_modified;
+                        str = num_str + PRINT_STB_OFFSET;
 
-                        // rounding
-                        remainder_modified -= (F64)decimal_part;
-                        if (remainder_modified >= 0.5) {
-                            decimal_part++;
-                            if (decimal_part >= 10000000000000000000ULL) { // 19 zeroes
-                                decimal_part = 0;
-                                integral_part++;
-                                if (print_exponent != 0 && integral_part >= 10) {
-                                    print_exponent++;
-                                    integral_part = 1;
-                                }
-                            }
-                        }
+                        if (flags & Print_Flags_FLOAT_FIXED) {
+                            if (decimal_pos <= 0) { // handle 0.000*000xxxx
+                                *str++ = '0';
+                                if (precision) *str++ = '.';
 
-                        str = num_str + NLIB_PRINT_SIZE;
+                                S32 n = -decimal_pos;
+                                if (n > precision) n = precision;
 
-                        { // Write print_exponent (if needed)
-                            if (power_of_e_nonsense) {
-                                // convert to string
-                                Sint num_dec = (print_exponent > 0) ? print_exponent : -print_exponent;
+                                S32 i = n;
+                                memset(str, '0', (Size)i);
+                                str += i;
+                                i = 0;
 
-                                Char *str_now = str;
+                                if ((S32)(l + n) > precision) l = precision - n;
+                                i = l;
+                                memcpy(str, sn, (Size)i);
+                                str += i;
+                                sn += i;
+                                i = 0;
 
-                                if (num_dec) {
-                                    while (num_dec) {
-                                        *--str = (Char)(num_dec % 10) + '0';
-                                        num_dec /= 10;
+                                trailing_zeroes = precision - (n + l);
+                            } else {
+                                if (decimal_pos >= l) { // handle xxxx000*000.0
+                                    S32 n = 0;
+                                    memcpy(str, sn, (Size)l);
+                                    str += e;
+                                    sn += e;
+                                    n = l;
+
+                                    if (n < decimal_pos) {
+                                        n = decimal_pos - n;
+                                        memset(str, '0', (Size)n);
+                                        str += n;
+                                        n = 0;
                                     }
-                                } else {
-                                    *--str = '0';
-                                }
 
-                                if ((Uptr)str_now - (Uptr)str == 1) {
-                                    *--str = '0';
-                                }
-
-                                if (print_exponent < 0) {
-                                    *--str = '-';
-                                } else {
-                                    *--str = '+';
-                                }
-
-                                *--str = capital ? 'E' : 'e';
-                            }
-                        }
-
-                        { // Write decimal part
-                            if (precision > 0) {
-                                Char tmp_buf[NLIB_PRINT_SIZE] = {0};
-                                Char *tmp = tmp_buf + NLIB_PRINT_SIZE;
-                                Uint width = 19; // TODO(naman): Is this correct?
-
-                                Uint width_iter = width;
-
-                                if ((Size)precision > width) {
-                                    // FIXME(naman): Get more decimal digits instead of just
-                                    // printing zeroes
-                                    Size extra_zeroes = (Size)precision - width;
-                                    memset(tmp - extra_zeroes, '0', extra_zeroes);
-                                    tmp -= extra_zeroes;
-                                }
-
-                                do {
-                                    *--tmp = (Char)(decimal_part % 10) + '0';
-                                    decimal_part = decimal_part / 10;
-                                } while (--width_iter);
-
-                                if ((Uint)precision < width) {
-                                    for (Char *temp = tmp_buf + NLIB_PRINT_SIZE - 1;
-                                         (Uptr)temp - (Uptr)tmp >= (Uint)precision;
-                                         temp--) {
-                                        Size index = 0;
-
-                                        if ((temp[index] - '0') > 5) {
-                                            B32 carry = false;
-                                            do {
-                                                if ((temp[index-1] - '0') == 9) {
-                                                    temp[index-1] = '0';
-                                                    carry = true;
-                                                } else {
-                                                    temp[index-1] += 1;
-                                                    carry = false;
-                                                }
-                                                index--;
-                                            } while (carry && ((Uptr) temp - index >= (Uptr)tmp));
-                                        }
+                                    if (precision) {
+                                        *str++ = '.';
+                                        trailing_zeroes = precision;
                                     }
+                                } else { // handle xxxxx.xxxx000*000
+                                    S32 n = 0;
+                                    memcpy(str, sn, (Size)decimal_pos);
+                                    str += decimal_pos;
+                                    sn += decimal_pos;
+                                    n = decimal_pos;
+
+                                    if (precision)
+                                        *str++ = '.';
+
+                                    if ((l - decimal_pos) > precision)
+                                        l = precision + decimal_pos;
+
+                                    if (n < l) {
+                                        memcpy(str, sn, (Size)(l - n));
+                                        str += (Size)(l - n);
+                                        sn += (Size)(l - n);
+                                        n += l - n;
+                                    }
+
+                                    trailing_zeroes = precision - (l - decimal_pos);
                                 }
+                            }
+                        } else if (flags & Print_Flags_FLOAT_EXP) {
+                            *str++ = sn[0];
+                            if (precision) *str++ = '.';
 
-                                str -= precision;
-                                memcpy(str, tmp, (Size)precision);
+                            if ((l - 1) > precision) {
+                                l = precision + 1;
+                            }
 
-                                *--str = '.';
+                            S32 n;
+                            for (n = 1; n < l; n++) {
+                                *str++ = sn[n];
+                            }
+
+                            trailing_zeroes = precision - (l - 1);
+                            precision = 0;
+
+                            tail_str[tail_index++] = capital ? 'E' : 'e';
+                            decimal_pos--;
+                            if (decimal_pos < 0) {
+                                tail_str[tail_index++] = '-';
+                                decimal_pos = -decimal_pos;
+                            } else {
+                                tail_str[tail_index++] = '+';
+                            }
+
+                            n = decimal_pos >= 100 ? 5 : 4;
+
+                            while (true) {
+                                tail_str[n] = '0' + (decimal_pos % 10);
+                                tail_index++;
+                                if (n <= 3) break;
+                                --n;
+                                decimal_pos /= 10;
                             }
                         }
 
-                        { // Write integral
-                            do {
-                                *--str = (Char)(integral_part % 10) + '0';
-                                integral_part = integral_part / 10;
-                            } while (integral_part);
-                        }
-
-                        // get the length that we copied
-                        len = (((Uptr)num_str + NLIB_PRINT_SIZE) - (Uptr)str);
-
-                        if (len == 0) {
-                            *--str = '0';
-                            len = 1;
-                        }
-#  elif defined(NLIB_PRINT_RYU_FLOAT)
+                        len = (Size)(Dptr)(str - (num_str + PRINT_STB_OFFSET));
+                        str = num_str + PRINT_STB_OFFSET;
+# elif defined(NLIB_PRINT_RYU_FLOAT)
                         str = num_str;
 
                         S32 e2;
@@ -1127,10 +1122,10 @@ Size printStringVarArg (Char *buffer, Char const *format, va_list va)
                                     while (true) {
                                         --round_index;
                                         Char c;
-#   if defined(COMPILER_CLANG)
-#    pragma clang diagnostic push
-#    pragma clang diagnostic ignored "-Wcomma"
-#   endif
+#  if defined(COMPILER_CLANG)
+#   pragma clang diagnostic push
+#   pragma clang diagnostic ignored "-Wcomma"
+#  endif
                                         if (round_index == -1 || (c = str[round_index], c == '-')) {
                                             str[round_index + 1] = '1';
                                             if (dot_index > 0) {
@@ -1140,9 +1135,9 @@ Size printStringVarArg (Char *buffer, Char const *format, va_list va)
                                             str[len++] = '0';
                                             break;
                                         }
-#   if defined(COMPILER_CLANG)
-#    pragma clang diagnostic pop
-#   endif
+#  if defined(COMPILER_CLANG)
+#   pragma clang diagnostic pop
+#  endif
                                         if (c == '.') {
                                             dot_index = round_index;
                                             continue;
@@ -1299,18 +1294,18 @@ Size printStringVarArg (Char *buffer, Char const *format, va_list va)
                                 while (true) {
                                     --round_index;
                                     Char c;
-#   if defined(COMPILER_CLANG)
-#    pragma clang diagnostic push
-#    pragma clang diagnostic ignored "-Wcomma"
-#   endif
+#  if defined(COMPILER_CLANG)
+#   pragma clang diagnostic push
+#   pragma clang diagnostic ignored "-Wcomma"
+#  endif
                                     if (round_index == -1 || (c = str[round_index], c == '-')) {
                                         str[round_index + 1] = '1';
                                         ++exp;
                                         break;
                                     }
-#   if defined(COMPILER_CLANG)
-#    pragma clang diagnostic pop
-#   endif
+#  if defined(COMPILER_CLANG)
+#   pragma clang diagnostic pop
+#  endif
                                     if (c == '.') {
                                         continue;
                                     } else if (c == '9') {
@@ -1346,8 +1341,256 @@ Size printStringVarArg (Char *buffer, Char const *format, va_list va)
                             }
 
                         }
+# elif defined(NLIB_PRINT_BAD_FLOAT)
+                        F64 value = (f64 < 0) ? -f64 : f64;
+                        B32 power_of_e_nonsense = false;
+                        Sint print_exponent = 0;
+
+                        B32 fmt_exponential = (fmt[0] == 'E') || (fmt[0] == 'e');
+
+                        { // Limit the "range" of float
+                            // log10(2^64) = 19 = max integral F64 storable in U64 without
+                            // loss of information
+                            F64 upper_threshold = 1e19;
+
+                            if (fmt_exponential || (value >= upper_threshold)) {
+                                power_of_e_nonsense = true;
+                                if (value >= 1e256) {
+                                    value /= 1e256;
+                                    print_exponent += 256;
+                                }
+                                if (value >= 1e128) {
+                                    value /= 1e128;
+                                    print_exponent += 128;
+                                }
+                                if (value >= 1e64) {
+                                    value /= 1e64;
+                                    print_exponent += 64;
+                                }
+                                if (value >= 1e32) {
+                                    value /= 1e32;
+                                    print_exponent += 32;
+                                }
+                                if (value >= 1e16) {
+                                    value /= 1e16;
+                                    print_exponent += 16;
+                                }
+                                if (value >= 1e8) {
+                                    value /= 1e8;
+                                    print_exponent += 8;
+                                }
+                                if (value >= 1e4) {
+                                    value /= 1e4;
+                                    print_exponent += 4;
+                                }
+                                if (value >= 1e2) {
+                                    value /= 1e2;
+                                    print_exponent += 2;
+                                }
+                                if (value >= 1e1) {
+                                    value /= 1e1;
+                                    print_exponent += 1;
+                                }
+                            }
+
+                            if (fmt_exponential) {
+                                // 10^-(precision-1)
+                                // (so that we get atleast one digit)
+                                F64 powers_of_10[20] = {
+                                    1.000000,
+                                    10.000000,
+                                    100.000000,
+                                    1000.000000,
+                                    10000.000000,
+                                    100000.000000,
+                                    1000000.000000,
+                                    10000000.000000,
+                                    100000000.000000,
+                                    1000000000.000000,
+                                    10000000000.000000,
+                                    100000000000.000000,
+                                    1000000000000.000000,
+                                    10000000000000.000000,
+                                    100000000000000.000000,
+                                    1000000000000000.000000,
+                                    10000000000000000.000000,
+                                    100000000000000000.000000,
+                                    1000000000000000000.000000,
+                                    10000000000000000000.000000,
+                                };
+
+                                F64 lower_threshold;
+                                // lower_threshold = pow(10.0, 1.0 - (F64)precision);
+                                S32 power = 1 - precision;
+                                if (power < 20) {
+                                    lower_threshold = powers_of_10[power];
+                                } else {
+                                    lower_threshold = 1.0;
+                                    for (Sint i = power; i > 0; i--) {
+                                        lower_threshold *= 10.0;
+                                    }
+                                }
+
+                                if (fmt_exponential || (value > 0 && value <= lower_threshold)) {
+                                    power_of_e_nonsense = true;
+                                    if (value < 1e-255) {
+                                        value *= 1e256;
+                                        print_exponent -= 256;
+                                    }
+                                    if (value < 1e-127) {
+                                        value *= 1e128;
+                                        print_exponent -= 128;
+                                    }
+                                    if (value < 1e-63) {
+                                        value *= 1e64;
+                                        print_exponent -= 64;
+                                    }
+                                    if (value < 1e-31) {
+                                        value *= 1e32;
+                                        print_exponent -= 32;
+                                    }
+                                    if (value < 1e-15) {
+                                        value *= 1e16;
+                                        print_exponent -= 16;
+                                    }
+                                    if (value < 1e-7) {
+                                        value *= 1e8;
+                                        print_exponent -= 8;
+                                    }
+                                    if (value < 1e-3) {
+                                        value *= 1e4;
+                                        print_exponent -= 4;
+                                    }
+                                    if (value < 1e-1) {
+                                        value *= 1e2;
+                                        print_exponent -= 2;
+                                    }
+                                    if (value < 1e0) {
+                                        value *= 1e1;
+                                        print_exponent -= 1;
+                                    }
+                                }
+                            }
+                        }
+
+                        U64 integral_part = (U64)value;
+                        F64 remainder = value - (F64)integral_part;
+
+                        F64 remainder_modified = remainder * 1e19;
+                        U64 decimal_part = (U64)remainder_modified;
+
+                        // rounding
+                        remainder_modified -= (F64)decimal_part;
+                        if (remainder_modified >= 0.5) {
+                            decimal_part++;
+                            if (decimal_part >= 10000000000000000000ULL) { // 19 zeroes
+                                decimal_part = 0;
+                                integral_part++;
+                                if (print_exponent != 0 && integral_part >= 10) {
+                                    print_exponent++;
+                                    integral_part = 1;
+                                }
+                            }
+                        }
+
+                        str = num_str + PRINT_STR_SIZE;
+
+                        { // Write print_exponent (if needed)
+                            if (power_of_e_nonsense) {
+                                // convert to string
+                                Sint num_dec = (print_exponent > 0) ? print_exponent : -print_exponent;
+
+                                Char *str_now = str;
+
+                                if (num_dec) {
+                                    while (num_dec) {
+                                        *--str = (Char)(num_dec % 10) + '0';
+                                        num_dec /= 10;
+                                    }
+                                } else {
+                                    *--str = '0';
+                                }
+
+                                if ((Uptr)str_now - (Uptr)str == 1) {
+                                    *--str = '0';
+                                }
+
+                                if (print_exponent < 0) {
+                                    *--str = '-';
+                                } else {
+                                    *--str = '+';
+                                }
+
+                                *--str = capital ? 'E' : 'e';
+                            }
+                        }
+
+                        { // Write decimal part
+                            if (precision > 0) {
+                                Char tmp_buf[PRINT_STR_SIZE] = {0};
+                                Char *tmp = tmp_buf + PRINT_STR_SIZE;
+                                Uint width = 19; // TODO(naman): Is this correct?
+
+                                Uint width_iter = width;
+
+                                if ((Size)precision > width) {
+                                    // FIXME(naman): Get more decimal digits instead of just
+                                    // printing zeroes
+                                    Size extra_zeroes = (Size)precision - width;
+                                    memset(tmp - extra_zeroes, '0', extra_zeroes);
+                                    tmp -= extra_zeroes;
+                                }
+
+                                do {
+                                    *--tmp = (Char)(decimal_part % 10) + '0';
+                                    decimal_part = decimal_part / 10;
+                                } while (--width_iter);
+
+                                if ((Uint)precision < width) {
+                                    for (Char *temp = tmp_buf + PRINT_STR_SIZE - 1;
+                                         (Uptr)temp - (Uptr)tmp >= (Uint)precision;
+                                         temp--) {
+                                        Size index = 0;
+
+                                        if ((temp[index] - '0') > 5) {
+                                            B32 carry = false;
+                                            do {
+                                                if ((temp[index-1] - '0') == 9) {
+                                                    temp[index-1] = '0';
+                                                    carry = true;
+                                                } else {
+                                                    temp[index-1] += 1;
+                                                    carry = false;
+                                                }
+                                                index--;
+                                            } while (carry && ((Uptr) temp - index >= (Uptr)tmp));
+                                        }
+                                    }
+                                }
+
+                                str -= precision;
+                                memcpy(str, tmp, (Size)precision);
+
+                                *--str = '.';
+                            }
+                        }
+
+                        { // Write integral
+                            do {
+                                *--str = (Char)(integral_part % 10) + '0';
+                                integral_part = integral_part / 10;
+                            } while (integral_part);
+                        }
+
+                        // get the length that we copied
+                        len = (((Uptr)num_str + PRINT_STR_SIZE) - (Uptr)str);
+
+                        if (len == 0) {
+                            *--str = '0';
+                            len = 1;
+                        }
 # elif defined(NLIB_PRINT_NO_FLOAT)
-                        str = num_str + NLIB_PRINT_SIZE;
+                        str = num_str + PRINT_STR_SIZE;
                         *--str = fmt[0];
                         len = 1;
 # endif
@@ -1418,11 +1661,6 @@ Size printStringVarArg (Char *buffer, Char const *format, va_list va)
                     head_index += head_size;
                 }
 
-                // TODO(naman): What is this doing?
-                /* U32 c = 0; */
-                /* c = cs >> 24; */
-                /* cs &= 0xffffff; */
-                /* cs = (fl & Print_Flags_THOUSAND_COMMA) ? ((stbsp__uint32)(c - ((pr + cs) % (c + 1)))) : 0; */
                 { // copy leading zeros
                     if (buffer != NULL) memset(buf, '0', (Size)precision);
                     buf += precision;
@@ -1479,7 +1717,7 @@ Size printStringVarArg (Char *buffer, Char const *format, va_list va)
     return result;
 }
 
-#  if defined(OS_WINDOWS)
+# if defined(OS_WINDOWS)
 
 header_function
 Size printConsole (Sint fd, Char const *format, va_list ap)
@@ -1535,7 +1773,7 @@ Size printDebugOutput (Char const *format, va_list ap)
     return buffer_size;
 }
 
-#  elif defined(OS_LINUX)
+# elif defined(OS_LINUX)
 
 header_function
 Size printConsole (Sint fd, Char const *format, va_list ap)
@@ -1548,15 +1786,15 @@ Size printConsole (Sint fd, Char const *format, va_list ap)
     Char *buffer = (Char *)memAlloc(buffer_size + 1);
     printStringVarArg(buffer, format, ap2);
 
-#   if defined(NLIB_NO_LIBC)
+#  if defined(NLIB_NO_LIBC)
     write(fd, buffer, buffer_size);
-#   else
+#  else
     if (fd == 1) {
         fputs(buffer, stdout);
     } else {
         fputs(buffer, stderr);
     }
-#   endif
+#  endif
 
     memDealloc(buffer);
 
@@ -1566,7 +1804,7 @@ Size printConsole (Sint fd, Char const *format, va_list ap)
     return buffer_size;
 }
 
-#  endif
+# endif
 
 header_function
 Size printString (Char *buffer, Char const *format, ...)
@@ -1618,21 +1856,21 @@ Size errv (Char const *format, va_list ap)
     return buffer_size;
 }
 
-#  if defined(NLIB_TESTS)
+# if defined(NLIB_TESTS)
 
-#   define CHECK_END(str) utTest(streq(buf, (str)) || ((unsigned) ret == strlen(str)))
-#   define SPRINTF printString
-#   define SNPRINTF(b, s, ...) (Sint)printString(b, __VA_ARGS__)
+#  define CHECK_END(str) utTest(streq(buf, (str)) || ((unsigned) ret == strlen(str)))
+#  define SPRINTF printString
+#  define SNPRINTF(b, s, ...) (Sint)printString(b, __VA_ARGS__)
 
-#   define CHECK9(str, v1, v2, v3, v4, v5, v6, v7, v8, v9) do { Size ret = SPRINTF(buf, v1, v2, v3, v4, v5, v6, v7, v8, v9); CHECK_END(str); } while (0)
-#   define CHECK8(str, v1, v2, v3, v4, v5, v6, v7, v8    ) do { Size ret = SPRINTF(buf, v1, v2, v3, v4, v5, v6, v7, v8    ); CHECK_END(str); } while (0)
-#   define CHECK7(str, v1, v2, v3, v4, v5, v6, v7        ) do { Size ret = SPRINTF(buf, v1, v2, v3, v4, v5, v6, v7        ); CHECK_END(str); } while (0)
-#   define CHECK6(str, v1, v2, v3, v4, v5, v6            ) do { Size ret = SPRINTF(buf, v1, v2, v3, v4, v5, v6            ); CHECK_END(str); } while (0)
-#   define CHECK5(str, v1, v2, v3, v4, v5                ) do { Size ret = SPRINTF(buf, v1, v2, v3, v4, v5                ); CHECK_END(str); } while (0)
-#   define CHECK4(str, v1, v2, v3, v4                    ) do { Size ret = SPRINTF(buf, v1, v2, v3, v4                    ); CHECK_END(str); } while (0)
-#   define CHECK3(str, v1, v2, v3                        ) do { Size ret = SPRINTF(buf, v1, v2, v3                        ); CHECK_END(str); } while (0)
-#   define CHECK2(str, v1, v2                            ) do { Size ret = SPRINTF(buf, v1, v2                            ); CHECK_END(str); } while (0)
-#   define CHECK1(str, v1                                ) do { Size ret = SPRINTF(buf, v1                                ); CHECK_END(str); } while (0)
+#  define CHECK9(str, v1, v2, v3, v4, v5, v6, v7, v8, v9) do { Size ret = SPRINTF(buf, v1, v2, v3, v4, v5, v6, v7, v8, v9); CHECK_END(str); } while (0)
+#  define CHECK8(str, v1, v2, v3, v4, v5, v6, v7, v8    ) do { Size ret = SPRINTF(buf, v1, v2, v3, v4, v5, v6, v7, v8    ); CHECK_END(str); } while (0)
+#  define CHECK7(str, v1, v2, v3, v4, v5, v6, v7        ) do { Size ret = SPRINTF(buf, v1, v2, v3, v4, v5, v6, v7        ); CHECK_END(str); } while (0)
+#  define CHECK6(str, v1, v2, v3, v4, v5, v6            ) do { Size ret = SPRINTF(buf, v1, v2, v3, v4, v5, v6            ); CHECK_END(str); } while (0)
+#  define CHECK5(str, v1, v2, v3, v4, v5                ) do { Size ret = SPRINTF(buf, v1, v2, v3, v4, v5                ); CHECK_END(str); } while (0)
+#  define CHECK4(str, v1, v2, v3, v4                    ) do { Size ret = SPRINTF(buf, v1, v2, v3, v4                    ); CHECK_END(str); } while (0)
+#  define CHECK3(str, v1, v2, v3                        ) do { Size ret = SPRINTF(buf, v1, v2, v3                        ); CHECK_END(str); } while (0)
+#  define CHECK2(str, v1, v2                            ) do { Size ret = SPRINTF(buf, v1, v2                            ); CHECK_END(str); } while (0)
+#  define CHECK1(str, v1                                ) do { Size ret = SPRINTF(buf, v1                                ); CHECK_END(str); } while (0)
 
 header_function
 void printUnitTest (void)
@@ -1666,22 +1904,9 @@ void printUnitTest (void)
     CHECK2("-8.8888888800", "%.10f", -8.88888888);
     CHECK2("880.0888888800", "%.10f", 880.08888888);
     CHECK2("4.1", "%.1f", 4.1);
-#    if defined(NLIB_PRINT_BAD_FLOAT)
-    CHECK2(" 0", "% .0F", 0.1);
-    CHECK2("0.00", "%.2F", 1e-4);
-    // TODO(naman): Fix the bad float by importing code from Swift
-//   const double pow_2_85 = 38685626227668133590597632.0;
-//   CHECK2("38685626227668133590597632.0", "%.1f", pow_2_85); // exact
-    // FIXME(naman): The below is different from what should get printed, even though
-    // it reads back the same
-    CHECK2("0.000000500000000000000000", "%.24f", 5e-7);
-#    else
     CHECK2(" 0", "% .0f", 0.1);
     CHECK2("0.00", "%.2f", 1e-4);
-    const double pow_2_85 = 38685626227668133590597632.0;
-    CHECK2("38685626227668133590597632.0", "%.1f", pow_2_85); // exact
     CHECK2("0.000000499999999999999977", "%.24f", 5e-7);
-#    endif
     CHECK2("-5.20", "%+4.2f", -5.2);
     CHECK2("0.0       ", "%-10.1f", 0.);
     CHECK2("-0.000000", "%f", -0.);
@@ -1693,8 +1918,12 @@ void printUnitTest (void)
     CHECK2("-3.000000e+00", "%e", -3.0);
     CHECK2("4.1E+00", "%.1E", 4.1);
     CHECK2("-5.20e+00", "%+4.2e", -5.2);
+#    if !defined(NLIB_PRINT_BAD_FLOAT)
+    const double pow_2_85 = 38685626227668133590597632.0;
+    CHECK2("38685626227668133590597632.0", "%.1f", pow_2_85); // exact
+#    endif
 
-#    if 0 // TODO(naman): Disabled until support for %g is added
+#   if 0 // TODO(naman): Disabled until support for %g is added
     CHECK3("+0.3 -3", "%+g %+g", 0.3, -3.0);
     CHECK2("4", "%.1G", 4.1);
     CHECK2("-5.2", "%+4.2g", -5.2);
@@ -1702,7 +1931,7 @@ void printUnitTest (void)
     CHECK2("1", "%.0g", 1.2);
     CHECK3(" 3.7 3.71", "% .3g %.3g", 3.704, 3.706);
     CHECK3("2e-315:1e+308", "%g:%g", 2e-315, 1e+308);
-#    endif
+#   endif
 
     CHECK4("inf INF nan", "%f %F %f", (double)INFINITY, (double)INFINITY, (double)NAN);
     CHECK2("nan", "%.1f", (double)NAN);
@@ -1728,13 +1957,6 @@ void printUnitTest (void)
     // snprintf
     claim(SNPRINTF(buf, 100, " %s     %d",  "b", 123) == 10);
     claim(strcmp(buf, " b     123") == 0);
-    const double pow_2_75 = 37778931862957161709568.0;
-    claim(SNPRINTF(buf, 100, "%f", pow_2_75) == 30);
-    claim(strncmp(buf, "37778931862957161709568.000000", 17) == 0);
-    n = SNPRINTF(buf, 10, "number %f", 123.456789);
-    // TODO(naman): Implement snprintf interface
-    // claim(strcmp(buf, "number 12") == 0);
-    claim(n == 17);  // written vs would-be written bytes
     n = SNPRINTF(buf, 0, "7 chars");
     claim(n == 7);
     // stb_sprintf uses internal buffer of 512 chars - test longer string
@@ -1745,7 +1967,7 @@ void printUnitTest (void)
     //claim(strlen(buf) == 549);
     claim(SNPRINTF(buf, 600, "%510s     %c", "a", 'b') == 516);
 
-#  if defined(NLIB_PRINT_NO_FLOAT)
+#  if !defined(NLIB_PRINT_NO_FLOAT) && !defined(NLIB_PRINT_BAD_FLOAT)
     const double pow_2_75 = 37778931862957161709568.0;
     claim(SNPRINTF(buf, 100, "%f", pow_2_75) == 30);
     claim(strncmp(buf, "37778931862957161709568.000000", 17) == 0);
@@ -1758,12 +1980,12 @@ void printUnitTest (void)
     // length check
     claim(SNPRINTF(NULL, 0, " %s     %d",  "b", 123) == 10);
 
-#    if defined(NLIB_PRINT_TEST_AGAINST_LIBC)
+#  if defined(NLIB_PRINT_TEST_AGAINST_LIBC)
     setlocale(LC_NUMERIC, "");  // C locale does not group digits
-#    endif
+#  endif
     // ' modifier. Non-standard, but supported by glibc.
     // TODO(naman): Implement ' modifier
-#    if 0
+#  if 0
     CHECK2("1,200,000", "%'d", 1200000);
     CHECK2("-100,006,789", "%'d", -100006789);
     CHECK2("9,888,777,666", "%'lld", 9888777666ll);
@@ -1771,14 +1993,14 @@ void printUnitTest (void)
     CHECK2("100,056,789", "%'.0f", 100056789.0);
     CHECK2("100,056,789.0", "%'.1f", 100056789.0);
     CHECK2("0000001,200,000", "%'015d", 1200000);
-#    endif
+#  endif
 
     // things not supported by glibc
-#    if 0
     CHECK2("null", "%s", (char*) NULL);
-    CHECK2("123,4abc:", "%'x:", 0x1234ABC);
     CHECK2("100000000", "%b", 256);
     CHECK3("0b10 0B11", "%#b %#B", 2, 3);
+#  if 0
+    CHECK2("123,4abc:", "%'x:", 0x1234ABC);
     CHECK4("2 3 4", "%I64d %I32d %Id", 2ll, 3, 4ll);
     CHECK3("1k 2.54 M", "%$_d %$.2d", 1000, 2536000);
     CHECK3("2.42 Mi 2.4 M", "%$$.2d %$$$d", 2536000, 2536000);
@@ -1786,7 +2008,7 @@ void printUnitTest (void)
     // different separators
     stbsp_set_separators(' ', ',');
     CHECK2("12 345,678900", "%'f", 12345.6789);
-#    endif
+#  endif
 }
 
 # else // = !defined(NLIB_TESTS)

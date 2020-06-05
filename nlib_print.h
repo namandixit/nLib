@@ -11,7 +11,8 @@
 
 /* Define:
  * NLIB_PRINT_RYU_FLOAT for Ryu float->str algorithm (default)
- * NLIB_PRINT_BAD_FLOAT for cheap <U64 algorithm
+ * NLIB_PRINT_SWIFT_FLOAT for cheap <U64 algorithm
+ * NLIB_PRINT_NO_FLOAT to disable floating point printing
  */
 
 // Takes 12151 bytes (11.86 KiB) without the unit test
@@ -46,9 +47,9 @@ header_function Size errv (Char const *format, va_list ap);
 
 # elif !defined(NLIB_PRINT_H_INCLUDE_GUARD)
 
-#  if !defined(NLIB_PRINT_RYU_FLOAT) && !defined(NLIB_PRINT_BAD_FLOAT)
-#   define NLIB_PRINT_RYU_FLOAT
-#  endif
+# if !defined(NLIB_PRINT_RYU_FLOAT) && !defined(NLIB_PRINT_SWIFT_FLOAT) && !defined(NLIB_PRINT_NO_FLOAT)
+#  define NLIB_PRINT_RYU_FLOAT
+# endif
 
 #  if defined(NLIB_PRINT_RYU_FLOAT)
 #   include "nlib_print_ryu.h"
@@ -1345,7 +1346,11 @@ Size printStringVarArg (Char *buffer, Char const *format, va_list va)
                             }
 
                         }
-#  endif
+# elif defined(NLIB_PRINT_NO_FLOAT)
+                        str = num_str + NLIB_PRINT_SIZE;
+                        *--str = fmt[0];
+                        len = 1;
+# endif
                     }
 
                     precision = 0;
@@ -1655,6 +1660,7 @@ void printUnitTest (void)
 //    CHECK2("9888777666", "%llu", 9888777666llu); // TODO(naman): Implement %llu
     CHECK4("2 -3 %.", "%zd %td %.", (S64)2, (Dptr)-3, 23);
 
+#  if !defined(NLIB_PRINT_NO_FLOAT)
     // floating-point numbers
     CHECK2("-3.000000", "%f", -3.0);
     CHECK2("-8.8888888800", "%.10f", -8.88888888);
@@ -1710,6 +1716,7 @@ void printUnitTest (void)
     CHECK2("0x1.0p-1022", "%.1a", 0x1.ffp-1023);
     CHECK2("0x1.0091177587f83p-1022", "%a", 2.23e-308);
     CHECK2("-0X1.AB0P-5", "%.3A", -0X1.abp-5);
+#  endif // defined(NLIB_PRINT_NO_FLOAT)
 
     // %p
     CHECK2("0000000000000000", "%p", (void*) NULL);
@@ -1737,6 +1744,16 @@ void printUnitTest (void)
     //(void)SNPRINTF(buf, 550, "%d  %600s", 3, "abc");
     //claim(strlen(buf) == 549);
     claim(SNPRINTF(buf, 600, "%510s     %c", "a", 'b') == 516);
+
+#  if defined(NLIB_PRINT_NO_FLOAT)
+    const double pow_2_75 = 37778931862957161709568.0;
+    claim(SNPRINTF(buf, 100, "%f", pow_2_75) == 30);
+    claim(strncmp(buf, "37778931862957161709568.000000", 17) == 0);
+    n = SNPRINTF(buf, 10, "number %f", 123.456789);
+    // TODO(naman): Implement snprintf interface
+    // claim(strcmp(buf, "number 12") == 0);
+    claim(n == 17);  // written vs would-be written bytes
+#  endif
 
     // length check
     claim(SNPRINTF(NULL, 0, " %s     %d",  "b", 123) == 10);

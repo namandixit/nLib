@@ -76,11 +76,13 @@ typedef enum Print_Flags {
     Print_Flags_LEADING_PLUS       = 1u << 2,
     Print_Flags_LEADING_SPACE      = 1u << 3,
     Print_Flags_LEADING_ZERO       = 1u << 4,
-    Print_Flags_INT64              = 1u << 5,
-    Print_Flags_NEGATIVE           = 1u << 6,
-    Print_Flags_FLOAT_FIXED        = 1u << 7,
-    Print_Flags_FLOAT_EXP          = 1u << 8,
-    Print_Flags_FLOAT_HEX          = 1u << 9,
+    Print_Flags_INT8               = 1u << 5,
+    Print_Flags_INT16              = 1u << 6,
+    Print_Flags_INT64              = 1u << 7,
+    Print_Flags_NEGATIVE           = 1u << 8,
+    Print_Flags_FLOAT_FIXED        = 1u << 9,
+    Print_Flags_FLOAT_EXP          = 1u << 10,
+    Print_Flags_FLOAT_HEX          = 1u << 11,
 } Print_Flags;
 
 header_function
@@ -173,6 +175,15 @@ Size printStringVarArg (Char *buffer, Char const *format, va_list va)
 
             // handle integer size overrides
             switch (fmt[0]) {
+                case 'h': { // are we 64-bit
+                    flags |= Print_Flags_INT16;
+                    fmt++;
+                    if (fmt[0] == 'h') {
+                        flags &= (U32)~Print_Flags_INT16;
+                        flags |= Print_Flags_INT8;
+                        fmt++;
+                    }
+                } break;
                 case 'l': { // are we 64-bit
                     flags |= Print_Flags_INT64;
                     fmt++;
@@ -247,6 +258,12 @@ Size printStringVarArg (Char *buffer, Char const *format, va_list va)
                     }
 
                     U64 num_dec = num;
+                    if (flags & Print_Flags_INT8) {
+                        num_dec = (U8)num_dec;
+                    } else if (flags & Print_Flags_INT16) {
+                        num_dec = (U16)num_dec;
+                    }
+
                     str = num_str + PRINT_STR_SIZE;
 
                     while (true) {
@@ -290,6 +307,12 @@ Size printStringVarArg (Char *buffer, Char const *format, va_list va)
                     }
 
                     U64 num_dec = num;
+                    if (flags & Print_Flags_INT8) {
+                        num_dec = (U8)num_dec;
+                    } else if (flags & Print_Flags_INT16) {
+                        num_dec = (U16)num_dec;
+                    }
+
                     str = num_str + PRINT_STR_SIZE;
 
                     while (true) {
@@ -339,6 +362,12 @@ Size printStringVarArg (Char *buffer, Char const *format, va_list va)
                     }
 
                     U64 num_dec = num;
+                    if (flags & Print_Flags_INT8) {
+                        num_dec = (U8)num_dec;
+                    } else if (flags & Print_Flags_INT16) {
+                        num_dec = (U16)num_dec;
+                    }
+
                     str = num_str + PRINT_STR_SIZE;
 
                     if ((num == 0) && (precision == 0)) {
@@ -414,6 +443,12 @@ Size printStringVarArg (Char *buffer, Char const *format, va_list va)
 
                     // convert to string
                     U64 num_dec = num;
+                    if (flags & Print_Flags_INT8) {
+                        num_dec = (U8)num_dec;
+                    } else if (flags & Print_Flags_INT16) {
+                        num_dec = (U16)num_dec;
+                    }
+
                     str = num_str + PRINT_STR_SIZE;
 
                     if ((num == 0) && (precision == 0)) {

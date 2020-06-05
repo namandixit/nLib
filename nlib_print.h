@@ -1794,7 +1794,9 @@ void printUnitTest (void)
 #    endif
 }
 
-#endif // defined(NLIB_TESTS)
+# else // = !defined(NLIB_TESTS)
+header_function void printUnitTest (void) { return; }
+# endif // defined(NLIB_TESTS)
 
 #define NLIB_PRINT_H_INCLUDE_GUARD
 #endif // defined(NLIB_PRINT_INTERFACE_ONLY)

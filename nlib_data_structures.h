@@ -198,6 +198,8 @@ void sbufUnitTest (void)
 
     utTest(streq(stream, "Hello, World!\nStill here? 420\nGO AWAY!!!\n"));
 }
+#  else
+header_function void sbufUnitTest (void) { return; }
 #  endif
 
 #  if defined(COMPILER_CLANG)
@@ -488,6 +490,8 @@ void internUnitTest (void)
 
     return;
 }
+#  else
+header_function void internUnitTest (void) { return; }
 #  endif
 # endif // defined(LANG_C)
 
@@ -877,6 +881,8 @@ void htUnitTest (void)
 
     return;
 }
+#  else
+header_function void htUnitTest (void) { return; }
 #  endif
 # endif // defined(LANG_C)
 
@@ -1024,6 +1030,8 @@ void mapUnitTest (void)
 
     return;
 }
+#  else
+header_function void mapUnitTest (void) { return; }
 #  endif
 
 # endif // defined(LANG_C)

@@ -1011,18 +1011,13 @@ Size printStringVarArg (Char *buffer, Char const *format, va_list va)
                             m2 = (1ULL << F64_MANTISSA_BITS) | mantissa;
                         }
 
-#   define INDEX_FOR_EXPONENT(e) ((e) + 15) / 16
-#   define POW_10_BITS_FOR_INDEX(index) (16 * (index) + RYU_POW10_ADDITIONAL_BITS)
-// +1 for ceil, +16 for mantissa, +8 to round up when dividing by 9
-#   define LENGTH_FOR_INDEX(index) ((ryu_log10Pow2(16 * ((S32)index)) + 1 + 16 + 8) / 9)
-
                         if (flags & Print_Flags_FLOAT_FIXED) {
                             B32 has_seen_non_zero_digit = false;
 
                             if (e2 >= -52) {
-                                U32 index = e2 < 0 ? 0 : INDEX_FOR_EXPONENT((U32)e2);
-                                U32 p10_bits = POW_10_BITS_FOR_INDEX(index);
-                                S32 index_length = LENGTH_FOR_INDEX(index);
+                                U32 index = e2 < 0 ? 0 : ryu_indexForExponent((U32)e2);
+                                U32 p10_bits = ryu_pow10BitsForIndex(index);
+                                S32 index_length = (S32)ryu_lengthForIndex(index);
 
                                 for (S32 i = index_length - 1; i >= 0; --i) {
                                     U32 j = p10_bits - (U32)e2;
@@ -1174,9 +1169,9 @@ Size printStringVarArg (Char *buffer, Char const *format, va_list va)
                             S32 exp = 0;
 
                             if (e2 >= -52) {
-                                U32 idx = e2 < 0 ? 0 : INDEX_FOR_EXPONENT((U32)e2);
-                                U32 p10bits = POW_10_BITS_FOR_INDEX(idx);
-                                S32 index_length = LENGTH_FOR_INDEX(idx);
+                                U32 idx = e2 < 0 ? 0 : ryu_indexForExponent((U32)e2);
+                                U32 p10bits = ryu_pow10BitsForIndex(idx);
+                                S32 index_length = (S32)ryu_lengthForIndex(idx);
 
                                 for (S32 i = index_length - 1; i >= 0; --i) {
                                     U32 j = p10bits - (U32)e2;

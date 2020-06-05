@@ -221,7 +221,9 @@ Size printStringVarArg (Char *buffer, Char const *format, va_list va)
                     *d = (Sint)(buf - buffer);
                 } break;
 
-                case 'b': { // binary
+                case 'b': case 'B': { // binary
+                    B32 upper = (fmt[0] == 'B') ? true : false;
+
                     U64 num = 0;
                     if (flags & Print_Flags_INT64) {
                         num = va_arg(va, U64);
@@ -248,12 +250,23 @@ Size printStringVarArg (Char *buffer, Char const *format, va_list va)
 
                     len = (((Uptr)num_str + NLIB_PRINT_SIZE) - (Uptr)str);
 
+                    if (flags & Print_Flags_ALTERNATE_FORM) {
+                        head_str[head_index++] = '0';
+                        if (upper) {
+                            head_str[head_index++] = 'B';
+                        } else {
+                            head_str[head_index++] = 'b';
+                        }
+                    }
+
                     if (precision < 0) {
                         precision = 0;
                     }
                 } break;
 
-                case 'o': { // octal
+                case 'o': case 'O': { // octal
+//                    B32 upper = (fmt[0] == 'O') ? true : false;
+
                     U64 num = 0;
                     if (flags & Print_Flags_INT64) {
                         num = va_arg(va, U64);

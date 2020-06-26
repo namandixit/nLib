@@ -32,7 +32,7 @@ typedef struct Sbuf_Header {
     Size len; // NOTE(naman): Count of elements actually stored
     void *userdata;
     B64 fixed; // Can't use allocations/reallocation
-    Byte buf[];
+    alignas(alignof(max_align_t)) Byte buf[];
 } Sbuf_Header;
 
 #  define sbuf_GetHeader(sb) ((Sbuf_Header*)(void*)((Byte*)(sb) - offsetof(Sbuf_Header, buf)))

@@ -1035,6 +1035,94 @@ void mapUnitTest (void)
 header_function void mapUnitTest (void) { return; }
 #  endif
 
+/* ==============
+ * Concurrent Queue (Lock-based Multi-producer Multi-consumer)
+ */
+
+#  if defined(OS_LINUX) && !defined(NLIB_NO_LIBC)
+typedef struct Queue_Locked__Head {
+    sem_t fill_count; // How many are filled?
+    sem_t empty_count; // How many are empty?
+    pthread_mutex_t buffer_lock;
+    Size buffer_size;
+    Size buffer_write_cursor;
+    Size buffer_read_cursor;
+    alignas(alignof(max_align_t)) Byte buffer[];
+} Queue_Locked__Head;
+
+#define queueLockedCreate(type, size) queueLocked__Create(sizeof(type), size)
+
+header_function
+void* queueLocked__Create (Size elemsize, Size buffersize)
+{
+    Size queue_size = elemsize * buffersize;
+    Size header_size = memAlignUp(sizeof(Queue_Locked__Head));
+    Size total_size = header_size + queue_size;
+
+    Queue_Locked__Head *head = calloc(1, total_size);
+
+    sem_init(&head->fill_count, 0, 0);
+    sem_init(&head->empty_count, 0, (Uint)buffersize);
+    pthread_mutex_init(&head->buffer_lock, NULL);
+
+    head->buffer_size = buffersize;
+
+    void *result = (Byte*)(void*)head + header_size;
+    return result;
+}
+
+#define queueLocked__GetHead(q) ((Queue_Locked__Head*)(void*)((Byte*)(q) - \
+                                                            offsetof(Queue_Locked__Head, buffer)))
+
+#define queueLockedEnqueue(queue, elem) do {                    \
+        Queue_Locked__Head *head = queueLocked__GetHead(queue); \
+                                                                \
+        sem_wait(&head->empty_count);                           \
+        pthread_mutex_lock(&head->buffer_lock);                 \
+                                                                \
+        queue[head->buffer_write_cursor] = elem;                \
+        head->buffer_write_cursor++;                            \
+        head->buffer_write_cursor %= head->buffer_size;         \
+                                                                \
+        pthread_mutex_unlock(&head->buffer_lock);               \
+        sem_post(&head->fill_count);                            \
+    } while (0)
+
+// NOTE(naman): Expression-statement is fine because Linux compilers support them
+#define queueLockedDequeue(queue) ({                                    \
+            Queue_Locked__Head *head = queueLocked__GetHead(queue);     \
+                                                                        \
+            sem_wait(&head->fill_count);                                \
+            pthread_mutex_lock(&head->buffer_lock);                     \
+                                                                        \
+            __typeof__(*queue) var = queue[head->buffer_read_cursor];   \
+            head->buffer_read_cursor++;                                 \
+            head->buffer_read_cursor %= head->buffer_size;              \
+                                                                        \
+            pthread_mutex_unlock(&head->buffer_lock);                   \
+            sem_post(&head->empty_count);                               \
+            var;                                                        \
+        })
+
+#  elif defined(OS_WINDOWS)
+// TODO(naman): This
+#  endif
+
+header_function
+void queueLockedUnitTest (void)
+{
+    Size *q = queueLockedCreate(Size, 4);
+    queueLockedEnqueue(q, 1);
+    queueLockedEnqueue(q, 2);
+    queueLockedEnqueue(q, 3);
+    queueLockedEnqueue(q, 4);
+
+    utTest(queueLockedDequeue(q) == 1);
+    utTest(queueLockedDequeue(q) == 2);
+    utTest(queueLockedDequeue(q) == 3);
+    utTest(queueLockedDequeue(q) == 4);
+}
+
 # endif // defined(LANG_C)
 
 #define NLIB_DATA_STRUCTURES_H_INCLUDE_GUARD

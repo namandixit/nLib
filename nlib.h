@@ -421,6 +421,8 @@ typedef union {
 #   include <unistd.h>
 #   include <string.h>
 #   include <stdio.h>
+#   include <pthread.h>
+#   include <semaphore.h>
 #  endif
 # endif
 

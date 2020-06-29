@@ -1036,11 +1036,11 @@ header_function void mapUnitTest (void) { return; }
 #  endif
 
 /* ==============
- * Concurrent Queue (Lock-based Multi-producer Multi-consumer)
+ * Concurrent Ring (Lock-based Multi-producer Multi-consumer)
  */
 
 #  if defined(OS_LINUX) && !defined(NLIB_NO_LIBC)
-typedef struct Queue_Locked__Head {
+typedef struct Ring_Locked__Head {
     sem_t fill_count; // How many are filled?
     sem_t empty_count; // How many are empty?
     pthread_mutex_t buffer_lock;
@@ -1048,18 +1048,18 @@ typedef struct Queue_Locked__Head {
     Size buffer_write_cursor;
     Size buffer_read_cursor;
     alignas(alignof(max_align_t)) Byte buffer[];
-} Queue_Locked__Head;
+} Ring_Locked__Head;
 
-#define queueLockedCreate(type, size) queueLocked__Create(sizeof(type), size)
+#define ringLockedCreate(type, size) ringLocked__Create(sizeof(type), size)
 
 header_function
-void* queueLocked__Create (Size elemsize, Size buffersize)
+void* ringLocked__Create (Size elemsize, Size buffersize)
 {
-    Size queue_size = elemsize * buffersize;
-    Size header_size = memAlignUp(sizeof(Queue_Locked__Head));
-    Size total_size = header_size + queue_size;
+    Size ring_size = elemsize * buffersize;
+    Size header_size = memAlignUp(sizeof(Ring_Locked__Head));
+    Size total_size = header_size + ring_size;
 
-    Queue_Locked__Head *head = calloc(1, total_size);
+    Ring_Locked__Head *head = calloc(1, total_size);
 
     sem_init(&head->fill_count, 0, 0);
     sem_init(&head->empty_count, 0, (Uint)buffersize);
@@ -1071,16 +1071,16 @@ void* queueLocked__Create (Size elemsize, Size buffersize)
     return result;
 }
 
-#define queueLocked__GetHead(q) ((Queue_Locked__Head*)(void*)((Byte*)(q) - \
-                                                            offsetof(Queue_Locked__Head, buffer)))
+#define ringLocked__GetHead(q) ((Ring_Locked__Head*)(void*)((Byte*)(q) - \
+                                                            offsetof(Ring_Locked__Head, buffer)))
 
-#define queueLockedEnqueue(queue, elem) do {                    \
-        Queue_Locked__Head *head = queueLocked__GetHead(queue); \
+#define ringLockedPush(ring, elem) do {                    \
+        Ring_Locked__Head *head = ringLocked__GetHead(ring); \
                                                                 \
         sem_wait(&head->empty_count);                           \
         pthread_mutex_lock(&head->buffer_lock);                 \
                                                                 \
-        queue[head->buffer_write_cursor] = elem;                \
+        ring[head->buffer_write_cursor] = elem;                \
         head->buffer_write_cursor++;                            \
         head->buffer_write_cursor %= head->buffer_size;         \
                                                                 \
@@ -1089,13 +1089,13 @@ void* queueLocked__Create (Size elemsize, Size buffersize)
     } while (0)
 
 // NOTE(naman): Expression-statement is fine because Linux compilers support them
-#define queueLockedDequeue(queue) ({                                    \
-            Queue_Locked__Head *head = queueLocked__GetHead(queue);     \
+#define ringLockedPull(ring) ({                                    \
+            Ring_Locked__Head *head = ringLocked__GetHead(ring);     \
                                                                         \
             sem_wait(&head->fill_count);                                \
             pthread_mutex_lock(&head->buffer_lock);                     \
                                                                         \
-            __typeof__(*queue) var = queue[head->buffer_read_cursor];   \
+            __typeof__(*ring) var = ring[head->buffer_read_cursor];   \
             head->buffer_read_cursor++;                                 \
             head->buffer_read_cursor %= head->buffer_size;              \
                                                                         \
@@ -1108,20 +1108,36 @@ void* queueLocked__Create (Size elemsize, Size buffersize)
 // TODO(naman): This
 #  endif
 
+#  if defined(NLIB_TESTS)
+#   if 1
+#    define ringLocked_PP(x) x
+#   else
+#    define ringLocked_PP(x) do {x; int e; sem_getvalue(&ringLocked__GetHead(q)->empty_count, &e); int f; sem_getvalue(&ringLocked__GetHead(q)->fill_count, &f); printf("%s\te:%d f:%d\n", #x, e, f); fflush(stdout); } while (0)
+#   endif
 header_function
-void queueLockedUnitTest (void)
+void ringLockedUnitTest (void)
 {
-    Size *q = queueLockedCreate(Size, 4);
-    queueLockedEnqueue(q, 1);
-    queueLockedEnqueue(q, 2);
-    queueLockedEnqueue(q, 3);
-    queueLockedEnqueue(q, 4);
+    Size *q = ringLockedCreate(Size, 4);
+    ringLocked_PP(ringLockedPush(q, 1));
+    ringLocked_PP(ringLockedPush(q, 2));
+    ringLocked_PP(ringLockedPush(q, 3));
 
-    utTest(queueLockedDequeue(q) == 1);
-    utTest(queueLockedDequeue(q) == 2);
-    utTest(queueLockedDequeue(q) == 3);
-    utTest(queueLockedDequeue(q) == 4);
+    ringLocked_PP(utTest(ringLockedPull(q) == 1));
+    ringLocked_PP(utTest(ringLockedPull(q) == 2));
+    ringLocked_PP(utTest(ringLockedPull(q) == 3));
+
+    ringLocked_PP(ringLockedPush(q, 4));
+    ringLocked_PP(ringLockedPush(q, 5));
+    ringLocked_PP(ringLockedPush(q, 6));
+    ringLocked_PP(ringLockedPush(q, 7));
+
+    ringLocked_PP(utTest(ringLockedPull(q) == 4));
+    ringLocked_PP(utTest(ringLockedPull(q) == 5));
+    ringLocked_PP(utTest(ringLockedPull(q) == 6));
+    ringLocked_PP(utTest(ringLockedPull(q) == 7));
 }
+#  endif
+
 
 # endif // defined(LANG_C)
 

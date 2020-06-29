@@ -214,14 +214,15 @@ header_function void sbufUnitTest (void) { return; }
  * Inspired from https://github.com/torvalds/linux/blob/master/include/linux/list.h
  */
 
+# if defined(LANG_C)
 typedef struct List_Head {
     struct List_Head *next, *prev;
 } List_Head;
 
 /* To get the node (container struct) holding the linked list head */
-# define listThisNode(head, type, member) containerof(&head,      type, member)
-# define listNextNode(head, type, member) containerof(head->next, type, member)
-# define listPrevNode(head, type, member) containerof(head->prev, type, member)
+#  define listThisNode(head, type, member) containerof(&head,      type, member)
+#  define listNextNode(head, type, member) containerof(head->next, type, member)
+#  define listPrevNode(head, type, member) containerof(head->prev, type, member)
 
 /* Create and initialize the head statically
  *
@@ -230,7 +231,7 @@ typedef struct List_Head {
  *     .list = listHeadDeclare(n.list),
  * };
  */
-# define listHeadInitCompound(name) {&(name), &(name)}
+#  define listHeadInitCompound(name) {&(name), &(name)}
 
 /* Initialize the head only
  *
@@ -238,7 +239,7 @@ typedef struct List_Head {
  * n->data = 40;
  * listHeadInit(&n->list);
  */
-# define listHeadInit(ptr) do{(ptr)->next = (ptr); (ptr)->prev = (ptr);}while(0)
+#  define listHeadInit(ptr) do{(ptr)->next = (ptr); (ptr)->prev = (ptr);}while(0)
 
 header_function
 void list__Add (List_Head *new, List_Head *prev, List_Head *next)
@@ -304,7 +305,7 @@ void listSwap(List_Head *entry1, List_Head *entry2)
 {
     List_Head *pos = entry2->prev;
 
-    listRemoveentry2);
+    listRemove(entry2);
     listReplace(entry1, entry2);
     if (pos == entry1) pos = entry2;
     listAddAfter(entry1, pos);
@@ -361,10 +362,11 @@ void listSpliceInit (List_Head *list, List_Head *head)
     }
 }
 
-#define LIST_LOOP(idx, head)                                            \
+# define LIST_LOOP(idx, head)                                            \
     for (List_Head *(idx) = (head)->next; (idx) != (head); (idx) = (idx)->next)
-#define LIST_LOOP_REVERSE(idx, head)                                    \
+# define LIST_LOOP_REVERSE(idx, head)                                    \
     for (List_Head *(idx) = (head)->prev; (idx) != (head); pos = pos->prev)
+# endif // defined(LANG_C)
 
 
 /* ==========================
@@ -1296,7 +1298,6 @@ void ringLockedUnitTest (void)
     ringLocked_PP(utTest(ringLockedPull(q) == 7));
 }
 #  endif
-
 
 # endif // defined(LANG_C)
 

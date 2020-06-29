@@ -208,6 +208,165 @@ header_function void sbufUnitTest (void) { return; }
 #  endif
 # endif // defined(LANG_C)
 
+
+/* ===============================
+ * Intrusive Circular Doubly Linked List
+ * Inspired from https://github.com/torvalds/linux/blob/master/include/linux/list.h
+ */
+
+typedef struct List_Head {
+    struct List_Head *next, *prev;
+} List_Head;
+
+/* To get the node (container struct) holding the linked list head */
+# define listThisNode(head, type, member) containerof(&head,      type, member)
+# define listNextNode(head, type, member) containerof(head->next, type, member)
+# define listPrevNode(head, type, member) containerof(head->prev, type, member)
+
+/* Create and initialize the head statically
+ *
+ * node n = {
+ *     .data = 40,
+ *     .list = listHeadDeclare(n.list),
+ * };
+ */
+# define listHeadInitCompound(name) {&(name), &(name)}
+
+/* Initialize the head only
+ *
+ * node *n = malloc(sizeof(*n));
+ * n->data = 40;
+ * listHeadInit(&n->list);
+ */
+# define listHeadInit(ptr) do{(ptr)->next = (ptr); (ptr)->prev = (ptr);}while(0)
+
+header_function
+void list__Add (List_Head *new, List_Head *prev, List_Head *next)
+{
+    next->prev = new;
+    new->next = next;
+    new->prev = prev;
+    prev->next = new;
+}
+
+header_function
+void listAddAfter (List_Head *new, List_Head *after_this)
+{
+    list__Add(new, after_this, after_this->next);
+}
+
+header_function
+void listAddBefore (List_Head *new, List_Head *before_this)
+{
+    list__Add(new, before_this->prev, before_this);
+}
+
+header_function
+void list__RemoveHeadBetween (List_Head * prev, List_Head * next)
+{
+    next->prev = prev;
+    prev->next = next;
+}
+
+header_function
+void listRemove (List_Head *entry)
+{
+    list__RemoveHeadBetween(entry->prev, entry->next);
+    entry->next = NULL;
+    entry->prev = NULL;
+}
+
+header_function
+void listRemoveAndInit (List_Head *entry)
+{
+    list__RemoveHeadBetween(entry->prev, entry->next);
+    listHeadInit(entry);
+}
+
+header_function
+void listReplace(List_Head *old, List_Head *new)
+{
+    new->next = old->next;
+    new->next->prev = new;
+    new->prev = old->prev;
+    new->prev->next = new;
+}
+
+header_function
+void listReplaceAndInit(List_Head *old, List_Head *new)
+{
+        listReplace(old, new);
+        listHeadInit(old);
+}
+
+header_function
+void listSwap(List_Head *entry1, List_Head *entry2)
+{
+    List_Head *pos = entry2->prev;
+
+    listRemoveentry2);
+    listReplace(entry1, entry2);
+    if (pos == entry1) pos = entry2;
+    listAddAfter(entry1, pos);
+}
+
+header_function
+void listMoveAfter (List_Head *list, List_Head *after_this)
+{
+    list__RemoveHeadBetween(list->prev, list->next);
+    listAddAfter(list, after_this);
+}
+
+header_function
+void listMoveBefore (List_Head *list, List_Head *before_this)
+{
+        list__RemoveHeadBetween(list->prev, list->next);
+        listAddBefore(list, before_this);
+}
+
+header_function
+B32 listIsEmpty (List_Head *head)
+{
+    B32 result = (head->next == head);
+    return result;
+}
+
+// Splice in a List list, between the Heads head and head->next
+header_function
+void list__Splice (List_Head *list, List_Head *head)
+{
+    List_Head *first = list->next;
+    List_Head *last = list->prev;
+    List_Head *at = head->next;
+
+    first->prev = head;
+    head->next = first;
+
+    last->next = at;
+    at->prev = last;
+}
+
+header_function
+void listSplice (List_Head *list, List_Head *head)
+{
+    if (!listIsEmpty(list)) list__Splice(list, head);
+}
+
+header_function
+void listSpliceInit (List_Head *list, List_Head *head)
+{
+    if (!listIsEmpty(list)) {
+        list__Splice(list, head);
+        listHeadInit(list);
+    }
+}
+
+#define LIST_LOOP(idx, head)                                            \
+    for (List_Head *(idx) = (head)->next; (idx) != (head); (idx) = (idx)->next)
+#define LIST_LOOP_REVERSE(idx, head)                                    \
+    for (List_Head *(idx) = (head)->prev; (idx) != (head); pos = pos->prev)
+
+
 /* ==========================
  * Interning
  *

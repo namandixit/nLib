@@ -1298,6 +1298,102 @@ void ringLockedUnitTest (void)
 }
 #  endif
 
+/* ==============
+ * Concurrent Queue (Lock-based Unbounded Multi-producer Multi-consumer)
+ */
+
+#  if defined(OS_LINUX) && !defined(NLIB_NO_LIBC)
+typedef List_Node Queue_Locked_Entry;
+
+typedef struct Queue_Locked__Head {
+    pthread_mutex_t list_lock;
+    pthread_cond_t  list_filled_signal;
+    Queue_Locked_Entry list;
+} Queue_Locked__Head;
+
+header_function
+Queue_Locked_Entry* queueLockedCreate (void)
+{
+    Queue_Locked__Head *qh = calloc(1, sizeof(*qh));
+    Queue_Locked_Entry *qe = &qh->list;
+    listNodeInit(qe);
+
+    pthread_mutex_init(&qh->list_lock,          NULL);
+    pthread_cond_init (&qh->list_filled_signal, NULL);
+
+    return qe;
+}
+
+#define queueLocked__GetHead(q) containerof(q, Queue_Locked__Head, list)
+
+#define queueLockedEnqueue(queue, qiptr) do {                   \
+        Queue_Locked__Head *head = queueLocked__GetHead(queue); \
+                                                                \
+        pthread_mutex_lock(&head->list_lock);                   \
+                                                                \
+        listAddBefore(qiptr, &head->list);                      \
+                                                                \
+        pthread_cond_broadcast(&head->list_filled_signal);      \
+        pthread_mutex_unlock(&head->list_lock);                 \
+    } while (0)
+
+#define queueLockedDequeue(queue, qiptr) do {                   \
+        Queue_Locked__Head *head = queueLocked__GetHead(queue); \
+                                                                \
+        pthread_mutex_lock(&head->list_lock);                   \
+                                                                \
+        while (listIsEmpty(&head->list)) {                      \
+            pthread_cond_wait(&head->list_filled_signal,        \
+                              &head->list_lock);                \
+        }                                                       \
+                                                                \
+        Queue_Locked_Entry *que = head->list.next;              \
+        listRemoveAndInit(que);                                 \
+        qiptr = que;                                            \
+                                                                \
+        pthread_mutex_unlock(&head->list_lock);                 \
+    } while (0)
+
+#  elif defined(OS_WINDOWS)
+// TODO(naman): This
+#  endif
+
+#  if defined(NLIB_TESTS)
+header_function
+void queueLockedUnitTest (void)
+{
+    typedef struct QE {
+        Queue_Locked_Entry entry;
+        Size s;
+    } QE;
+
+    Queue_Locked_Entry *q = queueLockedCreate();
+
+    QE qe1 = {.s = 1};
+    queueLockedEnqueue(q, &qe1.entry);
+    QE qe2 = {.s = 2};
+    queueLockedEnqueue(q, &qe2.entry);
+    QE qe3 = {.s = 3};
+    queueLockedEnqueue(q, &qe3.entry);
+
+    Queue_Locked_Entry *qr;
+    queueLockedDequeue(q, qr); utTest(containerof(qr, QE, entry)->s == 1);
+    queueLockedDequeue(q, qr); utTest(containerof(qr, QE, entry)->s == 2);
+    queueLockedDequeue(q, qr); utTest(containerof(qr, QE, entry)->s == 3);
+
+    QE qe4 = {.s = 4};
+    queueLockedEnqueue(q, &qe4.entry);
+    QE qe5 = {.s = 5};
+    queueLockedEnqueue(q, &qe5.entry);
+    QE qe6 = {.s = 6};
+    queueLockedEnqueue(q, &qe6.entry);
+    QE qe7 = {.s = 7};
+    queueLockedEnqueue(q, &qe7.entry);
+
+    queueLockedDequeue(q, qr); utTest(containerof(qr, QE, entry)->s == 4);
+    queueLockedDequeue(q, qr); utTest(containerof(qr, QE, entry)->s == 5);
+    queueLockedDequeue(q, qr); utTest(containerof(qr, QE, entry)->s == 6);
+    queueLockedDequeue(q, qr); utTest(containerof(qr, QE, entry)->s == 7);
 }
 #  endif
 

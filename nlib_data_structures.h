@@ -1231,16 +1231,15 @@ void* ringLocked__Create (Size elemsize, Size buffersize)
     return result;
 }
 
-#define ringLocked__GetHead(q) ((Ring_Locked__Head*)(void*)((Byte*)(q) - \
-                                                            offsetof(Ring_Locked__Head, buffer)))
+#define ringLocked__GetHead(r) containerof(r, Ring_Locked__Head, buffer)
 
-#define ringLockedPush(ring, elem) do {                    \
-        Ring_Locked__Head *head = ringLocked__GetHead(ring); \
+#define ringLockedPush(ring, elem) do {                         \
+        Ring_Locked__Head *head = ringLocked__GetHead(ring);    \
                                                                 \
         sem_wait(&head->empty_count);                           \
         pthread_mutex_lock(&head->buffer_lock);                 \
                                                                 \
-        ring[head->buffer_write_cursor] = elem;                \
+        ring[head->buffer_write_cursor] = elem;                 \
         head->buffer_write_cursor++;                            \
         head->buffer_write_cursor %= head->buffer_size;         \
                                                                 \
@@ -1248,21 +1247,19 @@ void* ringLocked__Create (Size elemsize, Size buffersize)
         sem_post(&head->fill_count);                            \
     } while (0)
 
-// NOTE(naman): Expression-statement is fine because Linux compilers support them
-#define ringLockedPull(ring) ({                                    \
-            Ring_Locked__Head *head = ringLocked__GetHead(ring);     \
+#define ringLockedPull(ring, dest) do {                                 \
+        Ring_Locked__Head *head = ringLocked__GetHead(ring);            \
                                                                         \
-            sem_wait(&head->fill_count);                                \
-            pthread_mutex_lock(&head->buffer_lock);                     \
+        sem_wait(&head->fill_count);                                    \
+        pthread_mutex_lock(&head->buffer_lock);                         \
                                                                         \
-            __typeof__(*ring) var = ring[head->buffer_read_cursor];   \
-            head->buffer_read_cursor++;                                 \
-            head->buffer_read_cursor %= head->buffer_size;              \
+        memcpy(dest, ring + head->buffer_read_cursor, sizeof(*ring));   \
+        head->buffer_read_cursor++;                                     \
+        head->buffer_read_cursor %= head->buffer_size;                  \
                                                                         \
-            pthread_mutex_unlock(&head->buffer_lock);                   \
-            sem_post(&head->empty_count);                               \
-            var;                                                        \
-        })
+        pthread_mutex_unlock(&head->buffer_lock);                       \
+        sem_post(&head->empty_count);                                   \
+    } while (0)
 
 #  elif defined(OS_WINDOWS)
 // TODO(naman): This
@@ -1272,29 +1269,35 @@ void* ringLocked__Create (Size elemsize, Size buffersize)
 #   if 1
 #    define ringLocked_PP(x) x
 #   else
-#    define ringLocked_PP(x) do {x; int e; sem_getvalue(&ringLocked__GetHead(q)->empty_count, &e); int f; sem_getvalue(&ringLocked__GetHead(q)->fill_count, &f); printf("%s\te:%d f:%d\n", #x, e, f); fflush(stdout); } while (0)
+#    define ringLocked_PP(x) do {x; int e; sem_getvalue(&ringLocked__GetHead(r)->empty_count, &e); int f; sem_getvalue(&ringLocked__GetHead(r)->fill_count, &f); printf("%s\te:%d f:%d\n", #x, e, f); fflush(stdout); } while (0)
 #   endif
 header_function
 void ringLockedUnitTest (void)
 {
-    Size *q = ringLockedCreate(Size, 4);
-    ringLocked_PP(ringLockedPush(q, 1));
-    ringLocked_PP(ringLockedPush(q, 2));
-    ringLocked_PP(ringLockedPush(q, 3));
+    Size *r = ringLockedCreate(Size, 4);
 
-    ringLocked_PP(utTest(ringLockedPull(q) == 1));
-    ringLocked_PP(utTest(ringLockedPull(q) == 2));
-    ringLocked_PP(utTest(ringLockedPull(q) == 3));
+    ringLocked_PP(ringLockedPush(r, 1));
+    ringLocked_PP(ringLockedPush(r, 2));
+    ringLocked_PP(ringLockedPush(r, 3));
 
-    ringLocked_PP(ringLockedPush(q, 4));
-    ringLocked_PP(ringLockedPush(q, 5));
-    ringLocked_PP(ringLockedPush(q, 6));
-    ringLocked_PP(ringLockedPush(q, 7));
+    Size rr;
 
-    ringLocked_PP(utTest(ringLockedPull(q) == 4));
-    ringLocked_PP(utTest(ringLockedPull(q) == 5));
-    ringLocked_PP(utTest(ringLockedPull(q) == 6));
-    ringLocked_PP(utTest(ringLockedPull(q) == 7));
+    ringLocked_PP(ringLockedPull(r, &rr)); utTest(rr == 1);
+    ringLocked_PP(ringLockedPull(r, &rr)); utTest(rr == 2);
+    ringLocked_PP(ringLockedPull(r, &rr)); utTest(rr == 3);
+
+    ringLocked_PP(ringLockedPush(r, 4));
+    ringLocked_PP(ringLockedPush(r, 5));
+    ringLocked_PP(ringLockedPush(r, 6));
+    ringLocked_PP(ringLockedPush(r, 7));
+
+    ringLocked_PP(ringLockedPull(r, &rr)); utTest(rr == 4);
+    ringLocked_PP(ringLockedPull(r, &rr)); utTest(rr == 5);
+    ringLocked_PP(ringLockedPull(r, &rr)); utTest(rr == 6);
+    ringLocked_PP(ringLockedPull(r, &rr)); utTest(rr == 7);
+}
+#  endif
+
 }
 #  endif
 

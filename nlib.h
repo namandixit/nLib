@@ -192,8 +192,8 @@ typedef char                 Char;
  */
 
 # define elemin(array) (sizeof(array)/sizeof((array)[0]))
-# define containerof(ptr, type, member)                                  \
-    (((type) *)(((Byte *)(ptr)) - offsetof((type), (member))))
+# define containerof(ptr, type, member)                         \
+    ((type*)(void*)(((Byte*)(ptr)) - offsetof(type, member)))
 
 # define isOdd(x)  ((x) % 2 ? true : false)
 # define isEven(x) (!isOdd(x))

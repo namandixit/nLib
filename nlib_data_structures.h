@@ -215,34 +215,34 @@ header_function void sbufUnitTest (void) { return; }
  */
 
 # if defined(LANG_C)
-typedef struct List_Head {
-    struct List_Head *next, *prev;
-} List_Head;
+typedef struct List_Node {
+    struct List_Node *next, *prev;
+} List_Node;
 
-/* To get the node (container struct) holding the linked list head */
-#  define listThisNode(head, type, member) containerof(&head,      type, member)
-#  define listNextNode(head, type, member) containerof(head->next, type, member)
-#  define listPrevNode(head, type, member) containerof(head->prev, type, member)
+/* To get the node (container struct) holding the linked list node */
+#  define listThisNode(node, type, member) containerof(&node,      type, member)
+#  define listNextNode(node, type, member) containerof(node->next, type, member)
+#  define listPrevNode(node, type, member) containerof(node->prev, type, member)
 
-/* Create and initialize the head statically
+/* Create and initialize the node statically
  *
  * node n = {
  *     .data = 40,
- *     .list = listHeadDeclare(n.list),
+ *     .list = listNodeDeclare(n.list),
  * };
  */
-#  define listHeadInitCompound(name) {&(name), &(name)}
+#  define listNodeInitCompound(name) {&(name), &(name)}
 
-/* Initialize the head only
+/* Initialize the node only
  *
  * node *n = malloc(sizeof(*n));
  * n->data = 40;
- * listHeadInit(&n->list);
+ * listNodeInit(&n->list);
  */
-#  define listHeadInit(ptr) do{(ptr)->next = (ptr); (ptr)->prev = (ptr);}while(0)
+#  define listNodeInit(ptr) do{(ptr)->next = (ptr); (ptr)->prev = (ptr);}while(0)
 
 header_function
-void list__Add (List_Head *new, List_Head *prev, List_Head *next)
+void list__Add (List_Node *new, List_Node *prev, List_Node *next)
 {
     next->prev = new;
     new->next = next;
@@ -251,41 +251,41 @@ void list__Add (List_Head *new, List_Head *prev, List_Head *next)
 }
 
 header_function
-void listAddAfter (List_Head *new, List_Head *after_this)
+void listAddAfter (List_Node *new, List_Node *after_this)
 {
     list__Add(new, after_this, after_this->next);
 }
 
 header_function
-void listAddBefore (List_Head *new, List_Head *before_this)
+void listAddBefore (List_Node *new, List_Node *before_this)
 {
     list__Add(new, before_this->prev, before_this);
 }
 
 header_function
-void list__RemoveHeadBetween (List_Head * prev, List_Head * next)
+void list__RemoveNodeBetween (List_Node * prev, List_Node * next)
 {
     next->prev = prev;
     prev->next = next;
 }
 
 header_function
-void listRemove (List_Head *entry)
+void listRemove (List_Node *entry)
 {
-    list__RemoveHeadBetween(entry->prev, entry->next);
+    list__RemoveNodeBetween(entry->prev, entry->next);
     entry->next = NULL;
     entry->prev = NULL;
 }
 
 header_function
-void listRemoveAndInit (List_Head *entry)
+void listRemoveAndInit (List_Node *entry)
 {
-    list__RemoveHeadBetween(entry->prev, entry->next);
-    listHeadInit(entry);
+    list__RemoveNodeBetween(entry->prev, entry->next);
+    listNodeInit(entry);
 }
 
 header_function
-void listReplace(List_Head *old, List_Head *new)
+void listReplace(List_Node *old, List_Node *new)
 {
     new->next = old->next;
     new->next->prev = new;
@@ -294,16 +294,16 @@ void listReplace(List_Head *old, List_Head *new)
 }
 
 header_function
-void listReplaceAndInit(List_Head *old, List_Head *new)
+void listReplaceAndInit(List_Node *old, List_Node *new)
 {
         listReplace(old, new);
-        listHeadInit(old);
+        listNodeInit(old);
 }
 
 header_function
-void listSwap(List_Head *entry1, List_Head *entry2)
+void listSwap(List_Node *entry1, List_Node *entry2)
 {
-    List_Head *pos = entry2->prev;
+    List_Node *pos = entry2->prev;
 
     listRemove(entry2);
     listReplace(entry1, entry2);
@@ -312,62 +312,61 @@ void listSwap(List_Head *entry1, List_Head *entry2)
 }
 
 header_function
-void listMoveAfter (List_Head *list, List_Head *after_this)
+void listMoveAfter (List_Node *list, List_Node *after_this)
 {
-    list__RemoveHeadBetween(list->prev, list->next);
+    list__RemoveNodeBetween(list->prev, list->next);
     listAddAfter(list, after_this);
 }
 
 header_function
-void listMoveBefore (List_Head *list, List_Head *before_this)
+void listMoveBefore (List_Node *list, List_Node *before_this)
 {
-        list__RemoveHeadBetween(list->prev, list->next);
+        list__RemoveNodeBetween(list->prev, list->next);
         listAddBefore(list, before_this);
 }
 
 header_function
-B32 listIsEmpty (List_Head *head)
+B32 listIsEmpty (List_Node *node)
 {
-    B32 result = (head->next == head);
+    B32 result = (node->next == node);
     return result;
 }
 
-// Splice in a List list, between the Heads head and head->next
+// Splice in a List list, between the Nodes node and node->next
 header_function
-void list__Splice (List_Head *list, List_Head *head)
+void list__Splice (List_Node *list, List_Node *node)
 {
-    List_Head *first = list->next;
-    List_Head *last = list->prev;
-    List_Head *at = head->next;
+    List_Node *first = list->next;
+    List_Node *last = list->prev;
+    List_Node *at = node->next;
 
-    first->prev = head;
-    head->next = first;
+    first->prev = node;
+    node->next = first;
 
     last->next = at;
     at->prev = last;
 }
 
 header_function
-void listSplice (List_Head *list, List_Head *head)
+void listSplice (List_Node *list, List_Node *node)
 {
-    if (!listIsEmpty(list)) list__Splice(list, head);
+    if (!listIsEmpty(list)) list__Splice(list, node);
 }
 
 header_function
-void listSpliceInit (List_Head *list, List_Head *head)
+void listSpliceInit (List_Node *list, List_Node *node)
 {
     if (!listIsEmpty(list)) {
-        list__Splice(list, head);
-        listHeadInit(list);
+        list__Splice(list, node);
+        listNodeInit(list);
     }
 }
 
-# define LIST_LOOP(idx, head)                                            \
-    for (List_Head *(idx) = (head)->next; (idx) != (head); (idx) = (idx)->next)
-# define LIST_LOOP_REVERSE(idx, head)                                    \
-    for (List_Head *(idx) = (head)->prev; (idx) != (head); pos = pos->prev)
+# define LIST_LOOP(idx, node)                                            \
+    for (List_Node *(idx) = (node)->next; (idx) != (node); (idx) = (idx)->next)
+# define LIST_LOOP_REVERSE(idx, node)                                    \
+    for (List_Node *(idx) = (node)->prev; (idx) != (node); pos = pos->prev)
 # endif // defined(LANG_C)
-
 
 /* ==========================
  * Interning

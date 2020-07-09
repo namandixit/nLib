@@ -1326,6 +1326,17 @@ Queue_Locked_Entry* queueLockedCreate (void)
 
 #define queueLocked__GetHead(q) containerof(q, Queue_Locked__Head, list)
 
+// NOTE(naman): When a thread in pthread_cond_wait is cancelled, it is first
+// brought out of the wait, meaning that it first regains the mutex. This
+// cleanup function will make sure that in case of cancellation, the
+// thread will unlock the mutex so that no other thread waiting on the
+// same condition variable will deadlock.
+header_function
+void *queueLocked__CondWaitCleaner (void *arg)
+{
+    pthread_mutex_unlock(arg);
+}
+
 #define queueLockedEnqueue(queue, qiptr) do {                   \
         Queue_Locked__Head *head = queueLocked__GetHead(queue); \
                                                                 \
@@ -1343,8 +1354,11 @@ Queue_Locked_Entry* queueLockedCreate (void)
         pthread_mutex_lock(&head->list_lock);                   \
                                                                 \
         while (listIsEmpty(&head->list)) {                      \
+            pthread_cleanup_push(queueLocked__CondWaitCleaner,  \
+                                 &head->list_lock);             \
             pthread_cond_wait(&head->list_filled_signal,        \
                               &head->list_lock);                \
+            pthread_cleanup_pop(0);                             \
         }                                                       \
                                                                 \
         Queue_Locked_Entry *que = head->list.next;              \

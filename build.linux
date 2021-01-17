@@ -12,6 +12,11 @@ ProjectRoot="$( cd "$(dirname "$0")" ; pwd -P)" # Directory in which the script 
 cd ${ProjectRoot}
 echo "Entering directory \`$(pwd)'"
 
+VersionNumberOld=$(< ./version)
+VersionNumber=$((${VersionNumberOld} + 1))
+echo ${VersionNumber} > ./version
+
+sed -i "s/^[[:space:]]\* Version: .*$/ * Version: ${VersionNumber}/" nlib.h
 
 # .....................................................................
 # BUILD

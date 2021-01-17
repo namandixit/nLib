@@ -2,7 +2,7 @@
  * Creator: Naman Dixit
  * Notice: © Copyright 2018 Naman Dixit
  * SPDX-License-Identifier: 0BSD OR BSL-1.0 OR Unlicense
- * Version: 40
+ * Version: 52
  */
 
 #if !defined(NLIB_H_INCLUDE_GUARD)

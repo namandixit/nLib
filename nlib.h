@@ -2,7 +2,7 @@
  * Creator: Naman Dixit
  * Notice: © Copyright 2018 Naman Dixit
  * SPDX-License-Identifier: 0BSD OR BSL-1.0 OR Unlicense
- * Version: 15
+ * Version: 40
  */
 
 #if !defined(NLIB_H_INCLUDE_GUARD)
@@ -293,7 +293,9 @@ typedef char                 Char;
 # define header_function   static inline
 
 # if defined(LANG_C)
-#  define nullptr NULL
+#  define NLIB_COMPAT_NULL NULL
+# else
+#  define NLIB_COMPAT_NULL nullptr
 # endif
 
 
@@ -339,7 +341,7 @@ B64 unicodeCodepointFromUTF16Surrogate (U16 surrogate, U16 *prev_surrogate, U32 
 header_function
 Size unicodeUTF8FromUTF32 (U32 *codepoints, Size codepoint_count, Char *buffer)
 {
-    if (buffer == NULL) {
+    if (buffer == NLIB_COMPAT_NULL) {
         Size length = 1; // NOTE(naman): We need one byte for the NUL byte.
 
         for (Size i = 0; i < codepoint_count; i++) {
@@ -396,15 +398,15 @@ Size unicodeUTF8FromUTF32 (U32 *codepoints, Size codepoint_count, Char *buffer)
 header_function
 LPWSTR unicodeWin32UTF16FromUTF8 (Char *utf8)
 {
-    int wcstr_length = MultiByteToWideChar(CP_UTF8, 0, utf8, -1, NULL, 0);
-    LPWSTR wcstr = VirtualAlloc(NULL, (DWORD)wcstr_length * sizeof(wchar_t),
+    int wcstr_length = MultiByteToWideChar(CP_UTF8, 0, utf8, -1, NLIB_COMPAT_NULL, 0);
+    LPWSTR wcstr = VirtualAlloc(NLIB_COMPAT_NULL, (DWORD)wcstr_length * sizeof(wchar_t),
                                 MEM_COMMIT, PAGE_READWRITE);
     MultiByteToWideChar(CP_UTF8, 0, utf8, -1, wcstr, wcstr_length);
 
     int normalized_length = NormalizeString(NormalizationC,
                                             wcstr, -1,
-                                            NULL, 0);
-    LPWSTR norm = VirtualAlloc(NULL, (DWORD)normalized_length * sizeof(wchar_t),
+                                            NLIB_COMPAT_NULL, 0);
+    LPWSTR norm = VirtualAlloc(NLIB_COMPAT_NULL, (DWORD)normalized_length * sizeof(wchar_t),
                                MEM_COMMIT, PAGE_READWRITE);
     NormalizeString(NormalizationC, wcstr, -1, norm, normalized_length);
 
@@ -721,7 +723,7 @@ Size printStringVarArg (Char *buffer, Size buffer_size, Char const *format, va_l
 #  define IS_OUTPUT_RESUMABLE(arg__space)       \
     do {                                        \
         if (resume_output &&                    \
-            ((buffer == NULL) ||                \
+            ((buffer == NLIB_COMPAT_NULL) ||                \
              ((Uptr)(buf + (Uptr)arg__space) >= \
               (Uptr)(buffer + buffer_size)))) { \
             resume_output = false;              \
@@ -841,7 +843,7 @@ Size printStringVarArg (Char *buffer, Size buffer_size, Char const *format, va_l
 
 #  define PRINT_STR_SIZE 2048ULL
             Char num_str[PRINT_STR_SIZE];
-            Char *str = NULL;
+            Char *str = NLIB_COMPAT_NULL;
 
             Char head_str[8] = {0};
             Size head_index = 0;
@@ -855,11 +857,11 @@ Size printStringVarArg (Char *buffer, Size buffer_size, Char const *format, va_l
                 case 's': { // string
                     // get the string
                     str = va_arg(va, Char*);
-                    if (str == NULL) {
+                    if (str == NLIB_COMPAT_NULL) {
                         str = "null";
                     }
 
-                    // NOTE(naman): By this point, str is most definitely not NULL
+                    // NOTE(naman): By this point, str is most definitely not NLIB_COMPAT_NULL
                     while (str[len] != '\0') {
                         len++;
                     }
@@ -1296,7 +1298,7 @@ Size printStringVarArg (Char *buffer, Size buffer_size, Char const *format, va_l
                         }
                     }
 
-                    if ((str == NULL) && (flags & Print_Flags_FLOAT_HEX)) {
+                    if ((str == NLIB_COMPAT_NULL) && (flags & Print_Flags_FLOAT_HEX)) {
                         S32 ex = exponent;
                         B32 denormal = false;
 
@@ -1432,7 +1434,7 @@ Size printStringVarArg (Char *buffer, Size buffer_size, Char const *format, va_l
                         }
                     }
 
-                    if (str == NULL) {
+                    if (str == NLIB_COMPAT_NULL) {
 #  if defined(NLIB_PRINT_STB_FLOAT)
                         Char *out = num_str;
                         S32 tens;
@@ -2421,7 +2423,7 @@ Size printStringVarArg (Char *buffer, Size buffer_size, Char const *format, va_l
 
     // NOTE(naman): IS_OUTPUT_RESUMABLE always preserves space for 1 null character;
     // thus, the check isn't necessary.
-    if (buffer != NULL) {
+    if (buffer != NLIB_COMPAT_NULL) {
         buf[0] = '\0';
         buf++;
     }
@@ -2440,7 +2442,7 @@ Size printConsole (Sint fd, Char const *format, va_list ap)
     va_copy(ap2, ap);
 
     // FIXME(naman): Remove these double calls once printStringVarArg starts yielding
-    Size buffer_size = printStringVarArg(NULL, 0, format, ap1);
+    Size buffer_size = printStringVarArg(NLIB_COMPAT_NULL, 0, format, ap1);
     Char *buffer = (Char*)NLIB_PRINT_MALLOC(buffer_size + 1);
     printStringVarArg(buffer, buffer_size + 1, format, ap2);
 
@@ -2451,10 +2453,10 @@ Size printConsole (Sint fd, Char const *format, va_list ap)
         out_stream = GetStdHandle(STD_ERROR_HANDLE);
     }
 
-    if ((out_stream != NULL) && (out_stream != INVALID_HANDLE_VALUE)) {
+    if ((out_stream != NLIB_COMPAT_NULL) && (out_stream != INVALID_HANDLE_VALUE)) {
         DWORD written = 0;
         // FIXME(naman): Convert this ASCII/UTF-8 buffer to UTF-16 maybe
-        WriteConsoleA(out_stream, buffer, buffer_size, &written, NULL);
+        WriteConsoleA(out_stream, buffer, buffer_size, &written, NLIB_COMPAT_NULL);
     }
 
     NLIB_PRINT_FREE((void*)buffer);
@@ -2473,7 +2475,7 @@ Size printDebugOutput (Char const *format, va_list ap)
     va_copy(ap2, ap);
 
     // FIXME(naman): Remove these double calls once printStringVarArg starts yielding
-    Size buffer_size = printStringVarArg(NULL, 0, format, ap1);
+    Size buffer_size = printStringVarArg(NLIB_COMPAT_NULL, 0, format, ap1);
     Char *buffer = (Char*)NLIB_PRINT_MALLOC(buffer_size + 1);
     printStringVarArg(buffer, buffer_size + 1, format, ap2);
 
@@ -2499,7 +2501,7 @@ Size printConsole (Sint fd, Char const *format, va_list ap)
     va_copy(ap2, ap);
 
     // FIXME(naman): Remove these double calls once printStringVarArg starts yielding
-    Size buffer_size = printStringVarArg(NULL, 0, format, ap1);
+    Size buffer_size = printStringVarArg(NLIB_COMPAT_NULL, 0, format, ap1);
     Char *buffer = (Char*)NLIB_PRINT_MALLOC(buffer_size + 1);
     printStringVarArg(buffer, buffer_size + 1, format, ap2);
 

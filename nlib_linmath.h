@@ -644,7 +644,7 @@ Mat4 mat4Rotate3D (Quat q)
     m.elem[11] = 0.0f;
 
     m.elem[12] = 0.0f;
-    m.elem[13] = 0.0f;
+    m.elem[13] = 0.0f;
     m.elem[14] = 0.0f;
     m.elem[15] = 1.0f;
 

@@ -1,7 +1,7 @@
 /*
  * Creator: Naman Dixit
  * Notice: © Copyright 2019 Naman Dixit
- * SPDX-License-Identifier: 0BSD OR BSL-1.0 OR Unlicense
+ * SPDX-License-Identifier: 0BSD
  */
 
 #if !defined(NLIB_LINMATH_H_INCLUDE_GUARD)
@@ -644,7 +644,7 @@ Mat4 mat4Rotate3D (Quat q)
     m.elem[11] = 0.0f;
 
     m.elem[12] = 0.0f;
-    m.elem[13] = 0.0f;
+    m.elem[13] = 0.0f;
     m.elem[14] = 0.0f;
     m.elem[15] = 1.0f;
 

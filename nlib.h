@@ -2468,7 +2468,7 @@ Size printConsole (Sint fd, Char const *format, va_list ap)
 }
 
 header_function
-Size printDebugOutput (Char const *format, va_list ap)
+Size printDebugOutputV (Char const *format, va_list ap)
 {
     va_list ap1, ap2;
     va_copy(ap1, ap);
@@ -2489,6 +2489,18 @@ Size printDebugOutput (Char const *format, va_list ap)
     va_end(ap2);
 
     return buffer_size;
+}
+
+header_function
+Size printDebugOutput (Char const *format, ...)
+{
+    va_list ap;
+
+    va_start(ap, format);
+    Size result = printDebugOutputV(format, ap);
+    va_end(ap);
+
+    return result;
 }
 
 #  elif defined(OS_LINUX)

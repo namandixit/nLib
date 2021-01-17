@@ -2,9 +2,7 @@
  * Creator: Naman Dixit
  * Notice: © Copyright 2019 Naman Dixit
  */
-#define NLIB_TESTS
-#define NLIB_PRINT_RYU_FLOAT
-#include "nlib.h"
+#include "nlib_tests.h"
 
 Sint main (Sint argc, Char *argv[])
 {

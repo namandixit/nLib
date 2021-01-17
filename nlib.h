@@ -425,6 +425,90 @@ void unicodeWin32UTF16Dealloc (LPWSTR utf16)
 
 # endif // NLIB_EXCLUDE_UNICODE
 
+/* ==================
+ * Print interface partially predeclared
+ * (because C can't handle out-of-order declarations)
+ */
+
+#  if defined(OS_WINDOWS)
+#   if defined(BUILD_DEBUG)
+#    define report(...)              printDebugOutput(__VA_ARGS__)
+#    define reportv(format, va_list) printDebugOutputV(format, va_list)
+#   else // = if !defined(BUILD_DEBUG)
+#    define report(...)              err(stderr, __VA_ARGS__)
+#    define reportv(format, va_list) errv(stderr, format, va_list)
+#   endif // defined(BUILD_DEBUG)
+#  elif defined(OS_LINUX)
+#   if defined(BUILD_DEBUG)
+#    define report(...)              err(__VA_ARGS__)
+#    define reportv(format, va_list) errv(format, va_list)
+#   else // = if !defined(BUILD_DEBUG)
+#    define report(...)              err(__VA_ARGS__)
+#    define reportv(format, va_list) errv(format, va_list)
+#   endif // defined(BUILD_DEBUG)
+#  endif // defined(OS_WINDOWS)
+header_function Size err (Char const *format, ...);
+header_function Size errv (Char const *format, va_list ap);
+header_function Size printDebugOutputV (Char const *format, va_list ap);
+header_function Size printDebugOutput (Char const *format, ...);
+
+/* ====================
+ * @Debug
+ */
+
+# if !defined(NLIB_EXCLUDE_DEBUG)
+
+#  if defined(OS_WINDOWS)
+#   if defined(BUILD_DEBUG)
+#    define breakpoint() __debugbreak()
+#    define quit() breakpoint()
+#   else
+#    define breakpoint() do{report("Fired breakpoint in release code, quitting...\n");quit();}while(0)
+#    define quit() ExitProcess(0)
+#   endif
+#  else
+#   if defined(COMPILER_GCC) || defined(COMPILER_CLANG)
+#    if defined(ARCH_X86) || defined(ARCH_X64)
+#     if defined(BUILD_DEBUG)
+#      define breakpoint() __asm__ volatile("int $0x03")
+#      define quit() breakpoint()
+#     else
+#      define breakpoint() do{report("Fired breakpoint in release code, quitting...\n");quit();}while(0)
+#      define quit() exit(0)
+#     endif // BUILD_DEBUG
+#    endif // Architecture/OS
+#   endif // Compiler
+#  endif // Operating Systems
+
+# endif // NLIB_EXCLUDE_DEBUG
+
+
+/* ==============
+ * @Claim (assert)
+ */
+
+# if !defined(NLIB_EXCLUDE_CLAIM)
+
+#  if defined(BUILD_DEBUG)
+#   define claim(cond) claim_(cond, #cond, __FILE__, __LINE__)
+header_function
+void claim_ (B32 cond,
+             Char const *cond_str,
+             Char const *filename, U32 line_num)
+{
+    if (!cond) {
+        report("Claim \"%s\" Failed in %s:%u\n\n",
+               cond_str, filename, line_num);
+
+        quit();
+    }
+}
+#  else
+#   define claim(cond) do { cond; } while (0)
+#  endif
+
+# endif // NLIB_EXCLUDE_CLAIM
+
 
 /* =======================
  * @Printing
@@ -451,24 +535,6 @@ void unicodeWin32UTF16Dealloc (LPWSTR utf16)
 #    define NLIB_PRINT_FREE free
 #   endif
 #  endif
-
-#  if defined(OS_WINDOWS)
-#   if defined(BUILD_DEBUG)
-#    define report(...)              printDebugOutput(__VA_ARGS__)
-#    define reportv(format, va_list) printDebugOutput(format, va_list)
-#   else // = if !defined(BUILD_DEBUG)
-#    define report(...)              err(stderr, __VA_ARGS__)
-#    define reportv(format, va_list) errv(stderr, format, va_list)
-#   endif // defined(BUILD_DEBUG)
-#  elif defined(OS_LINUX)
-#   if defined(BUILD_DEBUG)
-#    define report(...)              err(__VA_ARGS__)
-#    define reportv(format, va_list) errv(format, va_list)
-#   else // = if !defined(BUILD_DEBUG)
-#    define report(...)              err(__VA_ARGS__)
-#    define reportv(format, va_list) errv(format, va_list)
-#   endif // defined(BUILD_DEBUG)
-#  endif // defined(OS_WINDOWS)
 
 #  if                                           \
     !defined(NLIB_PRINT_RYU_FLOAT) &&           \
@@ -2584,63 +2650,6 @@ Size errv (Char const *format, va_list ap)
 }
 
 # endif // NLIB_EXCLUDE_PRINT
-
-/* ====================
- * @Debug
- */
-
-# if !defined(NLIB_EXCLUDE_DEBUG)
-
-#  if defined(OS_WINDOWS)
-#   if defined(BUILD_DEBUG)
-#    define breakpoint() __debugbreak()
-#    define quit() breakpoint()
-#   else
-#    define breakpoint() do{report("Fired breakpoint in release code, quitting...\n");quit();}while(0)
-#    define quit() ExitProcess(0)
-#   endif
-#  else
-#   if defined(COMPILER_GCC) || defined(COMPILER_CLANG)
-#    if defined(ARCH_X86) || defined(ARCH_X64)
-#     if defined(BUILD_DEBUG)
-#      define breakpoint() __asm__ volatile("int $0x03")
-#      define quit() breakpoint()
-#     else
-#      define breakpoint() do{report("Fired breakpoint in release code, quitting...\n");quit();}while(0)
-#      define quit() exit(0)
-#     endif // BUILD_DEBUG
-#    endif // Architecture/OS
-#   endif // Compiler
-#  endif // Operating Systems
-
-# endif // NLIB_EXCLUDE_DEBUG
-
-
-/* ==============
- * @Claim (assert)
- */
-
-# if !defined(NLIB_EXCLUDE_CLAIM)
-
-#  if defined(BUILD_DEBUG)
-#   define claim(cond) claim_(cond, #cond, __FILE__, __LINE__)
-header_function
-void claim_ (B32 cond,
-             Char const *cond_str,
-             Char const *filename, U32 line_num)
-{
-    if (!cond) {
-        report("Claim \"%s\" Failed in %s:%u\n\n",
-               cond_str, filename, line_num);
-
-        quit();
-    }
-}
-#  else
-#   define claim(cond) do { cond; } while (0)
-#  endif
-
-# endif // NLIB_EXCLUDE_CLAIM
 
 /* ===================
  * @Unit Test

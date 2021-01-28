@@ -216,8 +216,13 @@ void sbufUnitTest (void)
     sbufPrint(stream, "Hello, %s\n", "World!");
     sbufPrint(stream, "Still here? %d\n", 420);
     sbufPrint(stream, "GO AWAY!!!\n");
-
     utTest(streq(stream, "Hello, World!\nStill here? 420\nGO AWAY!!!\n"));
+
+    /* Char *stream2 = NULL; */
+    /* Char *string = "Naman Dixit"; */
+    /* sbufPrintSized(stream2, 5, "%s", string); */
+    /* printf("%s\n%s\n", stream2, string); */
+    /* utTest(streq(stream2, "Naman")); */
 }
 # endif
 

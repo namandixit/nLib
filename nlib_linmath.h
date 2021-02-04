@@ -37,28 +37,28 @@ header_function
 Vec2 vec2Add (Vec2 v, Vec2 u)
 {
     return vec2(v.x + u.x,
-                   v.y + u.y);
+                v.y + u.y);
 }
 
 header_function
 Vec2 vec2Sub (Vec2 v, Vec2 u)
 {
     return vec2(v.x - u.x,
-                   v.y - u.y);
+                v.y - u.y);
 }
 
 header_function
 Vec2 vec2Mul (Vec2 v, Vec2 u)
 {
     return vec2(v.x * u.x,
-                   v.y * u.y);
+                v.y * u.y);
 }
 
 header_function
 Vec2 vec2Scale (Vec2 v, F32 r)
 {
     return vec2(v.x * r,
-                   v.y * r);
+                v.y * r);
 }
 
 header_function
@@ -72,7 +72,7 @@ header_function
 Vec2 vec2Lerp (Vec2 v, Vec2 u, F32 factor)
 {
     return vec2(v.x + factor * (u.x - v.x),
-                   v.y + factor * (u.y - v.y));
+                v.y + factor * (u.y - v.y));
 }
 
 header_function
@@ -97,7 +97,7 @@ Vec2 vec2Norm (Vec2 v)
     if (mag != 0.0f) {
         F32 inv_mag = 1.0f / mag;
         return vec2(v.x * inv_mag,
-                       v.y * inv_mag);
+                    v.y * inv_mag);
     } else {
         return vec2(0.0f, 0.0f);
     }
@@ -130,32 +130,32 @@ header_function
 Vec3 vec3Add (Vec3 v, Vec3 u)
 {
     return vec3(v.x + u.x,
-                   v.y + u.y,
-                   v.z + u.z);
+                v.y + u.y,
+                v.z + u.z);
 }
 
 header_function
 Vec3 vec3Sub (Vec3 v, Vec3 u)
 {
     return vec3(v.x - u.x,
-                   v.y - u.y,
-                   v.z - u.z);
+                v.y - u.y,
+                v.z - u.z);
 }
 
 header_function
 Vec3 vec3Mul (Vec3 v, Vec3 u)
 {
     return vec3(v.x * u.x,
-                   v.y * u.y,
-                   v.z * u.z);
+                v.y * u.y,
+                v.z * u.z);
 }
 
 header_function
 Vec3 vec3Scale (Vec3 v, F32 r)
 {
     return vec3(v.x * r,
-                   v.y * r,
-                   v.z * r);
+                v.y * r,
+                v.z * r);
 }
 
 header_function
@@ -170,16 +170,16 @@ header_function
 Vec3 vec3Cross (Vec3 v, Vec3 u)
 {
     return vec3((v.y * u.z) - (v.z * u.y),
-                   (v.z * u.x) - (v.x * u.z),
-                   (v.x * u.y) - (v.y * u.x));
+                (v.z * u.x) - (v.x * u.z),
+                (v.x * u.y) - (v.y * u.x));
 }
 
 header_function
 Vec3 vec3Lerp (Vec3 v, Vec3 u, F32 factor)
 {
     return vec3(v.x + factor * (u.x - v.x),
-                   v.y + factor * (u.y - v.y),
-                   v.z + factor * (u.z - v.z));
+                v.y + factor * (u.y - v.y),
+                v.z + factor * (u.z - v.z));
 }
 
 header_function
@@ -206,8 +206,8 @@ Vec3 vec3Norm (Vec3 v)
     if (mag != 0.0f) {
         F32 inv_mag = 1.0f/mag;
         return vec3(v.x * inv_mag,
-                       v.y * inv_mag,
-                       v.z * inv_mag);
+                    v.y * inv_mag,
+                    v.z * inv_mag);
     } else {
         return vec3(0.0f, 0.0f, 0.0f);
     }
@@ -273,12 +273,12 @@ Quat quatNorm (Quat q)
 
 typedef union Mat4 {
     /* Column-major:
-      _            _
-      | 0  4  8  12 |
-      | 1  5  9  13 |
-      | 2  6  10 14 |
-      | 3  7  11 15 |
-      -            -
+       _            _
+       | 0  4  8  12 |
+       | 1  5  9  13 |
+       | 2  6  10 14 |
+       | 3  7  11 15 |
+       -            -
     */
     F32 elem[16];
 
@@ -434,7 +434,7 @@ F32 mat4Determinant (Mat4 m)
     F32 dd = (m.elem[1] * a) - (m.elem[5] * d) + (m.elem[9] * f);
 
     F32 det = ((m.elem[0] * aa) - (m.elem[4] * bb) +
-                   (m.elem[8] * cc) - (m.elem[12] * dd));
+               (m.elem[8] * cc) - (m.elem[12] * dd));
 
     return det;
 }
@@ -557,9 +557,9 @@ Mat4 mat4Inverse (Mat4 m)
                   (m.elem[8] * m.elem[2] * m.elem[5]));
 
     F32 det = (m.elem[0] * n.elem[0] +
-                   m.elem[1] * n.elem[1] +
-                   m.elem[2] * n.elem[2] +
-                   m.elem[3] * n.elem[3]);
+               m.elem[1] * n.elem[1] +
+               m.elem[2] * n.elem[2] +
+               m.elem[3] * n.elem[3]);
 
     det = 1.0f / det;
 

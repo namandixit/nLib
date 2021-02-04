@@ -669,7 +669,7 @@ U64 stbfp_powten[20] = {
         ol = ((ahi * bhi - oh) + ahi * blo + alo * bhi) + alo * blo;    \
     } while (0)
 
-#   define stbfp_ddtoS64(ob, xh, xl) do {          \
+#   define stbfp_ddtoS64(ob, xh, xl) do {       \
         F64 ahi = 0, alo, vh, t;                \
         ob = (S64)xh;                           \
         vh = (F64)ob;                           \
@@ -679,7 +679,7 @@ U64 stbfp_powten[20] = {
         ob += (S64)(ahi + alo + xl);            \
     } while (0)
 
-#   define stbfp_ddrenorm(oh, ol) do {             \
+#   define stbfp_ddrenorm(oh, ol) do {          \
         F64 s;                                  \
         s = oh + ol;                            \
         ol = ol - (s - oh);                     \
@@ -2700,12 +2700,12 @@ void ut_Test (B32 cond,
 #   define bitFindMSB(x) _Generic((x),                  \
                                   U32: bitFindMSBU32,   \
                                   U64: bitFindMSBU64,   \
-        )(x)
+                                  )(x)
 
 #   define bitFindLSB(x) _Generic((x),                  \
                                   U32: bitFindLSBU32,   \
                                   U64: bitFindLSBU64,   \
-        )(x)
+                                  )(x)
 #  endif // LANG_C
 
 #  if defined(COMPILER_MSVC)
@@ -2826,7 +2826,7 @@ U64 bitFindLSBU64 (U64 x)
 #   define mSqrt(x) mGeneric((x),               \
                              F32 : mSqrtF32     \
                              F64 : mSqrtF64     \
-        )(x)
+                             )(x)
 #  endif
 
 header_function F32 mSqrtF32 (F32 x) { F32 y = sqrtf(x); return y; }
@@ -2838,7 +2838,7 @@ header_function F64 mSqrtF64 (F64 x) { F64 y = sqrt(x);  return y; }
                              F64 : mPow2F64,    \
                              U32 : mPow2U32     \
                              U64 : mPow2U64     \
-        )(x)
+                             )(x)
 #  endif
 
 header_function F32 mPow2F32 (F32 x) { F32 y = exp2f(x); return y; }
@@ -2852,7 +2852,7 @@ header_function U64 mPow2U64 (U64 x) { U64 y = 1 << x;   return y; }
                              F64 : mLog2F64,    \
                              U32:  mLog2U32,    \
                              U64:  mLog2U64     \
-        )(x)
+                             )(x)
 #  endif
 
 header_function F32 mLog2F32 (F32 x) { F32 y = log2f(x); return y; }
@@ -2864,7 +2864,7 @@ header_function U64 mLog2U64 (U64 x) { U64 y = x ? bitFindMSBU64(x) : 0; return 
 #   define mIsPowerOf2(x) mGeneric((x),                 \
                                    U32 : mIsPowerOf2U32 \
                                    U64 : mIsPowerOf2U64 \
-        )(x)
+                                   )(x)
 #  endif
 
 header_function B32 mIsPowerOf2U32 (U32 x) { B32 b = (x & (x - 1)) == 0; return b; }
@@ -2874,7 +2874,7 @@ header_function B64 mIsPowerOf2U64 (U64 x) { B64 b = (x & (x - 1)) == 0; return 
 #   define mNextPowerOf2(x) mGeneric((x),                       \
                                      U32 : mNextPowerOf2U32     \
                                      U64 : mNextPowerOf2U64     \
-        )(x)
+                                     )(x)
 #  endif
 
 header_function U32 mNextPowerOf2U32 (U32 x) { U32 y = mIsPowerOf2U32(x) ? x : (1U << (mLog2U32(x) + 1U)); return y; }
@@ -2884,7 +2884,7 @@ header_function U64 mNextPowerOf2U64 (U64 x) { U64 y = mIsPowerOf2U64(x) ? x : (
 #   define mPrevPowerOf2(x) mGeneric((x),                       \
                                      U32 : mPrevPowerOf2U32     \
                                      U64 : mPrevPowerOf2U64     \
-        )(x)
+                                     )(x)
 #  endif
 
 header_function U32 mPrevPowerOf2U32 (U32 x) { U32 y = mIsPowerOf2U32(x) ? (1U << (mLog2U32(x) - 1U)) : x; return y; }
@@ -2894,7 +2894,7 @@ header_function U64 mPrevPowerOf2U64 (U64 x) { U64 y = mIsPowerOf2U64(x) ? (1LLU
 #   define mSin(x) mGeneric((x),                \
                             F32 : mSinF32       \
                             F64 : mSinF64       \
-        )(x)
+                            )(x)
 #  endif
 
 header_function F32 mSinF32 (F32 x) { F32 y = sinf(x); return y; }
@@ -2904,7 +2904,7 @@ header_function F64 mSinF64 (F64 x) { F64 y = sin(x);  return y; }
 #   define mCos(x) mGeneric((x),                \
                             F32 : mCosF32       \
                             F64 : mCosF64       \
-        )(x)
+                            )(x)
 #  endif
 
 header_function F32 mCosF32 (F32 x) { F32 y = cosf(x); return y; }
@@ -2914,7 +2914,7 @@ header_function F64 mCosF64 (F64 x) { F64 y = cos(x);  return y; }
 #   define mTan(x) mGeneric((x),                \
                             F32 : mTanF32       \
                             F64 : mTanF64       \
-        )(x)
+                            )(x)
 #  endif
 
 header_function F32 mTanF32 (F32 x) { F32 y = tanf(x); return y; }
@@ -2924,7 +2924,7 @@ header_function F64 mTanF64 (F64 x) { F64 y = tan(x);  return y; }
 #   define mRadians(x) mGeneric((x),                    \
                                 F32 : mRadiansF64       \
                                 F64 : mRadiansF64       \
-        )(x)
+                                )(x)
 #  endif
 
 header_function F32 mRadiansF32 (F32 degrees) { F32 radians = (degrees * Mk_PI(F32)) / 180.0f; return radians; }
@@ -2934,7 +2934,7 @@ header_function F64 mRadiansF64 (F64 degrees) { F64 radians = (degrees * Mk_PI(F
 #   define mDegrees(x) mGeneric((x),                    \
                                 F32 : mDegreesF32       \
                                 F64 : mDegreesF64       \
-        )(x)
+                                )(x)
 #  endif
 
 header_function F32 mDegreesF32 (F32 radians) { F32 degrees = (radians * 180.0f) / Mk_PI(F32); return degrees; }
@@ -3146,12 +3146,12 @@ Sint strncmp (const Char *s1, const Char *s2, Size count)
     Sint result = 0;
 
     for (Size i = 0; i < count; i++)
-    {
-        if (s1[i] != s2[i]) {
-            result = (s1[i] < s2[i]) ? -1 : 1;
-            break;
+        {
+            if (s1[i] != s2[i]) {
+                result = (s1[i] < s2[i]) ? -1 : 1;
+                break;
+            }
         }
-    }
 
     return result;
 }
@@ -3344,7 +3344,7 @@ typedef struct Sbuf_Header {
 //# define sbufPrintSized(sb, s, ...) ((sb) = sbuf_PrintSized((sb), s, __VA_ARGS__))
 
 # define sbufUnsortedRemove(sb, i) (((sb)[(i)] = (sb)[sbuf_Len(sb) - 1]), \
-                                   ((sbuf_GetHeader(sb)->len)--))
+                                    ((sbuf_GetHeader(sb)->len)--))
 
 #  if defined(COMPILER_CLANG)
 #   pragma clang diagnostic push
@@ -3382,7 +3382,7 @@ void* sbuf_Grow (void *buf, Size elem_size)
         } else {
             new_header = (Sbuf_Header *)NLIB_SBUF_MALLOC(new_size);
             *new_header = (Sbuf_Header){.len = 0,
-                                        .userdata = NULL};
+                .userdata = NULL};
         }
 
         new_header->cap = new_cap;
@@ -3407,8 +3407,8 @@ void* sbuf_Resize (void *buf, Size elem_count, Size elem_size)
     } else {
         new_header = (Sbuf_Header *)NLIB_SBUF_MALLOC(new_size);
         *new_header = (Sbuf_Header){.cap = 0,
-                                    .len = 0,
-                                    .userdata = NULL};
+            .len = 0,
+            .userdata = NULL};
     }
 
     new_header->cap = new_cap;
@@ -3557,8 +3557,8 @@ void listReplace(List_Node *old, List_Node *new)
 header_function
 void listReplaceAndInit(List_Node *old, List_Node *new)
 {
-        listReplace(old, new);
-        listNodeInit(old);
+    listReplace(old, new);
+    listNodeInit(old);
 }
 
 header_function
@@ -3582,8 +3582,8 @@ void listMoveAfter (List_Node *list, List_Node *after_this)
 header_function
 void listMoveBefore (List_Node *list, List_Node *before_this)
 {
-        list__RemoveNodeBetween(list->prev, list->next);
-        listAddBefore(list, before_this);
+    list__RemoveNodeBetween(list->prev, list->next);
+    listAddBefore(list, before_this);
 }
 
 header_function
@@ -4221,7 +4221,7 @@ B32 mapExists (void *map, U64 key) {
 }
 
 #  define mapLookup(_map, _key) ((_map)[(htLookup(&((Map_Userdata*)(sbuf_GetHeader(_map))->userdata)->table, \
-                                                (_key)))])
+                                                  (_key)))])
 #  define mapGetRef(_map, _key) (&mapLookup((_map), (_key)))
 
 #  define mapRemove(_map, _key) do {                                    \
@@ -4305,7 +4305,7 @@ void* ringLocked__Create (Size elemsize, Size buffersize)
 
 #   define ringLocked__GetHead(r) containerof(r, Ring_Locked__Head, buffer)
 
-#   define ringLockedPush(ring, elem) do {                         \
+#   define ringLockedPush(ring, elem) do {                      \
         Ring_Locked__Head *head = ringLocked__GetHead(ring);    \
                                                                 \
         sem_wait(&head->empty_count);                           \
@@ -4319,7 +4319,7 @@ void* ringLocked__Create (Size elemsize, Size buffersize)
         sem_post(&head->fill_count);                            \
     } while (0)
 
-#   define ringLockedPull(ring, dest) do {                                 \
+#   define ringLockedPull(ring, dest) do {                              \
         Ring_Locked__Head *head = ringLocked__GetHead(ring);            \
                                                                         \
         sem_wait(&head->fill_count);                                    \
@@ -4409,7 +4409,7 @@ void queueLocked__CondWaitCleaner (void *arg)
     pthread_mutex_unlock(arg);
 }
 
-#   define queueLockedEnqueue(queue, qiptr) do {                   \
+#   define queueLockedEnqueue(queue, qiptr) do {                \
         Queue_Locked__Head *head = queueLocked__GetHead(queue); \
                                                                 \
         pthread_mutex_lock(&head->list_lock);                   \
@@ -4420,13 +4420,13 @@ void queueLocked__CondWaitCleaner (void *arg)
         pthread_mutex_unlock(&head->list_lock);                 \
     } while (0)
 
-#   define queueLockedDequeue(queue, qiptr) do {                   \
+#   define queueLockedDequeue(queue, qiptr) do {                \
         Queue_Locked__Head *head = queueLocked__GetHead(queue); \
                                                                 \
         pthread_mutex_lock(&head->list_lock);                   \
                                                                 \
         while (listIsEmpty(&head->list)) {                      \
-            pthread_cleanup_push(&queueLocked__CondWaitCleaner,  \
+            pthread_cleanup_push(&queueLocked__CondWaitCleaner, \
                                  &head->list_lock);             \
             pthread_cond_wait(&head->list_filled_signal,        \
                               &head->list_lock);                \

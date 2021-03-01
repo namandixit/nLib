@@ -440,18 +440,18 @@ void unicodeWin32UTF16Dealloc (LPWSTR utf16)
 #    define report(...)              printDebugOutput(__VA_ARGS__)
 #    define reportv(format, va_list) printDebugOutputV(format, va_list)
 #   else // = if !defined(BUILD_DEBUG)
-#    define report(...)              err(stderr, __VA_ARGS__)
-#    define reportv(format, va_list) errv(stderr, format, va_list)
+#    define report(...)
+#    define reportv(format, va_list)
 #   endif // defined(BUILD_DEBUG)
 #  elif defined(OS_LINUX)
 #   if defined(BUILD_DEBUG)
 #    define report(...)              err(__VA_ARGS__)
 #    define reportv(format, va_list) errv(format, va_list)
 #   else // = if !defined(BUILD_DEBUG)
-#    define report(...)              err(__VA_ARGS__)
-#    define reportv(format, va_list) errv(format, va_list)
+#    define report(...)
+#    define reportv(format, va_list)
 #   endif // defined(BUILD_DEBUG)
-#  endif // defined(OS_WINDOWS)
+#  endif // defined(OS_WINDOWS) || defined(OS_LINUX)
 header_function Size err (Char const *format, ...);
 header_function Size errv (Char const *format, va_list ap);
 header_function Size printDebugOutputV (Char const *format, va_list ap);
@@ -901,6 +901,7 @@ Size printStringVarArg (Char *buffer, Size buffer_size, Char const *format, va_l
                 case 'l': { // are we 64-bit
                     flags |= Print_Flags_INT64;
                     fmt++;
+                    if (fmt[0] == 'l') fmt++;
                 } break;
                 case 'z': { // are we 64-bit on size_t?
                     flags |= (sizeof(Size) == 8) ? Print_Flags_INT64 : 0;
@@ -2618,6 +2619,13 @@ Size printString (Char *buffer, Size buffer_size, Char const *format, ...)
     return result;
 }
 
+#  if defined(COMPILER_CLANG)
+#   pragma clang diagnostic push
+#    pragma clang diagnostic ignored "-Wformat-nonliteral"
+#  endif
+#  if defined(COMPILER_CLANG) || defined(COMPILER_GCC)
+__attribute__((format(__printf__, 1, 2)))
+#  endif
 header_function
 Size say (Char const *format, ...)
 {
@@ -2637,6 +2645,13 @@ Size sayv (Char const *format, va_list ap)
     return result;
 }
 
+#  if defined(COMPILER_CLANG)
+#   pragma clang diagnostic push
+#    pragma clang diagnostic ignored "-Wformat-nonliteral"
+#  endif
+#  if defined(COMPILER_CLANG) || defined(COMPILER_GCC)
+__attribute__((format(__printf__, 1, 2)))
+#  endif
 header_function
 Size err (Char const *format, ...)
 {

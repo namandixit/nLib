@@ -58,28 +58,6 @@ ${LibcCompiler} ${LibcCompilerFlags} ${LibcLanguageFlags} ${LibcWarningFlags} \
             ${LibcLinkerFlags}
 
 
-# echo "NoLibc Build ============================================================="
-
-# NoLibcCompiler="gcc"
-# NoLibcWarningFlags="-Wall -Wextra -Werror
-#                     "
-# NoLibcCompilerFlags="-iquote ${ProjectRoot}/../../include \
-#                      -g3 -O0 -fno-strict-aliasing -fwrapv -mno-sse2 -nostdlib -ffreestanding \
-#                      "
-# NoLibcLanguageFlags="--std=c99 -DBUILD_INTERNAL -DBUILD_SLOW -DBUILD_DEBUG \
-#                      -DBUILD_NUMBER=${NEW_BUILD_NUMBER} \
-#                      -DNLIB_NO_LIBC \
-#                      -D_POSIX_C_SOURCE=200809L -D_DEFAULT_SOURCE"
-# NoLibcLinkerFlags="-o ${TargetPath}.nolibc \
-#                     -lgcc \
-#                    -Wl,-rpath=\${ORIGIN} -Wl,-z,origin -Wl,--enable-new-dtags \
-#                    "
-
-# ${NoLibcCompiler} ${NoLibcCompilerFlags} ${NoLibcLanguageFlags} ${NoLibcWarningFlags} \
-#                   ${Source} \
-#                   ${NoLibcLinkerFlags}
-
-
 # C++ Syntax Check
 CPPSource=${ProjectRoot}/test.cpp
 

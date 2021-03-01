@@ -509,7 +509,7 @@ void claim_ (Bool cond,
     }
 }
 #  else
-#   define claim(cond) do { cond; } while (0)
+#   define claim(cond) ((void)(cond))
 #  endif
 
 # endif // NLIB_EXCLUDE_CLAIM

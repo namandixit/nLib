@@ -86,7 +86,7 @@ CPPSource=${ProjectRoot}/test.cpp
 CPPCompiler="clang++"
 CPPWarningFlags="-Weverything -Wpedantic -pedantic-errors -Werror \
                  -Wno-old-style-cast -Wno-c++98-compat-pedantic \
-                 -Wno-writable-strings \
+                 -Wno-writable-strings -Wno-zero-length-array \
                  "
 CPPCompilerFlags="-iquote ${ProjectRoot}/../../include -fsyntax-only \
                   -g3 -O0 -fno-strict-aliasing -fwrapv -msse2 \

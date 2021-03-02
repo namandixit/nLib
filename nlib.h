@@ -2,7 +2,7 @@
  * Creator: Naman Dixit
  * Notice: © Copyright 2018 Naman Dixit
  * SPDX-License-Identifier: 0BSD
- * Version: 138
+ * Version: 142
  */
 
 #if !defined(NLIB_H_INCLUDE_GUARD)
@@ -2721,15 +2721,12 @@ typedef struct {
 #  endif
 } Profiler;
 
-typedef enum {
-    Profiler_CYCLES,
-    Profiler_INSTRUCTIONS,
-    Profiler_TIME,
+#  define Profiler_CYCLES       (1ULL << 0)
+#  define Profiler_INSTRUCTIONS (1ULL << 2)
+#  define Profiler_TIME         (1ULL << 3)
+#  define Profiler_TOTAL        (3U)
 
-    Profiler_LAST,
-
-    Profiler_ALL = ~0,
-} Profiler_Flag;
+#  define Profiler_ALL          (~0ULL)
 
 typedef struct {
     U64 flags;
@@ -2907,7 +2904,7 @@ Profiler_Result profilerEndProfile (Profiler *profiler)
         if (profiler->grouped_reads) {
             Char buffer[4096]; // NOTE(naman): Make sure this isn't changed to be too big for stack
             static_assert(sizeof(buffer) >= (sizeof(Profiler__Linux_Group_Output) +
-                                             Profiler_LAST * 2 * sizeof(U64)),
+                                             Profiler_TOTAL * 2 * sizeof(U64)),
                           "Profiler (Linux): Buffer is not large enough to hold all data of all events");
             read(profiler->group_leader_fd, buffer, sizeof(buffer));
 

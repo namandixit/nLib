@@ -2,7 +2,7 @@
  * Creator: Naman Dixit
  * Notice: © Copyright 2018 Naman Dixit
  * SPDX-License-Identifier: 0BSD
- * Version: 128
+ * Version: 132
  */
 
 #if !defined(NLIB_H_INCLUDE_GUARD)
@@ -2814,10 +2814,7 @@ Profiler profilerCreate (U64 flags)
             .config = PERF_COUNT_SW_DUMMY,
             .read_format = (PERF_FORMAT_TOTAL_TIME_ENABLED | // Last end time - first start time
                             PERF_FORMAT_TOTAL_TIME_RUNNING | // sum_of(ith last time - ith first time)
-                            // FIXME(naman): This would have allowed us to read all attirbutes in
-                            // a single read().
-                            // Try to find out why that happened. (Also change the boolean below).
-                            // PERF_FORMAT_GROUP |              // get entire group's values with one read
+                            PERF_FORMAT_GROUP |              // get entire group's values with one read
                             PERF_FORMAT_ID),                 // unique id
             .disabled = 1,
             .exclude_kernel = 1,
@@ -2886,7 +2883,7 @@ Profiler profilerCreate (U64 flags)
         }
     }
 
-    ioctl(profiler.group_leader_fd, PERF_EVENT_IOC_RESET, 0);
+    ioctl(profiler.group_leader_fd, PERF_EVENT_IOC_RESET, PERF_IOC_FLAG_GROUP);
 
     return profiler;
 }
@@ -2895,7 +2892,7 @@ header_function
 void profilerStartProfile (Profiler *profiler)
 {
     if (profiler->flags != 0) {
-        ioctl(profiler->group_leader_fd, PERF_EVENT_IOC_ENABLE, 0);
+        ioctl(profiler->group_leader_fd, PERF_EVENT_IOC_ENABLE, PERF_IOC_FLAG_GROUP);
     }
 }
 
@@ -2905,7 +2902,7 @@ Profiler_Result profilerEndProfile (Profiler *profiler)
     Profiler_Result result = {.flags = profiler->flags};
 
     if (profiler->flags != 0) {
-        ioctl(profiler->group_leader_fd, PERF_EVENT_IOC_DISABLE, 0);
+        ioctl(profiler->group_leader_fd, PERF_EVENT_IOC_DISABLE, PERF_IOC_FLAG_GROUP);
 
         if (profiler->grouped_reads) {
             Char buffer[4096]; // NOTE(naman): Make sure this isn't changed to be too big for stack
@@ -2938,6 +2935,8 @@ Profiler_Result profilerEndProfile (Profiler *profiler)
             result.time = time.value;
         }
     }
+
+    ioctl(profiler->group_leader_fd, PERF_EVENT_IOC_RESET, PERF_IOC_FLAG_GROUP);
 
     return result;
 }

@@ -40,7 +40,7 @@ echo "Libc Build ===============================================================
 
 LibcCompiler="clang"
 LibcWarningFlags="-Weverything -Wpedantic -pedantic-errors -Werror \
-                  -Wno-c++98-compat -Wno-disabled-macro-expansion \
+                  -Wno-c++98-compat \
                   "
 LibcCompilerFlags="-iquote ${ProjectRoot}/../../include \
                    -g3 -O0 -fno-strict-aliasing -fwrapv -msse2 \

@@ -2,7 +2,7 @@
  * Creator: Naman Dixit
  * Notice: © Copyright 2018 Naman Dixit
  * SPDX-License-Identifier: 0BSD
- * Version: 142
+ * Version: 152
  */
 
 #if !defined(NLIB_H_INCLUDE_GUARD)
@@ -514,6 +514,80 @@ void claim_ (Bool cond,
 
 # endif // NLIB_EXCLUDE_CLAIM
 
+/* ===============
+ * @Memory
+ */
+
+# if !defined(NLIB_EXCLUDE_MEMORY)
+
+#  define MEM_MAX_ALIGN_MINUS_ONE (alignof(max_align_t) - 1u)
+#  define memAlignUp(p) (((p) + MEM_MAX_ALIGN_MINUS_ONE) & (~ MEM_MAX_ALIGN_MINUS_ONE))
+#  define memAlignDown(p) (memAlignUp((p) - MEM_MAX_ALIGN_MINUS_ONE))
+
+// TODO(naman): Should we add some sample allocators too? Or should they always be applications' concern?
+
+typedef enum Memory_Allocator_Mode {
+    Memory_Allocator_Mode_NONE,
+    Memory_Allocator_Mode_ALLOCATE,
+    Memory_Allocator_Mode_REALLOCATE,
+    Memory_Allocator_Mode_DEALLOCATE,
+    Memory_Allocator_Mode_DEALLOCATE_ALL,
+} Memory_Allocator_Mode;
+
+#  define MEMORY_ALLOCATOR_FUNCTION(allocator)          \
+    void* allocator (Memory_Allocator_Mode mode,        \
+                     Size old_size,                     \
+                     Size new_size,                     \
+                     void* old_ptr,                     \
+                     void *userdata)
+
+typedef MEMORY_ALLOCATOR_FUNCTION(Memory_Allocator_Function);
+
+typedef struct Memory_Allocator {
+    Memory_Allocator_Function *function;
+    void *userdata;
+} Memory_Allocator;
+
+
+header_function
+MEMORY_ALLOCATOR_FUNCTION(memCRT)
+{
+    unused_variable(old_size);
+    unused_variable(userdata);
+
+    switch (mode) {
+        case Memory_Allocator_Mode_ALLOCATE: {
+            void *memory = malloc(new_size);
+            return memory;
+        } break;
+
+        case Memory_Allocator_Mode_REALLOCATE: {
+            void *memory = realloc(old_ptr, new_size);
+            return memory;
+        } break;
+
+        case Memory_Allocator_Mode_DEALLOCATE: {
+            free(old_ptr);
+            return NLIB_COMPAT_NULL;
+        } break;
+
+        case Memory_Allocator_Mode_DEALLOCATE_ALL:
+        case Memory_Allocator_Mode_NONE: {
+            claim(false && "Control shouldn't reach here");
+            return NLIB_COMPAT_NULL;
+        } break;
+    }
+
+    claim(false && "Control shouldn't reach here");
+    return NLIB_COMPAT_NULL;
+}
+
+# define memCRTAlloc(size)        memCRT(Memory_Allocator_Mode_ALLOCATE,   0, size, NULL, NULL)
+# define memCRTRealloc(ptr, size) memCRT(Memory_Allocator_Mode_REALLOCATE, 0, size, ptr,  NULL)
+# define memCRTDealloc(ptr)       memCRT(Memory_Allocator_Mode_DEALLOCATE, 0, 0,    ptr,  NULL)
+
+# endif // NLIB_EXCLUDE_MEMORY
+
 
 /* =======================
  * @Printing
@@ -527,7 +601,7 @@ void claim_ (Bool cond,
 #   elif defined(NLIB_NOLIBC)
 #    error "nlib: Print: NLIB_PRINT_MALLOC required with nolibc"
 #   else
-#    define NLIB_PRINT_MALLOC malloc
+#    define NLIB_PRINT_MALLOC memCRTAlloc
 #   endif
 #  endif
 
@@ -537,7 +611,7 @@ void claim_ (Bool cond,
 #   elif defined(NLIB_NOLIBC)
 #    error "nlib: Print: NLIB_PRINT_FREE required with nolibc"
 #   else
-#    define NLIB_PRINT_FREE free
+#    define NLIB_PRINT_FREE memCRTDealloc
 #   endif
 #  endif
 
@@ -3497,24 +3571,7 @@ Size strsuffix (Char *str, Char *suf)
     }
 }
 
-# endif // NLIB_EXCLUDE_STRING
-
-
-/* ===============
- * @Memory
- */
-
-# if !defined(NLIB_EXCLUDE_MEMORY)
-
-#  define MEM_MAX_ALIGN_MINUS_ONE (alignof(max_align_t) - 1u)
-#  define memAlignUp(p) (((p) + MEM_MAX_ALIGN_MINUS_ONE) & (~ MEM_MAX_ALIGN_MINUS_ONE))
-#  define memAlignDown(p) (memAlignUp((p) - MEM_MAX_ALIGN_MINUS_ONE))
-
-// TODO(naman): Add memory allocators back, making sure that they are thread-safe, reentrant
-
-
-# endif // NLIB_EXCLUDE_MEMORY
-
+# endif // NLIB_EXCLUDE_CSTRING
 
 /* =========================================================
  * Data Structures =========================================
@@ -3552,7 +3609,7 @@ Size strsuffix (Char *str, Char *suf)
 #   elif defined(NLIB_NOLIBC)
 #    error "nlib: Sbuf: NLIB_SBUF_MALLOC required with nolibc"
 #   else
-#    define NLIB_SBUF_MALLOC malloc
+#    define NLIB_SBUF_MALLOC memCRTAlloc
 #   endif
 #  endif
 
@@ -3562,7 +3619,7 @@ Size strsuffix (Char *str, Char *suf)
 #   elif defined(NLIB_NOLIBC)
 #    error "nlib: Sbuf: NLIB_SBUF_REALLOC required with nolibc"
 #   else
-#    define NLIB_SBUF_REALLOC realloc
+#    define NLIB_SBUF_REALLOC memCRTRealloc
 #   endif
 #  endif
 
@@ -3572,7 +3629,7 @@ Size strsuffix (Char *str, Char *suf)
 #   elif defined(NLIB_NOLIBC)
 #    error "nlib: Sbuf: NLIB_SBUF_FREE required with nolibc"
 #   else
-#    define NLIB_SBUF_FREE free
+#    define NLIB_SBUF_FREE memCRTDealloc
 #   endif
 #  endif
 
@@ -4196,7 +4253,7 @@ typedef struct Hash_Table {
 #   elif defined(NLIB_NOLIBC)
 #    error "nlib: Hash_Table: NLIB_HASH_TABLE_MALLOC required with nolibc"
 #   else
-#    define NLIB_HASH_TABLE_MALLOC malloc
+#    define NLIB_HASH_TABLE_MALLOC memCRTAlloc
 #   endif
 #  endif
 
@@ -4206,7 +4263,7 @@ typedef struct Hash_Table {
 #   elif defined(NLIB_NOLIBC)
 #    error "nlib: Hash_Table: NLIB_HASH_TABLE_FREE required with nolibc"
 #   else
-#    define NLIB_HASH_TABLE_FREE free
+#    define NLIB_HASH_TABLE_FREE memCRTDealloc
 #   endif
 #  endif
 
@@ -4441,7 +4498,7 @@ typedef struct Map_Userdata {
 #   elif defined(NLIB_NOLIBC)
 #    error "nlib: Map: NLIB_MAP_MALLOC required with nolibc"
 #   else
-#    define NLIB_MAP_MALLOC malloc
+#    define NLIB_MAP_MALLOC memCRTAlloc
 #   endif
 #  endif
 
@@ -4451,7 +4508,7 @@ typedef struct Map_Userdata {
 #   elif defined(NLIB_NOLIBC)
 #    error "nlib: Map: NLIB_MAP_FREE required with nolibc"
 #   else
-#    define NLIB_MAP_FREE free
+#    define NLIB_MAP_FREE memCRTDealloc
 #   endif
 #  endif
 
@@ -4533,7 +4590,7 @@ Bool mapExists (void *map, U64 key) {
 #   elif defined(NLIB_NOLIBC)
 #    error "nlib: Ring_Locked: NLIB_RING_LOCKED_MALLOC required with nolibc"
 #   else
-#    define NLIB_RING_LOCKED_MALLOC malloc
+#    define NLIB_RING_LOCKED_MALLOC memCRTAlloc
 #   endif
 #  endif
 
@@ -4543,7 +4600,7 @@ Bool mapExists (void *map, U64 key) {
 #   elif defined(NLIB_NOLIBC)
 #    error "nlib: Ring_Locked: NLIB_RING_LOCKED_FREE required with nolibc"
 #   else
-#    define NLIB_RING_LOCKED_FREE free
+#    define NLIB_RING_LOCKED_FREE memCRTDealloc
 #   endif
 #  endif
 
@@ -4637,7 +4694,7 @@ void ringLockedDelete (void *ring)
 #   elif defined(NLIB_NOLIBC)
 #    error "nlib: Queue_Locked: NLIB_QUEUE_LOCKED_MALLOC required with nolibc"
 #   else
-#    define NLIB_QUEUE_LOCKED_MALLOC malloc
+#    define NLIB_QUEUE_LOCKED_MALLOC memCRTAlloc
 #   endif
 #  endif
 
@@ -4647,7 +4704,7 @@ void ringLockedDelete (void *ring)
 #   elif defined(NLIB_NOLIBC)
 #    error "nlib: Queue_Locked: NLIB_QUEUE_LOCKED_FREE required with nolibc"
 #   else
-#    define NLIB_QUEUE_LOCKED_FREE free
+#    define NLIB_QUEUE_LOCKED_FREE memCRTDealloc
 #   endif
 #  endif
 

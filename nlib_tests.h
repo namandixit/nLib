@@ -168,7 +168,7 @@ void internUnitTest (void)
     Char x[] = "Hello";
     Char y[] = "Hello";
 
-    Intern_String is = {0};
+    Intern_String is = internStringCreate();
 
     utTest(x != y);
 
@@ -192,30 +192,30 @@ void internUnitTest (void)
 
 # if defined(LANG_C)
 header_function
-void sbufUnitTest (void)
+void raUnitTest (void)
 {
-    S32 *buf = NULL;
-
-    sbufAdd(buf, 42);
-
+    S32 *buf = raCreate(buf);
     utTest(buf != NULL);
 
-    sbufAdd(buf, 1234);
+    raAdd(buf, 42);
+    utTest(buf != NULL);
 
-    utTest(sbufElemin(buf) == 2);
-    utTest(sbufMaxElemin(buf) >= sbufElemin(buf));
+    raAdd(buf, 1234);
+
+    utTest(raElemin(buf) == 2);
+    utTest(raMaxElemin(buf) >= raElemin(buf));
 
     utTest(buf[0] == 42);
     utTest(buf[1] == 1234);
 
-    sbufDelete(buf);
+    raDelete(buf);
 
     utTest(buf == NULL);
 
-    Char *stream = NULL;
-    sbufPrint(stream, "Hello, %s\n", "World!");
-    sbufPrint(stream, "Still here? %d\n", 420);
-    sbufPrint(stream, "GO AWAY!!!\n");
+    Char *stream = sbCreate();
+    sbPrint(stream, "Hello, %s\n", "World!");
+    sbPrint(stream, "Still here? %d\n", 420);
+    sbPrint(stream, "GO AWAY!!!\n");
     utTest(streq(stream, "Hello, World!\nStill here? 420\nGO AWAY!!!\n"));
 
     /* Char *stream2 = NULL; */
@@ -344,7 +344,7 @@ void htUnitTest (void)
 header_function
 void mapUnitTest (void)
 {
-    F32 *fm = NULL;
+    F32 *fm = mapCreate(fm);
 
     /* No Entries */
     utTest(mapExists(fm, 0) == false);
@@ -355,13 +355,13 @@ void mapUnitTest (void)
 
     mapInsert(fm, 1, 1.0f);
 
-    Sbuf_Header *fmsh = sbuf_GetHeader(fm);
+    Ra_Header *fmsh = ra_GetHeader(fm);
     Map_Userdata *fmu = fmsh->userdata;
     Size fh0 = fmu->table.slot_filled - 1;
-    Size fs0 = sbufElemin(fm) - 1;
+    Size fs0 = raElemin(fm) - 1;
 
     utTest(fmu->table.slot_filled == (fh0 + 1));
-    utTest(sbufElemin(fm) == (fs0 + 1));
+    utTest(raElemin(fm) == (fs0 + 1));
     utTest(mapExists(fm, 0) == false);
     utTest(mapExists(fm, 1) == true);
     utTest(mapLookup(fm, 1) == 1.0f);
@@ -369,7 +369,7 @@ void mapUnitTest (void)
 
     mapInsert(fm, 2, 42.0f);
     utTest(fmu->table.slot_filled == (fh0 + 2));
-    utTest(sbufElemin(fm) == (fs0 + 2));
+    utTest(raElemin(fm) == (fs0 + 2));
     utTest(mapExists(fm, 0) == false);
     utTest(mapExists(fm, 1) == true);
     utTest(mapLookup(fm, 1) == 1.0f);
@@ -394,17 +394,17 @@ void mapUnitTest (void)
 
     /* NULL Check */
     Size fh1 = fmu->table.slot_filled;
-    Size fs1 = sbufElemin(fm);
+    Size fs1 = raElemin(fm);
     mapInsert(fm, 0, 13.0f);
     utTest(fmu->table.slot_filled == fh1);
-    utTest(sbufElemin(fm) == fs1);
+    utTest(raElemin(fm) == fs1);
     utTest(mapExists(fm, 0) == false);
 
     Size fh2 = fmu->table.slot_filled;
-    Size fs2 = sbufElemin(fm);
+    Size fs2 = raElemin(fm);
     mapRemove(fm, 0);
     utTest(fmu->table.slot_filled == fh2);
-    utTest(sbufElemin(fm) == fs2);
+    utTest(raElemin(fm) == fs2);
     utTest(mapExists(fm, 0) == false);
 
     mapDelete(fm);

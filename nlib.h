@@ -2,8 +2,12 @@
  * Creator: Naman Dixit
  * Notice: © Copyright 2018 Naman Dixit
  * SPDX-License-Identifier: 0BSD
- * Version: 152
+ * Version: 286
  */
+
+// TODO(naman): Make all these data structures handle allocation failure gracefully. This is especially
+// important since we are going to implement fixed buffer data structures by making the allocation function
+// return NULL after the buffer has been filled.
 
 #if !defined(NLIB_H_INCLUDE_GUARD)
 
@@ -225,8 +229,12 @@
 
 # if defined(COMPILER_MSVC)
 #  define fallthrough
+#  define likely(x)
+#  define unlikely(x)
 # elif defined(COMPILER_CLANG) || defined(COMPILER_GCC)
 #  define fallthrough __attribute__((fallthrough))
+#  define likely(x)   __builtin_expect(!!(x), 1)
+#  define unlikely(x) __builtin_expect(!!(x), 0)
 # endif
 
 
@@ -296,11 +304,11 @@ typedef char                 Char;
 # define header_function   static inline
 
 # if defined(LANG_C)
-#  define NLIB_COMPAT_NULL NULL
-#  define NLIB_COMPAT_INITIALIZER {0}
+#  define NLIB_NULL NULL
+#  define NLIB_ZERO_INIT_LIST {0}
 # else
-#  define NLIB_COMPAT_NULL nullptr
-#  define NLIB_COMPAT_INITIALIZER {}
+#  define NLIB_NULL nullptr
+#  define NLIB_ZERO_INIT_LIST {}
 # endif
 
 
@@ -346,7 +354,7 @@ B64 unicodeCodepointFromUTF16Surrogate (U16 surrogate, U16 *prev_surrogate, U32 
 header_function
 Size unicodeUTF8FromUTF32 (U32 *codepoints, Size codepoint_count, Char *buffer)
 {
-    if (buffer == NLIB_COMPAT_NULL) {
+    if (buffer == NLIB_NULL) {
         Size length = 1; // NOTE(naman): We need one byte for the NUL byte.
 
         for (Size i = 0; i < codepoint_count; i++) {
@@ -403,15 +411,15 @@ Size unicodeUTF8FromUTF32 (U32 *codepoints, Size codepoint_count, Char *buffer)
 header_function
 LPWSTR unicodeWin32UTF16FromUTF8 (Char *utf8)
 {
-    int wcstr_length = MultiByteToWideChar(CP_UTF8, 0, utf8, -1, NLIB_COMPAT_NULL, 0);
-    LPWSTR wcstr = VirtualAlloc(NLIB_COMPAT_NULL, (DWORD)wcstr_length * sizeof(wchar_t),
+    int wcstr_length = MultiByteToWideChar(CP_UTF8, 0, utf8, -1, NLIB_NULL, 0);
+    LPWSTR wcstr = VirtualAlloc(NLIB_NULL, (DWORD)wcstr_length * sizeof(wchar_t),
                                 MEM_COMMIT, PAGE_READWRITE);
     MultiByteToWideChar(CP_UTF8, 0, utf8, -1, wcstr, wcstr_length);
 
     int normalized_length = NormalizeString(NormalizationC,
                                             wcstr, -1,
-                                            NLIB_COMPAT_NULL, 0);
-    LPWSTR norm = VirtualAlloc(NLIB_COMPAT_NULL, (DWORD)normalized_length * sizeof(wchar_t),
+                                            NLIB_NULL, 0);
+    LPWSTR norm = VirtualAlloc(NLIB_NULL, (DWORD)normalized_length * sizeof(wchar_t),
                                MEM_COMMIT, PAGE_READWRITE);
     NormalizeString(NormalizationC, wcstr, -1, norm, normalized_length);
 
@@ -527,11 +535,11 @@ void claim_ (Bool cond,
 // TODO(naman): Should we add some sample allocators too? Or should they always be applications' concern?
 
 typedef enum Memory_Allocator_Mode {
-    Memory_Allocator_Mode_NONE,
-    Memory_Allocator_Mode_ALLOCATE,
-    Memory_Allocator_Mode_REALLOCATE,
-    Memory_Allocator_Mode_DEALLOCATE,
-    Memory_Allocator_Mode_DEALLOCATE_ALL,
+    Memory_NONE,
+    Memory_ALLOCATE,
+    Memory_REALLOCATE,
+    Memory_DEALLOCATE,
+    Memory_DEALLOCATE_ALL,
 } Memory_Allocator_Mode;
 
 #  define MEMORY_ALLOCATOR_FUNCTION(allocator)          \
@@ -541,13 +549,16 @@ typedef enum Memory_Allocator_Mode {
                      void* old_ptr,                     \
                      void *userdata)
 
+#  define memAlloc(m, ns)          ((m).function(Memory_ALLOCATE,   0,  ns, NLIB_NULL, (m).userdata))
+#  define memRealloc(m, p, ns, os) ((m).function(Memory_REALLOCATE, os, ns, p,         (m).userdata))
+#  define memDealloc(m, p, os)     ((m).function(Memory_DEALLOCATE, os, 0,  p,         (m).userdata))
+
 typedef MEMORY_ALLOCATOR_FUNCTION(Memory_Allocator_Function);
 
 typedef struct Memory_Allocator {
     Memory_Allocator_Function *function;
     void *userdata;
 } Memory_Allocator;
-
 
 header_function
 MEMORY_ALLOCATOR_FUNCTION(memCRT)
@@ -556,35 +567,45 @@ MEMORY_ALLOCATOR_FUNCTION(memCRT)
     unused_variable(userdata);
 
     switch (mode) {
-        case Memory_Allocator_Mode_ALLOCATE: {
+        case Memory_ALLOCATE: {
             void *memory = malloc(new_size);
             return memory;
         } break;
 
-        case Memory_Allocator_Mode_REALLOCATE: {
+        case Memory_REALLOCATE: {
             void *memory = realloc(old_ptr, new_size);
             return memory;
         } break;
 
-        case Memory_Allocator_Mode_DEALLOCATE: {
+        case Memory_DEALLOCATE: {
             free(old_ptr);
-            return NLIB_COMPAT_NULL;
+            return NLIB_NULL;
         } break;
 
-        case Memory_Allocator_Mode_DEALLOCATE_ALL:
-        case Memory_Allocator_Mode_NONE: {
+        case Memory_DEALLOCATE_ALL:
+        case Memory_NONE: {
             claim(false && "Control shouldn't reach here");
-            return NLIB_COMPAT_NULL;
+            return NLIB_NULL;
         } break;
     }
 
     claim(false && "Control shouldn't reach here");
-    return NLIB_COMPAT_NULL;
+    return NLIB_NULL;
 }
 
-# define memCRTAlloc(size)        memCRT(Memory_Allocator_Mode_ALLOCATE,   0, size, NULL, NULL)
-# define memCRTRealloc(ptr, size) memCRT(Memory_Allocator_Mode_REALLOCATE, 0, size, ptr,  NULL)
-# define memCRTDealloc(ptr)       memCRT(Memory_Allocator_Mode_DEALLOCATE, 0, 0,    ptr,  NULL)
+header_function
+Memory_Allocator memCRTGet (void)
+{
+    Memory_Allocator allocator;
+    allocator.function = &memCRT;
+    allocator.userdata = NLIB_NULL;
+
+    return allocator;
+}
+
+#  define memCRTAlloc(size)        memCRT(Memory_ALLOCATE,   0, size, NULL, NULL)
+#  define memCRTRealloc(ptr, size) memCRT(Memory_REALLOCATE, 0, size, ptr,  NULL)
+#  define memCRTDealloc(ptr)       memCRT(Memory_DEALLOCATE, 0, 0,    ptr,  NULL)
 
 # endif // NLIB_EXCLUDE_MEMORY
 
@@ -595,23 +616,13 @@ MEMORY_ALLOCATOR_FUNCTION(memCRT)
 
 # if !defined(NLIB_EXCLUDE_PRINT)
 
-#  if !defined(NLIB_PRINT_MALLOC)
-#   if defined(NLIB_MALLOC)
-#    define NLIB_PRINT_MALLOC NLIB_MALLOC
+#  if !defined(NLIB_PRINT_ALLOCATOR)
+#   if defined(NLIB_ALLOCATOR)
+#    define NLIB_PRINT_ALLOCATOR NLIB_ALLOCATOR
 #   elif defined(NLIB_NOLIBC)
-#    error "nlib: Print: NLIB_PRINT_MALLOC required with nolibc"
+#    error "nlib: Print: NLIB_PRINT_ALLOCATOR required with nolibc"
 #   else
-#    define NLIB_PRINT_MALLOC memCRTAlloc
-#   endif
-#  endif
-
-#  if !defined(NLIB_PRINT_FREE)
-#   if defined(NLIB_FREE)
-#    define NLIB_PRINT_FREE NLIB_FREE
-#   elif defined(NLIB_NOLIBC)
-#    error "nlib: Print: NLIB_PRINT_FREE required with nolibc"
-#   else
-#    define NLIB_PRINT_FREE memCRTDealloc
+#    define NLIB_PRINT_ALLOCATOR memCRTGet()
 #   endif
 #  endif
 
@@ -639,10 +650,10 @@ struct
     S16 temp; // force next field to be 2-byte aligned
     Char pair[201];
 } stbfp_digitpair = { 0,
-    "00010203040506070809101112131415161718192021222324"
-    "25262728293031323334353637383940414243444546474849"
-    "50515253545556575859606162636465666768697071727374"
-    "75767778798081828384858687888990919293949596979899" };
+                      "00010203040506070809101112131415161718192021222324"
+                      "25262728293031323334353637383940414243444546474849"
+                      "50515253545556575859606162636465666768697071727374"
+                      "75767778798081828384858687888990919293949596979899" };
 
 #   define STBFP_SPECIAL 0x7000
 
@@ -858,7 +869,7 @@ typedef enum Print_Flags {
 // so that functions using this don't have to call it twice (once to get size, then to
 // get the actual characters) in cases when the buffer is too small the first time.
 // FIXME(naman): Replace memcpy, etc. with loops so that atleast some of the characters
-// can get copied if the buffer is too small. Once this is done, uncomment sbufPrintSized()
+// can get copied if the buffer is too small. Once this is done, uncomment sbPrintSized()
 header_function
 Size printStringVarArg (Char *buffer, Size buffer_size, Char const *format, va_list va)
 {
@@ -870,7 +881,7 @@ Size printStringVarArg (Char *buffer, Size buffer_size, Char const *format, va_l
 #  define IS_OUTPUT_RESUMABLE(arg__space)       \
     do {                                        \
         if (resume_output &&                    \
-            ((buffer == NLIB_COMPAT_NULL) ||    \
+            ((buffer == NLIB_NULL) ||           \
              ((Uptr)(buf + (Uptr)arg__space) >= \
               (Uptr)(buffer + buffer_size)))) { \
             resume_output = false;              \
@@ -991,7 +1002,7 @@ Size printStringVarArg (Char *buffer, Size buffer_size, Char const *format, va_l
 
 #  define PRINT_STR_SIZE 2048ULL
             Char num_str[PRINT_STR_SIZE];
-            Char *str = NLIB_COMPAT_NULL;
+            Char *str = NLIB_NULL;
 
             Char head_str[8] = {0};
             Size head_index = 0;
@@ -1005,11 +1016,11 @@ Size printStringVarArg (Char *buffer, Size buffer_size, Char const *format, va_l
                 case 's': { // string
                     // get the string
                     str = va_arg(va, Char*);
-                    if (str == NLIB_COMPAT_NULL) {
+                    if (str == NLIB_NULL) {
                         str = "null";
                     }
 
-                    // NOTE(naman): By this point, str is most definitely not NLIB_COMPAT_NULL
+                    // NOTE(naman): By this point, str is most definitely not NLIB_NULL
                     while (str[len] != '\0') {
                         len++;
                     }
@@ -1446,7 +1457,7 @@ Size printStringVarArg (Char *buffer, Size buffer_size, Char const *format, va_l
                         }
                     }
 
-                    if ((str == NLIB_COMPAT_NULL) && (flags & Print_Flags_FLOAT_HEX)) {
+                    if ((str == NLIB_NULL) && (flags & Print_Flags_FLOAT_HEX)) {
                         S32 ex = exponent;
                         Bool denormal = false;
 
@@ -1582,7 +1593,7 @@ Size printStringVarArg (Char *buffer, Size buffer_size, Char const *format, va_l
                         }
                     }
 
-                    if (str == NLIB_COMPAT_NULL) {
+                    if (str == NLIB_NULL) {
 #  if defined(NLIB_PRINT_STB_FLOAT)
                         Char *out = num_str;
                         S32 tens;
@@ -2571,7 +2582,7 @@ Size printStringVarArg (Char *buffer, Size buffer_size, Char const *format, va_l
 
     // NOTE(naman): IS_OUTPUT_RESUMABLE always preserves space for 1 null character;
     // thus, the check isn't necessary.
-    if (buffer != NLIB_COMPAT_NULL) {
+    if (buffer != NLIB_NULL) {
         buf[0] = '\0';
         buf++;
     }
@@ -2590,8 +2601,8 @@ Size printConsole (Sint fd, Char const *format, va_list ap)
     va_copy(ap2, ap);
 
     // FIXME(naman): Remove these double calls once printStringVarArg starts yielding
-    Size buffer_size = printStringVarArg(NLIB_COMPAT_NULL, 0, format, ap1);
-    Char *buffer = (Char*)NLIB_PRINT_MALLOC(buffer_size + 1);
+    Size buffer_size = printStringVarArg(NLIB_NULL, 0, format, ap1);
+    Char *buffer = (Char*)memAlloc(NLIB_PRINT_ALLOCATOR, buffer_size + 1);
     printStringVarArg(buffer, buffer_size + 1, format, ap2);
 
     HANDLE out_stream;
@@ -2601,13 +2612,13 @@ Size printConsole (Sint fd, Char const *format, va_list ap)
         out_stream = GetStdHandle(STD_ERROR_HANDLE);
     }
 
-    if ((out_stream != NLIB_COMPAT_NULL) && (out_stream != INVALID_HANDLE_VALUE)) {
+    if ((out_stream != NLIB_NULL) && (out_stream != INVALID_HANDLE_VALUE)) {
         DWORD written = 0;
         // FIXME(naman): Convert this ASCII/UTF-8 buffer to UTF-16 maybe
-        WriteConsoleA(out_stream, buffer, buffer_size, &written, NLIB_COMPAT_NULL);
+        WriteConsoleA(out_stream, buffer, buffer_size, &written, NLIB_NULL);
     }
 
-    NLIB_PRINT_FREE((void*)buffer);
+    memDealloc(NLIB_PRINT_ALLOCATOR, (void*)buffer, buffer_size + 1);
 
     va_end(ap1);
     va_end(ap2);
@@ -2623,15 +2634,15 @@ Size printDebugOutputV (Char const *format, va_list ap)
     va_copy(ap2, ap);
 
     // FIXME(naman): Remove these double calls once printStringVarArg starts yielding
-    Size buffer_size = printStringVarArg(NLIB_COMPAT_NULL, 0, format, ap1);
-    Char *buffer = (Char*)NLIB_PRINT_MALLOC(buffer_size + 1);
+    Size buffer_size = printStringVarArg(NLIB_NULL, 0, format, ap1);
+    Char *buffer = (Char*)memAlloc(NLIB_PRINT_ALLOCATOR, buffer_size + 1);
     printStringVarArg(buffer, buffer_size + 1, format, ap2);
 
     LPWSTR wcstr = unicodeWin32UTF16FromUTF8(buffer);
     OutputDebugStringW(wcstr);
     unicodeWin32UTF16Dealloc(wcstr);
 
-    nlib_Dealloc((void*)buffer);
+    memDealloc(NLIB_PRINT_ALLOCATOR, (void*)buffer, buffer_size + 1);
 
     va_end(ap1);
     va_end(ap2);
@@ -2661,8 +2672,8 @@ Size printConsole (Sint fd, Char const *format, va_list ap)
     va_copy(ap2, ap);
 
     // FIXME(naman): Remove these double calls once printStringVarArg starts yielding
-    Size buffer_size = printStringVarArg(NLIB_COMPAT_NULL, 0, format, ap1);
-    Char *buffer = (Char*)NLIB_PRINT_MALLOC(buffer_size + 1);
+    Size buffer_size = printStringVarArg(NLIB_NULL, 0, format, ap1);
+    Char *buffer = (Char*)memAlloc(NLIB_PRINT_ALLOCATOR, buffer_size + 1);
     printStringVarArg(buffer, buffer_size + 1, format, ap2);
 
     if (fd == 1) {
@@ -2671,7 +2682,7 @@ Size printConsole (Sint fd, Char const *format, va_list ap)
         fputs(buffer, stderr);
     }
 
-    NLIB_PRINT_FREE((void*)buffer);
+    memDealloc(NLIB_PRINT_ALLOCATOR, (void*)buffer, buffer_size + 1);
 
     va_end(ap1);
     va_end(ap2);
@@ -2867,7 +2878,7 @@ typedef struct {
 
 header_function
 int Profiler__LinuxPerfEventOpen (struct perf_event_attr *hw_event, pid_t pid,
-                                   int cpu, int group_fd, unsigned long flags)
+                                  int cpu, int group_fd, unsigned long flags)
 {
     int ret = (int)syscall(__NR_perf_event_open, hw_event, pid, cpu, group_fd, flags);
     return ret;
@@ -2876,7 +2887,7 @@ int Profiler__LinuxPerfEventOpen (struct perf_event_attr *hw_event, pid_t pid,
 header_function
 Profiler profilerCreate (U64 flags)
 {
-    Profiler profiler = NLIB_COMPAT_INITIALIZER;
+    Profiler profiler = NLIB_ZERO_INIT_LIST;
 
     if (flags != 0) {
         struct perf_event_attr group_leader = {
@@ -3013,7 +3024,7 @@ Profiler_Result profilerEndProfile (Profiler *profiler)
 }
 
 header_function
-void profilerDestroy (Profiler *profiler)
+void profilerDelete (Profiler *profiler)
 {
     close(profiler->cycles_fd);
     close(profiler->instructions_fd);
@@ -3579,107 +3590,76 @@ Size strsuffix (Char *str, Char *suf)
  */
 
 /* ==============
- * Strechy Buffer
+ * RA (array abstraction)
  */
 
 /* API ----------------------------------------
- * Size  sbufAdd         (T *ptr, T elem)
- * void  sbufDelete      (T *ptr)
- * void  sbufClear       (T *ptr) : Make everything zero
- * Size  sbufResize      (T *ptr, Size new_size) : Increase size of the underlying buffer
- * T*    sbufOnePastLast (T *ptr) : Return the pointer to the first empty element
+ * T* raCreate           (T *ptr)
+ * T* raCreateSized      (T *ptr, Size min_capacity)
+ * T* raCreateAlloc      (T *ptr, Memory_Allocator allocator)
+ * T* raCreateAllocSized (T *ptr, Size min_capacity, Memory_Allocator allocator)
  *
- * T*    sbufCreate      (T, void *memory, Size memory_size) : Create a fixed-size buffer
+ * Size  raAdd         (T *ptr, T elem)
+ * void  raDelete      (T *ptr)
+ * void  raClear       (T *ptr) : Make everything zero
+ * Size  raResize      (T *ptr, Size new_size) : Increase size of the underlying buffer
  *
- * Size  sbufSizeof      (T *ptr)
- * Size  sbufElemin      (T *ptr)
- * Size  sbufMaxSizeof   (T *ptr)
- * Size  sbufMaxElemin   (T *ptr)
+ * Size  raSizeof      (T *ptr)
+ * Size  raElemin      (T *ptr)
+ * Size  raMaxSizeof   (T *ptr)
+ * Size  raMaxElemin   (T *ptr)
  *
- * Size  sbufUnsortedRemove (T* ptr, Size index)
+ * T*    raLast        (T *ptr) : Return the pointer to last filled element
+ * T*    raOnePastLast (T *ptr) : Return the pointer to the first empty element
  *
- * T*    sbufPrint       (Char *ptr, Char *format, ...)
+ * Size  raUnsortedRemove (T* ptr, Size index)
  */
 
-# if defined(LANG_C) && !defined(NLIB_EXCLUDE_SBUF)
+// TODO(naman): Add support for stack-based arrays
 
-#  if !defined(NLIB_SBUF_MALLOC)
-#   if defined(NLIB_MALLOC)
-#    define NLIB_SBUF_MALLOC NLIB_MALLOC
-#   elif defined(NLIB_NOLIBC)
-#    error "nlib: Sbuf: NLIB_SBUF_MALLOC required with nolibc"
-#   else
-#    define NLIB_SBUF_MALLOC memCRTAlloc
-#   endif
-#  endif
+# if defined(LANG_C) && !defined(NLIB_EXCLUDE_RA)
 
-#  if !defined(NLIB_SBUF_REALLOC)
-#   if defined(NLIB_REALLOC)
-#    define NLIB_SBUF_REALLOC NLIB_REALLOC
-#   elif defined(NLIB_NOLIBC)
-#    error "nlib: Sbuf: NLIB_SBUF_REALLOC required with nolibc"
-#   else
-#    define NLIB_SBUF_REALLOC memCRTRealloc
-#   endif
-#  endif
-
-#  if !defined(NLIB_SBUF_FREE)
-#   if defined(NLIB_FREE)
-#    define NLIB_SBUF_FREE NLIB_FREE
-#   elif defined(NLIB_NOLIBC)
-#    error "nlib: Sbuf: NLIB_SBUF_FREE required with nolibc"
-#   else
-#    define NLIB_SBUF_FREE memCRTDealloc
-#   endif
-#  endif
-
-typedef struct Sbuf_Header {
+typedef struct Ra_Header {
     Size cap; // NOTE(naman): Maximum number of elements that can be stored
     Size len; // NOTE(naman): Count of elements actually stored
     void *userdata;
-    B64 fixed; // Can't use allocations/reallocation
+    Memory_Allocator allocator;
+    Byte _pad[8];
     alignas(alignof(max_align_t)) Byte buf[];
-} Sbuf_Header;
+} Ra_Header;
 
-#  define sbuf_GetHeader(sb) ((Sbuf_Header*)(void*)((Byte*)(sb) - offsetof(Sbuf_Header, buf)))
+#  define ra_GetHeader(sb) ((Ra_Header*)(void*)((Byte*)(sb) - offsetof(Ra_Header, buf)))
 
-#  define sbuf_Len(sb)         ((sb) ? sbuf_GetHeader(sb)->len : 0U)
-#  define sbuf_Cap(sb)         ((sb) ? sbuf_GetHeader(sb)->cap : 0U)
+#  define ra_Len(sb)          (ra_GetHeader(sb)->len)
+#  define ra_Cap(sb)          (ra_GetHeader(sb)->cap)
 
-#  define sbufCreate(t, m, s)  sbuf_CreateFixed(sizeof(t), m, s)
-// NOTE(naman): In sbufAdd, we check if there is enough space even after growing the sbuf
-// to deal with fixed sbufs (since sbuf_Grow will simply return in that case).
-// Also, if there wasn;t enough space, we return existing length just to avoid returning void
-// which is not allowed by C99.
-#  define sbufAdd(sb, ...)     ((sb) = sbuf_Grow((sb), sizeof(*(sb))),  \
-                                ((sbuf_Len(sb) + 1) <= sbuf_Cap(sb) ?   \
-                                 ((sb)[sbuf_Len(sb)] = (__VA_ARGS__),   \
-                                  ((sbuf_GetHeader(sb))->len)++) :      \
-                                 (claim(!(sbuf_GetHeader(sb)->fixed) && \
-                                        "Fixed sbuf's space full"),     \
-                                  (sbuf_GetHeader(sb))->len)))
-#  define sbufDelete(sb)       ((sb) && !(sbuf_GetHeader(sb)->fixed) ?  \
-                                (NLIB_SBUF_FREE(sbuf_GetHeader(sb)), (sb) = NULL) : \
-                                ((sb) ? ((sb) = NULL) : 0))
-#  define sbufClear(sb)        ((sb) ?                                  \
-                                (memset((sb), 0, sbufSizeof(sb)),       \
-                                 sbuf_GetHeader(sb)->len = 0) :         \
-                                0)
-#  define sbufResize(sb, n)    (((n) > sbufMaxElemin(sb)) ?             \
-                                ((sb) = sbuf_Resize(sb, n, sizeof(*(sb)))) : \
-                                0)
+#  define ra_IsFull(sb)       ((ra_Len(sb)+1) > ra_Cap(sb))
+#  define ra_CheckAndGrow(sb) (ra_IsFull(sb) ? ra_Grow((sb), sizeof(*(sb))) : (sb))
 
-#  define sbufSizeof(sb)       (sbuf_Len(sb) * sizeof(*(sb)))
-#  define sbufElemin(sb)       (sbuf_Len(sb))
-#  define sbufMaxSizeof(sb)    (sbuf_Cap(sb) * sizeof(*(sb)))
-#  define sbufMaxElemin(sb)    (sbuf_Cap(sb))
-#  define sbufOnePastLast(sb)  ((sb) + sbuf_Len(sb))
+#  define raCreate(var)                           ra_Create(sizeof(*(var)),  0,       memCRTGet())
+#  define raCreateSized(var, min_cap)             ra_Create(sizeof(*(var)),  min_cap, memCRTGet())
+#  define raCreateAlloc(var, alloc)               ra_Create(sizeof(*(var)),  0,       alloc)
+#  define raCreateAllocSized(var, min_cap, alloc) ra_Create(sizeof(*(var)),  min_cap, alloc)
 
-# define sbufPrint(sb, ...)         ((sb) = sbuf_Print((sb), __VA_ARGS__))
-//# define sbufPrintSized(sb, s, ...) ((sb) = sbuf_PrintSized((sb), s, __VA_ARGS__))
+#  define raAdd(sb, ...)    ((sb) = ra_CheckAndGrow(sb),        \
+                             (sb)[ra_Len(sb)] = (__VA_ARGS__),  \
+                             ((ra_GetHeader(sb))->len)++)
+#  define raDelete(sb)      (ra_Delete((sb), sizeof(*sb)), (sb) = NULL)
+#  define raClear(sb)       (memset((sb), 0, raSizeof(sb)), ra_GetHeader(sb)->len = 0)
+#  define raResize(sb, n)   ((n) > raMaxElemin(sb) ?                    \
+                             ((sb) = ra_GrowToSize(sb, n, sizeof(*(sb)))) : \
+                             sb)
 
-# define sbufUnsortedRemove(sb, i) (((sb)[(i)] = (sb)[sbuf_Len(sb) - 1]), \
-                                    ((sbuf_GetHeader(sb)->len)--))
+#  define raSizeof(sb)       (ra_Len(sb) * sizeof(*(sb)))
+#  define raElemin(sb)       (ra_Len(sb))
+#  define raMaxSizeof(sb)    (ra_Cap(sb) * sizeof(*(sb)))
+#  define raMaxElemin(sb)    (ra_Cap(sb))
+
+#  define raOnePastLast(sb)  ((sb) + ra_Len(sb))
+#  define raLast(sb)         ((sb) + (ra_Len(sb) - 1))
+
+# define raUnsortedRemove(sb, i) (((sb)[(i)] = (sb)[ra_Len(sb) - 1]),   \
+                                  ((ra_GetHeader(sb)->len)--))
 
 #  if defined(COMPILER_CLANG)
 #   pragma clang diagnostic push
@@ -3687,69 +3667,75 @@ typedef struct Sbuf_Header {
 #  endif
 
 header_function
-void* sbuf_CreateFixed (Size elem_size, void *memory, Size memory_size)
+    void* ra_Create (Size elem_size, Size min_cap, Memory_Allocator allocator)
 {
-    Sbuf_Header *header = (Sbuf_Header *)memory;
+    Size new_cap = (min_cap != 0) ? min_cap : 16;
+    Size new_size = (new_cap * elem_size) + memAlignUp(sizeof(Ra_Header));
 
-    header->cap = (memory_size - sizeof(*header)) / elem_size;
-    header->len = 0;
-    header->fixed = true;
-
-    return header->buf;
-}
-
-header_function
-void* sbuf_Grow (void *buf, Size elem_size)
-{
-    if ((buf != NULL) && sbuf_GetHeader(buf)->fixed) return buf;
-
-    if ((sbuf_Len(buf) + 1) <= sbuf_Cap(buf)) {
-        return buf;
-    } else {
-        Size new_cap = mMax(2 * sbuf_Cap(buf), 4U);
-
-        Size new_size = (new_cap * elem_size) + memAlignUp(sizeof(Sbuf_Header));
-
-        Sbuf_Header *new_header = NULL;
-
-        if (buf != NULL) {
-            new_header = (Sbuf_Header *)NLIB_SBUF_REALLOC(sbuf_GetHeader(buf), new_size);
-        } else {
-            new_header = (Sbuf_Header *)NLIB_SBUF_MALLOC(new_size);
-            *new_header = (Sbuf_Header){.len = 0,
-                .userdata = NULL};
-        }
-
-        new_header->cap = new_cap;
-
-        return new_header->buf;
-    }
-}
-
-header_function
-void* sbuf_Resize (void *buf, Size elem_count, Size elem_size)
-{
-    if ((buf != NULL) && sbuf_GetHeader(buf)->fixed) return buf;
-
-    Size new_cap = elem_count;
-
-    Size new_size = (new_cap * elem_size) + sizeof(Sbuf_Header);
-
-    Sbuf_Header *new_header = NULL;
-
-    if (buf != NULL) {
-        new_header = (Sbuf_Header *)NLIB_SBUF_REALLOC(sbuf_GetHeader(buf), new_size);
-    } else {
-        new_header = (Sbuf_Header *)NLIB_SBUF_MALLOC(new_size);
-        *new_header = (Sbuf_Header){.cap = 0,
-            .len = 0,
-            .userdata = NULL};
-    }
+    Ra_Header *new_header = (Ra_Header *)memAlloc(allocator, new_size);
+    *new_header = (Ra_Header)NLIB_ZERO_INIT_LIST;
 
     new_header->cap = new_cap;
+    new_header->allocator = allocator;
 
     return new_header->buf;
 }
+
+header_function
+void ra_Delete (void *buf, Size elem_size)
+{
+    Memory_Allocator allocator = ra_GetHeader(buf)->allocator;
+    Size old_size = (raMaxElemin(buf) * elem_size) + memAlignUp(sizeof(Ra_Header));
+
+    memDealloc(allocator, ra_GetHeader(buf), old_size);
+
+    return;
+}
+
+header_function
+void* ra_GrowToSize (void *buf, Size elem_count, Size elem_size)
+{
+    Memory_Allocator allocator = ra_GetHeader(buf)->allocator;
+    Size old_size = (raMaxElemin(buf) * elem_size) + memAlignUp(sizeof(Ra_Header));
+
+    Size new_cap = mMax(elem_count, 16U);
+    Size new_size = (new_cap * elem_size) + memAlignUp(sizeof(Ra_Header));
+    Ra_Header *new_header = NULL;
+
+    new_header = (Ra_Header *)memRealloc(allocator, ra_GetHeader(buf), new_size, old_size);
+
+    new_header->cap = new_cap;
+    new_header->allocator = allocator;
+
+    return new_header->buf;
+}
+
+header_function
+void* ra_Grow (void *buf, Size elem_size)
+{
+    Size new_cap = mMax(2 * ra_Cap(buf), 16U);
+    void *result = ra_GrowToSize(buf, new_cap, elem_size);
+    return result;
+}
+
+#  if defined(COMPILER_CLANG)
+#   pragma clang diagnostic pop // -Wcast-align
+#  endif
+# endif // defined(LANG_C) && !defined(NLIB_EXCLUDE_RA)
+
+/* ===============================
+ * String Builder (stringbuilder)
+ */
+
+# if defined(LANG_C) && !defined(NLIB_EXCLUDE_STRING_BUILDER)
+
+#  define sbCreate()                         ra_Create(sizeof(Char),  0,       memCRTGet())
+#  define sbCreateSized(min_cap)             ra_Create(sizeof(Char),  min_cap, memCRTGet())
+#  define sbCreateAlloc(alloc)               ra_Create(sizeof(Char),  0,       alloc)
+#  define sbCreateAllocSized(min_cap, alloc) ra_Create(sizeof(Char),  min_cap, alloc)
+
+#  define sbPrint(sb, ...)         ((sb) = sb_Print((sb), __VA_ARGS__))
+//#  define sbPrintSized(sb, s, ...) ((sb) = sb_PrintSized((sb), s, __VA_ARGS__))
 
 #  if defined(COMPILER_CLANG)
 #   pragma clang diagnostic push
@@ -3759,51 +3745,48 @@ void* sbuf_Resize (void *buf, Size elem_count, Size elem_size)
 __attribute__((format(__printf__, 2, 3)))
 #  endif
 header_function
-Char* sbuf_Print (Char *buf, const Char *fmt, ...)
+Char* sb_Print (Char *buf, const Char *fmt, ...)
 {
     va_list args;
 
     va_start(args, fmt);
-    size_t cap = sbufMaxElemin(buf) - sbufElemin(buf);
-    Size n = 1 + printStringVarArg(sbufOnePastLast(buf), cap, fmt, args);
+    size_t cap = raMaxElemin(buf) - raElemin(buf);
+    Size n = 1 + printStringVarArg(raOnePastLast(buf), cap, fmt, args);
     va_end(args);
 
     if ((Size)n > cap) {
-        sbufResize(buf, sbufSizeof(buf) + n);
-        size_t new_cap = sbufMaxSizeof(buf) - sbufSizeof(buf);
+        raResize(buf, raSizeof(buf) + n);
+        size_t new_cap = raMaxSizeof(buf) - raSizeof(buf);
         va_start(args, fmt);
-        n = 1 + printStringVarArg(sbufOnePastLast(buf), new_cap, fmt, args);
+        n = 1 + printStringVarArg(raOnePastLast(buf), new_cap, fmt, args);
         va_end(args);
     }
 
-    sbuf_GetHeader(buf)->len += (n - 1);
+    ra_GetHeader(buf)->len += (n - 1);
     return buf;
 }
 
 /* header_function */
-/* Char* sbuf_PrintSized (Char *buf, Size size, const Char *fmt, ...) */
+/* Char* sb_PrintSized (Char *buf, Size size, const Char *fmt, ...) */
 /* { */
-/*     if ((size + sbufElemin(buf)) > sbufMaxElemin(buf)) { */
-/*         sbufResize(buf, size + sbufElemin(buf) + 1); */
+/*     if ((size + raElemin(buf)) > raMaxElemin(buf)) { */
+/*         raResize(buf, size + raElemin(buf) + 1); */
 /*     } */
 
 /*     va_list args; */
 /*     va_start(args, fmt); */
-/*     printStringVarArg(sbufOnePastLast(buf), size + 1, fmt, args); */
+/*     printStringVarArg(raOnePastLast(buf), size + 1, fmt, args); */
 /*     va_end(args); */
 
-/*     sbuf_GetHeader(buf)->len += size; */
+/*     ra_GetHeader(buf)->len += size; */
 /*     return buf; */
 /* } */
+
 #  if defined(COMPILER_CLANG)
 #   pragma clang diagnostic pop // -Wformat-nonliteral
 #  endif
 
-#  if defined(COMPILER_CLANG)
-#   pragma clang diagnostic pop // -Wcast-align
-#  endif
-# endif // defined(LANG_C)
-
+# endif // defined(LANG_C) && !defined(NLIB_EXCLUDE_STRING_BUILDER)
 
 /* ===============================
  * Intrusive Circular Doubly Linked List
@@ -3982,6 +3965,20 @@ typedef struct Intern {
 } Intern;
 
 header_function
+Intern internCreate (void)
+{
+    Intern it = NLIB_ZERO_INIT_LIST;
+
+    for (Size i = 0; i < elemin(it.lists); i++) {
+        it.lists[i].indices = raCreate(it.lists[i].indices);
+        it.lists[i].secondary_hashes = raCreate(it.lists[i].indices);
+    }
+
+    return it;
+}
+
+
+header_function
 Bool internCheck (Intern *it, U8 hash1, U8 hash2,
                   void *datum, void *data, Intern_Equality_Function *eqf,
                   Size *result)
@@ -3990,7 +3987,7 @@ Bool internCheck (Intern *it, U8 hash1, U8 hash2,
         // Our data has probably been inserted already.
         // (or atleast some data with same hash has been inserted :)
         for (Size i = 0;
-             i < sbufElemin(it->lists[hash1].secondary_hashes);
+             i < raElemin(it->lists[hash1].secondary_hashes);
              i++) {
             Size index = it->lists[hash1].indices[i];
             if ((it->lists[hash1].secondary_hashes[i] == hash2) && eqf(datum, data, index)) {
@@ -4011,9 +4008,9 @@ Bool internCheck (Intern *it, U8 hash1, U8 hash2,
 header_function
 void internData (Intern *it, U8 hash1, U8 hash2, Size index)
 {
-    sbufAdd(it->lists[hash1].secondary_hashes, hash2);
-    sbufAdd(it->lists[hash1].indices, index);
-    utTest(sbufElemin(it->lists[hash1].secondary_hashes) == sbufElemin(it->lists[hash1].indices));
+    raAdd(it->lists[hash1].secondary_hashes, hash2);
+    raAdd(it->lists[hash1].indices, index);
+    utTest(raElemin(it->lists[hash1].secondary_hashes) == raElemin(it->lists[hash1].indices));
 }
 
 header_function
@@ -4091,6 +4088,16 @@ INTERN_EQUALITY(internStringEquality) {
 }
 
 header_function
+Intern_String internStringCreate (void)
+{
+    Intern_String its = NLIB_ZERO_INIT_LIST;
+    its.intern = internCreate();
+    its.strings = raCreate(its.strings);
+
+    return its;
+}
+
+header_function
 Char *internString (Intern_String *is, Char *str)
 {
     U8 hash1 = internStringPearsonHash(str, strlen(str), true);
@@ -4102,15 +4109,15 @@ Char *internString (Intern_String *is, Char *str)
         Char *result = is->strings[index];
         return result;
     } else {
-        Size index_new = sbufElemin(is->strings);
+        Size index_new = raElemin(is->strings);
 
-        Char *str_new = NULL;
+        Char *str_new = raCreate(str_new);
         for (Char *s = str; s[0] != '\0'; s++) {
-            sbufAdd(str_new, s[0]);
+            raAdd(str_new, s[0]);
         }
-        sbufAdd(str_new, '\0');
+        raAdd(str_new, '\0');
 
-        sbufAdd(is->strings, str_new);
+        raAdd(is->strings, str_new);
 
         internData(&is->intern, hash1, hash2, index_new);
         Char *result = is->strings[index_new];
@@ -4140,7 +4147,7 @@ header_function
 void internStringDebugPrint (Intern_String *is)
 {
     for (Size i = 0; i < elemin(is->intern.lists); i++) {
-        for (Size j = 0; j < sbufElemin(is->intern.lists[i].indices); j++) {
+        for (Size j = 0; j < raElemin(is->intern.lists[i].indices); j++) {
             report("%s\n", is->strings[is->intern.lists[i].indices[j]]);
         }
     }
@@ -4152,6 +4159,16 @@ typedef struct Intern_Integer {
     Intern intern;
     U64 *integers;
 } Intern_Integer;
+
+header_function
+Intern_Integer internIntegerCreate (void)
+{
+    Intern_Integer iti = NLIB_ZERO_INIT_LIST;
+    iti.intern = internCreate();
+    iti.integers = raCreate(iti.integers);
+
+    return iti;
+}
 
 header_function
 INTERN_EQUALITY(internIntegerEquality) {
@@ -4197,8 +4214,8 @@ U64 internInteger (Intern_Integer *ii, U64 num)
                     &num_copy, ii->integers, &internIntegerEquality, &index)) {
         return num;
     } else {
-        sbufAdd(ii->integers, num);
-        internData(&ii->intern, hash1, hash2, sbufElemin(ii->integers));
+        raAdd(ii->integers, num);
+        internData(&ii->intern, hash1, hash2, raElemin(ii->integers));
         return num;
     }
 }
@@ -4239,66 +4256,37 @@ U64 internIntegerCheck (Intern_Integer *ii, U64 num)
 
 typedef struct Hash_Table {
     Hash_Universal univ;
+    Memory_Allocator allocator;
     U64 *keys;
     U64 *values;
     Size slot_count;
     Size slot_filled;
-    B64 fixed; // Use fixed memory
     U64 collision_count;
 } Hash_Table;
 
-#  if !defined(NLIB_HASH_TABLE_MALLOC)
-#   if defined(NLIB_MALLOC)
-#    define NLIB_HASH_TABLE_MALLOC NLIB_MALLOC
-#   elif defined(NLIB_NOLIBC)
-#    error "nlib: Hash_Table: NLIB_HASH_TABLE_MALLOC required with nolibc"
-#   else
-#    define NLIB_HASH_TABLE_MALLOC memCRTAlloc
-#   endif
-#  endif
-
-#  if !defined(NLIB_HASH_TABLE_FREE)
-#   if defined(NLIB_FREE)
-#    define NLIB_HASH_TABLE_FREE NLIB_FREE
-#   elif defined(NLIB_NOLIBC)
-#    error "nlib: Hash_Table: NLIB_HASH_TABLE_FREE required with nolibc"
-#   else
-#    define NLIB_HASH_TABLE_FREE memCRTDealloc
-#   endif
-#  endif
+#  define htCreate()                           ht_Create(0,         memCRTGet())
+#  define htCreateSlots(min_slots)             ht_Create(min_slots, memCRTGet())
+#  define htCreateAlloc(alloc)                 ht_Create(0,         alloc)
+#  define htCreateSlotsAlloc(min_slots, alloc) ht_Create(min_slots, alloc)
 
 header_function
-Hash_Table ht_Create (Size slots_atleast, void *memory, Size memory_size)
+Hash_Table ht_Create (Size slots_atleast, Memory_Allocator allocator)
 {
-    claim((memory == NULL) || (slots_atleast == 0)); // Can't have fixed memory without fixed slots
-
     Hash_Table ht = {0};
 
-    if (memory) {
-        // NOTE(naman): We are willing to waste some memory because not going overboard
-        // is more important. However, the client code should try to provide
-        // memory_size such that memory_size/16 is power of 2.
-        Size slots = memory_size / (sizeof(*(ht.keys)) + sizeof(*(ht.values)));
-        ht.slot_count = mPrevPowerOf2U64(slots);
-    } else {
-        // NOTE(naman): We try to make the initial hash table a bit larger than expected.
-        // The reason for this is that if we have only a small amount of elements, we would
-        // just use a associative array instead of a hash table to do the lookup.
-        Size slots = mMax(slots_atleast, 64U);
-        ht.slot_count = mNextPowerOf2U64(slots);
-    }
+    // NOTE(naman): We try to make the initial hash table a bit larger than expected.
+    // The reason for this is that if we have only a small amount of elements, we would
+    // just use a associative array instead of a hash table to do the lookup.
+    Size slots = mMax(slots_atleast, 64U);
+    ht.slot_count = mNextPowerOf2U64(slots);
 
     ht.univ.m = mLog2U64(ht.slot_count);
     hashUniversalConstantsUpdate(&ht.univ);
 
-    if (memory) {
-        ht.fixed = true;
-        ht.keys = memory;
-        ht.values = (void*)((Byte*)memory + ht.slot_count * sizeof((ht.keys)));
-    } else {
-        ht.keys     = NLIB_HASH_TABLE_MALLOC(ht.slot_count * sizeof(*(ht.keys)));
-        ht.values   = NLIB_HASH_TABLE_MALLOC(ht.slot_count * sizeof(*(ht.values)));
-    }
+    ht.allocator = allocator;
+
+    ht.keys     = memAlloc(ht.allocator, ht.slot_count * sizeof(*(ht.keys)));
+    ht.values   = memAlloc(ht.allocator, ht.slot_count * sizeof(*(ht.values)));
 
     memset(ht.keys,   0, ht.slot_count * sizeof(*(ht.keys)));
     memset(ht.values, 0, ht.slot_count * sizeof(*(ht.values)));
@@ -4307,35 +4295,14 @@ Hash_Table ht_Create (Size slots_atleast, void *memory, Size memory_size)
 }
 
 header_function
-Hash_Table htCreate (void)
-{
-    Hash_Table ht = ht_Create(0, NULL, 0);
-    return ht;
-}
-
-header_function
-Hash_Table htCreateWithSlots (Size slots)
-{
-    Hash_Table ht = ht_Create(slots, NULL, 0);
-    return ht;
-}
-
-header_function
-Hash_Table htCreateFixed (void *memory, Size memory_size)
-{
-    Hash_Table ht = ht_Create(0, memory, memory_size);
-    return ht;
-}
-
-header_function
 void htDelete (Hash_Table ht)
 {
-    if (ht.fixed) {
-        claim(false && "Trying to free a fixed-memory hash table");
-    } else {
-        NLIB_HASH_TABLE_FREE(ht.keys);
-        NLIB_HASH_TABLE_FREE(ht.values);
-    }
+    Memory_Allocator allocator = ht.allocator;
+
+    memDealloc(allocator, ht.keys, ht.slot_count * sizeof(*(ht.keys)));
+    memDealloc(allocator, ht.values, ht.slot_count * sizeof(*(ht.values)));
+
+    return;
 }
 
 header_function
@@ -4386,15 +4353,14 @@ U64 htInsert (Hash_Table *ht, U64 key, U64 value)
 
     if ((key == 0) || (value == 0)) return 0;
 
-    if (ht->fixed) {
-        if (ht->slot_filled >= ht->slot_count) {
-            return 0;
-        }
-    } else if ((ht->collision_count > max_collisions_allowed) ||
-               ((2 * ht->slot_filled) >= ht->slot_count)) {
+    if ((ht->collision_count > max_collisions_allowed) ||
+        ((2 * ht->slot_filled) >= ht->slot_count)) {
         Size slot_count_prev = ht->slot_count;
         U64 *keys   = ht->keys;
         U64 *values = ht->values;
+
+        Size k_old_size = ht->slot_count * sizeof(*(ht->keys));
+        Size v_old_size = ht->slot_count * sizeof(*(ht->values));
 
         if ((2 * ht->slot_filled) >= ht->slot_count) { // Only increase size if need be
             ht->univ.m = ht->univ.m + 1;
@@ -4402,11 +4368,14 @@ U64 htInsert (Hash_Table *ht, U64 key, U64 value)
             hashUniversalConstantsUpdate(&(ht->univ));
         }
 
-        ht->keys   = NLIB_HASH_TABLE_MALLOC(ht->slot_count * sizeof(*(ht->keys)));
-        ht->values = NLIB_HASH_TABLE_MALLOC(ht->slot_count * sizeof(*(ht->values)));
+        Size k_size = ht->slot_count * sizeof(*(ht->keys));
+        Size v_size = ht->slot_count * sizeof(*(ht->values));
 
-        memset(ht->keys,   0, ht->slot_count * sizeof(*(ht->keys)));
-        memset(ht->values, 0, ht->slot_count * sizeof(*(ht->values)));
+        ht->keys   = memAlloc(ht->allocator, k_size);
+        ht->values = memAlloc(ht->allocator, v_size);
+
+        memset(ht->keys,   0, k_size);
+        memset(ht->values, 0, v_size);
 
         for (Size i = 0; i < slot_count_prev; ++i) {
             U64 key_i   = keys[i];
@@ -4417,8 +4386,8 @@ U64 htInsert (Hash_Table *ht, U64 key, U64 value)
             }
         }
 
-        NLIB_HASH_TABLE_FREE(keys);
-        NLIB_HASH_TABLE_FREE(values);
+        memDealloc(ht->allocator, keys,   k_old_size);
+        memDealloc(ht->allocator, values, v_old_size);
 
         ht->collision_count = 0;
     }
@@ -4489,93 +4458,101 @@ U64 htRemove (Hash_Table *ht, U64 key)
 # if defined(LANG_C) && !defined(NLIB_EXCLUDE_MAP)
 typedef struct Map_Userdata {
     Hash_Table table;
+    Memory_Allocator allocator;
     Size *free_list;
 } Map_Userdata;
 
-#  if !defined(NLIB_MAP_MALLOC)
-#   if defined(NLIB_MALLOC)
-#    define NLIB_MAP_MALLOC NLIB_MALLOC
-#   elif defined(NLIB_NOLIBC)
-#    error "nlib: Map: NLIB_MAP_MALLOC required with nolibc"
-#   else
-#    define NLIB_MAP_MALLOC memCRTAlloc
-#   endif
-#  endif
+#  define mapCreate(var)                           map_Create(sizeof(*(var)),  0,       memCRTGet())
+#  define mapCreateSized(var, min_cap)             map_Create(sizeof(*(var)),  min_cap, memCRTGet())
+#  define mapCreateAlloc(var, alloc)               map_Create(sizeof(*(var)),  0,       alloc)
+#  define mapCreateAllocSized(var, min_cap, alloc) map_Create(sizeof(*(var)),  min_cap, alloc)
 
-#  if !defined(NLIB_MAP_FREE)
-#   if defined(NLIB_FREE)
-#    define NLIB_MAP_FREE NLIB_FREE
-#   elif defined(NLIB_NOLIBC)
-#    error "nlib: Map: NLIB_MAP_FREE required with nolibc"
-#   else
-#    define NLIB_MAP_FREE memCRTDealloc
-#   endif
-#  endif
+header_function
+void* map_Create (Size elem_size, Size min_cap, Memory_Allocator allocator)
+{
+    void *value_ra = ra_Create(elem_size, min_cap, allocator);
+    Ra_Header *rhdr = ra_GetHeader(value_ra);
+    (rhdr->len)++;
+    rhdr->userdata = memAlloc(allocator, sizeof(Map_Userdata));
 
-#  define mapInsert(_map, _key, _value) do {                            \
-        Sbuf_Header *shdr = NULL;                                       \
-        if ((_map) == NULL) {                                           \
-            (_map) = sbuf_Grow((_map),                                  \
-                               sizeof(*(_map)));                        \
-            shdr = sbuf_GetHeader(_map);                                \
-            (shdr->len)++;                                              \
-            shdr->userdata = NLIB_MAP_MALLOC(sizeof(Map_Userdata));     \
-            *(Map_Userdata*)(shdr->userdata) = (Map_Userdata){0};       \
-            ((Map_Userdata*)shdr->userdata)->table = htCreate();        \
-        } else {                                                        \
-            shdr = sbuf_GetHeader((_map));                              \
-        }                                                               \
-                                                                        \
-        Size insertion_index = 0;                                       \
-                                                                        \
-        if ((_key) != 0) {                                              \
-            if (sbufElemin(((Map_Userdata*)shdr->userdata)->free_list) > 0) { \
-                (_map)[((Map_Userdata*)shdr->userdata)->free_list[0]] = (_value); \
-                insertion_index = ((Map_Userdata*)shdr->userdata)->free_list[0]; \
-                sbufUnsortedRemove(((Map_Userdata*)shdr->userdata)->free_list, 0); \
-            } else {                                                    \
-                sbufAdd((_map), (_value));                              \
-                insertion_index = sbufElemin((_map)) - 1;               \
-            }                                                           \
-                                                                        \
-            shdr = sbuf_GetHeader((_map));                              \
-            htInsert(&((Map_Userdata*)shdr->userdata)->table, (_key), insertion_index); \
-        }                                                               \
+    Map_Userdata *mud = rhdr->userdata;
+    *mud = (Map_Userdata)NLIB_ZERO_INIT_LIST;
+    mud->table = htCreateAlloc(allocator);
+    mud->free_list = ra_Create(sizeof(*mud->free_list), min_cap, allocator);
+    mud->allocator = allocator;
+
+    return value_ra;
+}
+
+// FIXME(naman): Once C23 comes out, use typeof() or auto to assign _value to a variable,
+// then move everything into a function (since value can then be passed as pointer)
+#  define mapInsert(_map, _key, _value) do {                    \
+        Ra_Header *rhdr = ra_GetHeader((_map));                 \
+        Map_Userdata *mud = rhdr->userdata;                     \
+                                                                \
+        Size insertion_index = 0;                               \
+                                                                \
+        if ((_key) != 0) {                                      \
+            if (raElemin(mud->free_list) > 0) {                 \
+                (_map)[mud->free_list[0]] = (_value);           \
+                insertion_index = mud->free_list[0];            \
+                raUnsortedRemove(mud->free_list, 0);            \
+            } else {                                            \
+                raAdd((_map), (_value));                        \
+                insertion_index = rhdr->len - 1;                \
+            }                                                   \
+                                                                \
+            rhdr = ra_GetHeader((_map));                        \
+            mud = rhdr->userdata;                               \
+            htInsert(&(mud->table), (_key), insertion_index);   \
+        }                                                       \
     } while (0)
 
 header_function
 Bool mapExists (void *map, U64 key) {
-    if (map != NULL) {
-        Sbuf_Header *shdr = sbuf_GetHeader(map);
-        Size index = htLookup(&((Map_Userdata*)shdr->userdata)->table, key);
-        if (index != 0) {
-            return true;
-        }
+    Ra_Header *rhdr = ra_GetHeader(map);
+    Map_Userdata *mud = rhdr->userdata;
+
+    Size index = htLookup(&(mud->table), key);
+    if (index != 0) {
+        return true;
     }
     return false;
 }
 
-#  define mapLookup(_map, _key) ((_map)[(htLookup(&((Map_Userdata*)(sbuf_GetHeader(_map))->userdata)->table, \
+#  define mapLookup(_map, _key) ((_map)[(htLookup(&((Map_Userdata*)(ra_GetHeader(_map))->userdata)->table, \
                                                   (_key)))])
 #  define mapGetRef(_map, _key) (&mapLookup((_map), (_key)))
 
-#  define mapRemove(_map, _key) do {                                    \
-        if ((_map) != NULL) {                                           \
-            Sbuf_Header *shdr = sbuf_GetHeader(_map);                   \
-            Size index = htLookup(&((Map_Userdata*)shdr->userdata)->table, \
-                                  (_key));                              \
-            sbufAdd(((Map_Userdata*)shdr->userdata)->free_list, index); \
-            htRemove(&((Map_Userdata*)shdr->userdata)->table, (_key));  \
-        }                                                               \
-    } while (0)
+header_function
+void mapRemove (void *map, U64 key)
+{
+    Ra_Header *rhdr = ra_GetHeader(map);
+    Map_Userdata *mud = rhdr->userdata;
 
-#  define mapDelete(_map) do {                                  \
-        Sbuf_Header *shdr = sbuf_GetHeader(_map);               \
-        htDelete(((Map_Userdata*)shdr->userdata)->table);       \
-        sbufDelete(((Map_Userdata*)shdr->userdata)->free_list); \
-        NLIB_MAP_FREE(shdr->userdata);                          \
-        sbufDelete(_map);                                       \
-    } while (0)
+    Size index = htLookup(&(mud->table), key);
+    raAdd(mud->free_list, index);
+    htRemove(&(mud->table), key);
+
+    return;
+}
+
+header_function
+void map_Delete (void *map, Size elem_size)
+{
+    Ra_Header *rhdr = ra_GetHeader(map);
+    Map_Userdata *mud = rhdr->userdata;
+
+    htDelete(mud->table);
+    raDelete(mud->free_list);
+
+    Memory_Allocator allocator = mud->allocator;
+    memDealloc(allocator, mud, sizeof(Map_Userdata));
+    ra_Delete(map, elem_size);
+}
+
+#  define mapDelete(_map) (map_Delete((_map), sizeof(*(_map))))
+
 # endif // LANG_C
 
 /* ==============
@@ -4584,23 +4561,13 @@ Bool mapExists (void *map, U64 key) {
 
 # if defined(LANG_C) && !defined(NLIB_EXCLUDE_RING_LOCKED)
 
-#  if !defined(NLIB_RING_LOCKED_MALLOC)
-#   if defined(NLIB_MALLOC)
-#    define NLIB_RING_LOCKED_MALLOC NLIB_MALLOC
+#  if !defined(NLIB_RING_LOCKED_ALLOCATOR)
+#   if defined(NLIB_ALLOCATOR)
+#    define NLIB_RING_LOCKED_ALLOCATOR NLIB_ALLOCATOR
 #   elif defined(NLIB_NOLIBC)
-#    error "nlib: Ring_Locked: NLIB_RING_LOCKED_MALLOC required with nolibc"
+#    error "nlib: Ring_Locked: NLIB_RING_LOCKED_ALLOCATOR required with nolibc"
 #   else
-#    define NLIB_RING_LOCKED_MALLOC memCRTAlloc
-#   endif
-#  endif
-
-#  if !defined(NLIB_RING_LOCKED_FREE)
-#   if defined(NLIB_FREE)
-#    define NLIB_RING_LOCKED_FREE NLIB_FREE
-#   elif defined(NLIB_NOLIBC)
-#    error "nlib: Ring_Locked: NLIB_RING_LOCKED_FREE required with nolibc"
-#   else
-#    define NLIB_RING_LOCKED_FREE memCRTDealloc
+#    define NLIB_RING_LOCKED_ALLOCATOR memCRTGet()
 #   endif
 #  endif
 
@@ -4613,6 +4580,8 @@ typedef struct Ring_Locked__Head {
     Size buffer_size;
     Size buffer_write_cursor;
     Size buffer_read_cursor;
+    Size allocation_size;
+    Byte _pad[8];
     alignas(alignof(max_align_t)) Byte buffer[];
 } Ring_Locked__Head;
 
@@ -4625,8 +4594,10 @@ void* ringLocked__Create (Size elemsize, Size buffersize)
     Size header_size = memAlignUp(sizeof(Ring_Locked__Head));
     Size total_size = header_size + ring_size;
 
-    Ring_Locked__Head *head = NLIB_RING_LOCKED_MALLOC(total_size);
-    *head = (Ring_Locked__Head){0};
+    Ring_Locked__Head *head = memAlloc(NLIB_RING_LOCKED_ALLOCATOR, total_size);
+    *head = (Ring_Locked__Head)NLIB_ZERO_INIT_LIST;
+
+    head->allocation_size = total_size;
 
     sem_init(&head->fill_count, 0, 0);
     sem_init(&head->empty_count, 0, (Uint)buffersize);
@@ -4673,7 +4644,7 @@ header_function
 void ringLockedDelete (void *ring)
 {
     Ring_Locked__Head *head = ringLocked__GetHead(ring);
-    NLIB_RING_LOCKED_FREE(head);
+    memDealloc(NLIB_RING_LOCKED_ALLOCATOR, head, head->allocation_size);
 }
 
 #  elif defined(OS_WINDOWS)
@@ -4688,23 +4659,13 @@ void ringLockedDelete (void *ring)
 
 # if defined(LANG_C) && !defined(NLIB_EXCLUDE_QUEUE_LOCKED)
 
-#  if !defined(NLIB_QUEUE_LOCKED_MALLOC)
-#   if defined(NLIB_MALLOC)
-#    define NLIB_QUEUE_LOCKED_MALLOC NLIB_MALLOC
+#  if !defined(NLIB_QUEUE_LOCKED_ALLOCATOR)
+#   if defined(NLIB_ALLOCATOR)
+#    define NLIB_QUEUE_LOCKED_ALLOCATOR NLIB_ALLOCATOR
 #   elif defined(NLIB_NOLIBC)
-#    error "nlib: Queue_Locked: NLIB_QUEUE_LOCKED_MALLOC required with nolibc"
+#    error "nlib: Queue_Locked: NLIB_QUEUE_LOCKED_ALLOCATOR required with nolibc"
 #   else
-#    define NLIB_QUEUE_LOCKED_MALLOC memCRTAlloc
-#   endif
-#  endif
-
-#  if !defined(NLIB_QUEUE_LOCKED_FREE)
-#   if defined(NLIB_FREE)
-#    define NLIB_QUEUE_LOCKED_FREE NLIB_FREE
-#   elif defined(NLIB_NOLIBC)
-#    error "nlib: Queue_Locked: NLIB_QUEUE_LOCKED_FREE required with nolibc"
-#   else
-#    define NLIB_QUEUE_LOCKED_FREE memCRTDealloc
+#    define NLIB_QUEUE_LOCKED_ALLOCATOR memCRTGet()
 #   endif
 #  endif
 
@@ -4721,7 +4682,8 @@ typedef struct Queue_Locked__Head {
 header_function
 Queue_Locked_Entry* queueLockedCreate (void)
 {
-    Queue_Locked__Head *qh = calloc(1, sizeof(*qh));
+    Queue_Locked__Head *qh = memAlloc(NLIB_QUEUE_LOCKED_ALLOCATOR, sizeof(*qh));
+    *qh = (Queue_Locked__Head)NLIB_ZERO_INIT_LIST;
     Queue_Locked_Entry *qe = &qh->list;
     listNodeInit(qe);
 
@@ -4780,7 +4742,7 @@ header_function
 void queueLockedDelete (void *queue)
 {
     Queue_Locked__Head *head = queueLocked__GetHead(queue);
-    NLIB_QUEUE_LOCKED_FREE(head);
+    memDealloc(NLIB_QUEUE_LOCKED_ALLOCATOR, head, sizeof(*head));
 }
 
 #  elif defined(OS_WINDOWS)

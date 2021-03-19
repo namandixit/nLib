@@ -12,7 +12,7 @@ Sint main (Sint argc, Char *argv[])
 
 # if !defined(NLIB_NO_LIBC)
 # endif
-    sbufUnitTest(); // Uses sbufPrint, so tests might clash with printUnitTest
+    raUnitTest(); // Uses sbufPrint, so tests might clash with printUnitTest
     htUnitTest();
     internUnitTest();
     mapUnitTest();

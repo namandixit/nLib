@@ -87,8 +87,10 @@
 #   else
 #    define LANG_C 2011 // Earliest C version for which MSVC supports __STDC_VERSION__
 #   endif
-#  elif defined(__STDC__)
+#  elif defined(__STDC__) // All microsoft extensions are off (/Za, similar to pedantic)
 #   define LANG_C 1989
+#  else // No /Za, so assuming C99 is good enough (C89 is too old to fallback on)
+#   define LANG_C 1999
 #  endif
 # elif defined(COMPILER_CLANG) || defined(COMPILER_GCC)
 #  if defined(__cplusplus)
@@ -111,7 +113,7 @@
 #   elif (__STDC_VERSION__ == 201112) || (__STDC_VERSION__ == 201710)
 #    define LANG_C 2011
 #   else
-#    define LANG_C 1999 // C89 is too primitive to fallback on (C94 is accounted for above)
+#    define LANG_C 1999 // Atleast C99 (__STDC_VERSION__ is defined, C94 is too old to fallback on)
 #   endif
 #  elif defined(__STDC__) && !defined(__STDC_VERSION__)
 #    define LANG_C 1989 // Since C89 doesn't require definition of __STDC_VERSION__

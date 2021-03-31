@@ -9,8 +9,9 @@ if [ -z ${BuildArchitecture+x} ]; then
 fi
 
 ProjectRoot="$( cd "$(dirname "$0")" ; pwd -P)" # Directory in which the script is located
-cd ${ProjectRoot}
-echo "Entering directory \`$(pwd)'"
+
+BuildDirectory="${ProjectRoot}/bin/${BuildPlatform}/${BuildArchitecture}"
+mkdir -p ${BuildDirectory}
 
 VersionNumberOld=$(< ./version)
 VersionNumber=$((${VersionNumberOld} + 1))
@@ -18,13 +19,16 @@ echo ${VersionNumber} > ./version
 
 sed -i "s/^[[:space:]]\* Version: .*$/ * Version: ${VersionNumber}/" nlib.h
 
+pushd ${BuildDirectory} > /dev/null
+echo "Entering directory \`$(pwd)'"
+
 # .....................................................................
 # BUILD
 # `````````````````````````````````````````````````````````````````````
 
-Source=${ProjectRoot}/test.c
-Target=test.${BuildPlatform}.${BuildArchitecture}
-TargetPath="${Target}"
+Source="${ProjectRoot}/test.c"
+Target="test"
+TargetPath="${BuildDirectory}/${Target}"
 
 if [ -f "${TargetPath}" ]; then
     rm "${TargetPath}"
@@ -42,10 +46,10 @@ LibcCompiler="clang"
 LibcWarningFlags="-Weverything -Wpedantic -pedantic-errors -Werror \
                   -Wno-c++98-compat \
                   "
-LibcCompilerFlags="-iquote ${ProjectRoot}/../../include \
+LibcCompilerFlags="-iquote . \
                    -g3 -O0 -fno-strict-aliasing -fwrapv -msse2 \
                    "
-LibcLanguageFlags="--std=c11 -DBUILD_INTERNAL -DBUILD_SLOW -DBUILD_DEBUG \
+LibcLanguageFlags="--std=c18 -DBUILD_INTERNAL -DBUILD_SLOW -DBUILD_DEBUG \
                    -DBUILD_NUMBER=${NEW_BUILD_NUMBER} \
                    -D_POSIX_C_SOURCE=200809L -D_DEFAULT_SOURCE"
 LibcLinkerFlags="-o ${TargetPath}.libc \
@@ -77,3 +81,5 @@ echo "C++ Syntax Check =========================================================
 
 ${CPPCompiler} ${CPPCompilerFlags} ${CPPLanguageFlags} ${CPPWarningFlags} \
                ${CPPSource}
+
+popd > /dev/null

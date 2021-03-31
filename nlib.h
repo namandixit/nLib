@@ -2,7 +2,7 @@
  * Creator: Naman Dixit
  * Notice: © Copyright 2018 Naman Dixit
  * SPDX-License-Identifier: 0BSD
- * Version: 286
+ * Version: 345
  */
 
 // TODO(naman): Make all these data structures handle allocation failure gracefully. This is especially
@@ -150,23 +150,15 @@
 #  error NLIB_NOLIBC_WINDOWS only works on Windows
 # endif
 
-# if defined(COMPILER_MSVC)
-#  pragma warning(push)
-#   pragma warning(disable:4668) // 'symbol' is not defined as a preprocessor macro, replacing with '0' for 'directives'
-# endif
-
 # include <stddef.h>
-
-# if defined(COMPILER_MSVC)
-#  pragma warning(pop)
-# endif
-
 # include <stdint.h>
 # include <stdbool.h>
 # include <inttypes.h>
 # include <limits.h>
 # include <stdarg.h>
-# include <stdnoreturn.h>
+// NOTE(naman): Including stdnoreturn.h here causes issues on Windows Clang,
+// just use _Noreturn for now.
+//# include <stdnoreturn.h>
 # include <float.h>
 
 # if defined(NLIB_NOLIBC_WINDOWS)
@@ -186,11 +178,11 @@
 #  endif
 
 #  if !defined(__STDC_NO_ATOMICS__)
-#   include <stdatomic.h>
+// #   include <stdatomic.h> UNCOMMENT WHEN NEEDED
 #  endif
 
 #  if !defined(__STDC_NO_THREADS__)
-#   include <threads.h>
+// #   include <threads.h> UNCOMMENT WHEN NEEDED
 #  endif
 
 #  if !defined(__STDC_NO_COMPLEX__)
@@ -230,13 +222,33 @@
 /* Compiler Extensions --------------------------------------------------------- */
 
 # if defined(COMPILER_MSVC)
+
 #  define fallthrough
 #  define likely(x)
 #  define unlikely(x)
+
+// NOTE(naman): MSVC doesn't seem to define max_align_t for C11 code, so this will suffice for now.
+// https://web.archive.org/web/20170804183620/https://msdn.microsoft.com/en-us/library/ycsb6wwf.aspx
+#  if defined(ARCH_x86)
+// Alignment is 8 bytes
+typedef union {
+    alignas(8) char alignment[8];
+    double a;
+} max_align_t;
+#  elif defined(ARCH_X64)
+// Alignment is 16 bytes
+typedef union {
+    alignas(16) char alignment[16];
+    alignas(16) struct { double a, b; } f;
+} max_align_t;
+#  endif
+
 # elif defined(COMPILER_CLANG) || defined(COMPILER_GCC)
+
 #  define fallthrough __attribute__((fallthrough))
 #  define likely(x)   __builtin_expect(!!(x), 1)
 #  define unlikely(x) __builtin_expect(!!(x), 0)
+
 # endif
 
 
@@ -2482,7 +2494,7 @@ Size printStringVarArg (Char *buffer, Size buffer_size, Char const *format, va_l
             }
 
             field_width -= zeros_head_tail;
-            precision -= len;
+            precision -= (Sint)len;
 
             // handle right justify and leading zeros
             if ((flags & Print_Flags_LEFT_JUSTIFIED) == 0) {
@@ -2617,7 +2629,7 @@ Size printConsole (Sint fd, Char const *format, va_list ap)
     if ((out_stream != NLIB_NULL) && (out_stream != INVALID_HANDLE_VALUE)) {
         DWORD written = 0;
         // FIXME(naman): Convert this ASCII/UTF-8 buffer to UTF-16 maybe
-        WriteConsoleA(out_stream, buffer, buffer_size, &written, NLIB_NULL);
+        WriteConsoleA(out_stream, buffer, (DWORD)buffer_size, &written, NLIB_NULL);
     }
 
     memDealloc(NLIB_PRINT_ALLOCATOR, (void*)buffer, buffer_size + 1);
@@ -3208,8 +3220,8 @@ header_function F64 mSqrtF64 (F64 x) { F64 y = sqrt(x);  return y; }
 
 header_function F32 mPow2F32 (F32 x) { F32 y = exp2f(x); return y; }
 header_function F64 mPow2F64 (F64 x) { F64 y = exp2(x);  return y; }
-header_function U32 mPow2U32 (U32 x) { U32 y = 1 << x;   return y; }
-header_function U64 mPow2U64 (U64 x) { U64 y = 1 << x;   return y; }
+header_function U32 mPow2U32 (U32 x) { U32 y = 1U << x;   return y; }
+header_function U64 mPow2U64 (U64 x) { U64 y = 1ULL << x;   return y; }
 
 #  if defined(LANG_C) && LANG_C >= 2011
 #   define mLog2(x) mGeneric((x),               \
@@ -4494,20 +4506,20 @@ void* map_Create (Size elem_size, Size min_cap, Memory_Allocator allocator)
                                                                 \
         Size insertion_index = 0;                               \
                                                                 \
-        if ((_key) != 0) {                                      \
-            if (raElemin(mud->free_list) > 0) {                 \
-                (_map)[mud->free_list[0]] = (_value);           \
-                insertion_index = mud->free_list[0];            \
-                raUnsortedRemove(mud->free_list, 0);            \
-            } else {                                            \
-                raAdd((_map), (_value));                        \
-                insertion_index = rhdr->len - 1;                \
-            }                                                   \
+        claim(_key != 0);                                       \
                                                                 \
-            rhdr = ra_GetHeader((_map));                        \
-            mud = rhdr->userdata;                               \
-            htInsert(&(mud->table), (_key), insertion_index);   \
+        if (raElemin(mud->free_list) > 0) {                     \
+            (_map)[mud->free_list[0]] = (_value);               \
+            insertion_index = mud->free_list[0];                \
+            raUnsortedRemove(mud->free_list, 0);                \
+        } else {                                                \
+            raAdd((_map), (_value));                            \
+            insertion_index = rhdr->len - 1;                    \
         }                                                       \
+                                                                \
+        rhdr = ra_GetHeader((_map));                            \
+        mud = rhdr->userdata;                                   \
+        htInsert(&(mud->table), (_key), insertion_index);       \
     } while (0)
 
 header_function

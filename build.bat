@@ -64,15 +64,11 @@ REM Zi - Create debug info
 REM FC - Give full file paths in diagnostics
 REM Oi - Use compiler intrinsics (built-ins) when possible
 SET LanguageFlags= /std:c17 /DBUILD_INTERNAL /DBUILD_DEBUG /DBUILD_SLOW
-SET WarningFlags=/W4 /WX /wd4200 /wd4201 /wd4204 /wd4710 /wd5045
+SET WarningFlags=/W4 /WX /wd4200
 REM W4  - set warning level to max (equivalent to Clang's -Weverything)
 REM WX - treat warnings as errors
 REM Disabled Warnigs:
 REM     wd4200 - nonstandard extension used : zero-sized array in struct/union
-REM     wd4201 - nonstandard extension used : nameless struct/union
-REM     wd4204 - nonstandard extension used : non-constant aggregate initializer
-REM     wd4710 - function not inlined
-REM     wd5045 - Compiler will insert Spectre mitigation for memory load
 SET LinkerFlags= /Fe%TargetPath%
 
 SET CompilerExists=yes

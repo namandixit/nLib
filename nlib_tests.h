@@ -8,7 +8,7 @@
 # define NLIB_TESTS
 # include "nlib.h"
 
-# define CHECK_END(str) utTest(streq(buf, (str)) && ((unsigned) ret == strlen(str)))
+# define CHECK_END(str) do { utTest(streq(buf, (str)) && ((unsigned) ret == strlen(str))); memset(buf, 0, elemin(buf)); } while(0)
 # define SPRINTF(b, ...) printString(b, 1024, __VA_ARGS__)
 # define SNPRINTF(b, s, ...) (Sint)printString(b, 1024, __VA_ARGS__)
 
@@ -44,7 +44,7 @@ void printUnitTest (void)
     CHECK4("012 0x1e 0X3C", "%#o %#x %#X", 10u, 30u, 60u);
     CHECK2("", "%.0x", 0);
     CHECK2("",  "%.0d", 0);  // glibc gives "" as specified by C99(?)
-    CHECK3("33 5551", "%d %ld", (short)33, 555l);
+    CHECK3("33 5551", "%d %ld", (S16)33, (S64)5551);
 //    CHECK2("9888777666", "%llu", 9888777666llu); // TODO(naman): Implement %llu
     CHECK4("2 -3 %.", "%zd %td %.", (S64)2, (Dptr)-3, 23);
 

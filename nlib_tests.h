@@ -98,7 +98,7 @@ void printUnitTest (void)
 # endif // defined(NLIB_PRINT_NO_FLOAT)
 
     // %p
-    CHECK2("0000000000000000", "%p", (void*) NULL);
+    CHECK2("0000000000000000", "%p", (void*) NLIB_NULL);
 
     // %n
     CHECK3("aaa ", "%.3s %n", "aaaaaaaaaaaaa", &n);
@@ -128,7 +128,7 @@ void printUnitTest (void)
 # endif
 
     // length check
-    claim(SNPRINTF(NULL, 0, " %s     %d",  "b", 123) == 10);
+    claim(SNPRINTF(NLIB_NULL, 0, " %s     %d",  "b", 123) == 10);
 
 # if defined(NLIB_PRINT_TEST_AGAINST_LIBC)
     setlocale(LC_NUMERIC, "");  // C locale does not group digits
@@ -146,7 +146,7 @@ void printUnitTest (void)
 # endif
 
     // things not supported by glibc
-    CHECK2("null", "%s", (char*) NULL);
+    CHECK2("null", "%s", (char*) NLIB_NULL);
     CHECK2("100000000", "%b", 256);
     CHECK3("0b10 0B11", "%#b %#B", 2, 3);
 # if 0
@@ -161,7 +161,6 @@ void printUnitTest (void)
 # endif
 }
 
-# if defined(LANG_C)
 header_function
 void internUnitTest (void)
 {
@@ -188,17 +187,15 @@ void internUnitTest (void)
 
     return;
 }
-# endif
 
-# if defined(LANG_C)
 header_function
 void raUnitTest (void)
 {
-    S32 *buf = raCreate(buf);
-    utTest(buf != NULL);
+    ra(S32) buf = raCreate(buf);
+    utTest(ra_IsNULL(buf) == false);
 
     raAdd(buf, 42);
-    utTest(buf != NULL);
+    utTest(ra_IsNULL(buf) == false);
 
     raAdd(buf, 1234);
 
@@ -210,23 +207,21 @@ void raUnitTest (void)
 
     raDelete(buf);
 
-    utTest(buf == NULL);
+    utTest(ra_IsNULL(buf));
 
-    Char *stream = sbCreate();
+    String_Builder stream = sbCreate();
     sbPrint(stream, "Hello, %s\n", "World!");
     sbPrint(stream, "Still here? %d\n", 420);
     sbPrint(stream, "GO AWAY!!!\n");
-    utTest(streq(stream, "Hello, World!\nStill here? 420\nGO AWAY!!!\n"));
+    utTest(streq(raPtr(stream.str), "Hello, World!\nStill here? 420\nGO AWAY!!!\n"));
 
-    /* Char *stream2 = NULL; */
+    /* Char *stream2 = NLIB_NULL; */
     /* Char *string = "Naman Dixit"; */
     /* sbufPrintSized(stream2, 5, "%s", string); */
     /* printf("%s\n%s\n", stream2, string); */
     /* utTest(streq(stream2, "Naman")); */
 }
-# endif
 
-# if defined(LANG_C)
 header_function
 void htUnitTest (void)
 {
@@ -338,13 +333,11 @@ void htUnitTest (void)
 
     return;
 }
-# endif
 
-# if defined(LANG_C)
 header_function
 void mapUnitTest (void)
 {
-    F32 *fm = mapCreate(fm);
+    map(F32) fm = mapCreate(fm);
 
     /* No Entries */
     utTest(mapExists(fm, 0) == false);
@@ -355,21 +348,20 @@ void mapUnitTest (void)
 
     mapInsert(fm, 1, 1.0f);
 
-    Ra_Header *fmsh = ra_GetHeader(fm);
-    Map_Userdata *fmu = fmsh->userdata;
-    Size fh0 = fmu->table.slot_filled - 1;
-    Size fs0 = raElemin(fm) - 1;
+    map_DataPtrType(F32) fmd = map_GetDataPtr(fm);
+    Size fh0 = fmd->table.slot_filled - 1;
+    Size fs0 = map_DirtySlots(fm) - 1;
 
-    utTest(fmu->table.slot_filled == (fh0 + 1));
-    utTest(raElemin(fm) == (fs0 + 1));
+    utTest(fmd->table.slot_filled == (fh0 + 1));
+    utTest(map_DirtySlots(fm) == (fs0 + 1));
     utTest(mapExists(fm, 0) == false);
     utTest(mapExists(fm, 1) == true);
     utTest(mapLookup(fm, 1) == 1.0f);
     utTest(mapExists(fm, 2) == false);
 
     mapInsert(fm, 2, 42.0f);
-    utTest(fmu->table.slot_filled == (fh0 + 2));
-    utTest(raElemin(fm) == (fs0 + 2));
+    utTest(fmd->table.slot_filled == (fh0 + 2));
+    utTest(map_DirtySlots(fm) == (fs0 + 2));
     utTest(mapExists(fm, 0) == false);
     utTest(mapExists(fm, 1) == true);
     utTest(mapLookup(fm, 1) == 1.0f);
@@ -382,37 +374,36 @@ void mapUnitTest (void)
     utTest(mapLookup(fm, 2) == 24.0f);
 
     /* Removal Test */
-    Size fh_r = fmu->table.slot_filled;
+    Size fh_r = fmd->table.slot_filled;
 
     mapRemove(fm, 2);
     utTest(mapExists(fm, 2) == false);
-    utTest(fmu->table.slot_filled == fh_r - 1);
+    utTest(fmd->table.slot_filled == fh_r - 1);
 
     mapRemove(fm, 1);
     utTest(mapExists(fm, 1) == false);
-    utTest(fmu->table.slot_filled == fh_r - 2);
+    utTest(fmd->table.slot_filled == fh_r - 2);
 
     /* NULL Check */
     // NOTE(naman): We just crash on trying to use 0 as key
-    /* Size fh1 = fmu->table.slot_filled; */
-    /* Size fs1 = raElemin(fm); */
+    /* Size fh1 = fmd->table.slot_filled; */
+    /* Size fs1 = map_DirtySlots(fm); */
     /* mapInsert(fm, 0, 13.0f); */
-    /* utTest(fmu->table.slot_filled == fh1); */
-    /* utTest(raElemin(fm) == fs1); */
+    /* utTest(fmd->table.slot_filled == fh1); */
+    /* utTest(map_DirtySlots(fm) == fs1); */
     /* utTest(mapExists(fm, 0) == false); */
 
-    Size fh2 = fmu->table.slot_filled;
-    Size fs2 = raElemin(fm);
+    Size fh2 = fmd->table.slot_filled;
+    Size fs2 = map_DirtySlots(fm);
     mapRemove(fm, 0);
-    utTest(fmu->table.slot_filled == fh2);
-    utTest(raElemin(fm) == fs2);
+    utTest(fmd->table.slot_filled == fh2);
+    utTest(map_DirtySlots(fm) == fs2);
     utTest(mapExists(fm, 0) == false);
 
     mapDelete(fm);
 
     return;
 }
-# endif
 
 # if defined(LANG_C)
 

@@ -2,7 +2,7 @@
  * Creator: Naman Dixit
  * Notice: © Copyright 2018 Naman Dixit
  * SPDX-License-Identifier: 0BSD
- * Version: 391
+ * Version: 525
  */
 
 // TODO(naman): Make all these data structures handle allocation failure gracefully. This is especially
@@ -224,8 +224,8 @@
 # if defined(COMPILER_MSVC)
 
 #  define fallthrough
-#  define likely(x)
-#  define unlikely(x)
+#  define likely(x)   (x)
+#  define unlikely(x) (x)
 
 // NOTE(naman): MSVC doesn't seem to define max_align_t for C11 code, so this will suffice for now.
 // https://web.archive.org/web/20170804183620/https://msdn.microsoft.com/en-us/library/ycsb6wwf.aspx
@@ -426,15 +426,15 @@ header_function
 LPWSTR unicodeWin32UTF16FromUTF8 (Char *utf8)
 {
     int wcstr_length = MultiByteToWideChar(CP_UTF8, 0, utf8, -1, NLIB_NULL, 0);
-    LPWSTR wcstr = VirtualAlloc(NLIB_NULL, (DWORD)wcstr_length * sizeof(wchar_t),
-                                MEM_COMMIT, PAGE_READWRITE);
+    LPWSTR wcstr = (LPWSTR)VirtualAlloc(NLIB_NULL, (DWORD)wcstr_length * sizeof(wchar_t),
+                                        MEM_COMMIT, PAGE_READWRITE);
     MultiByteToWideChar(CP_UTF8, 0, utf8, -1, wcstr, wcstr_length);
 
     int normalized_length = NormalizeString(NormalizationC,
                                             wcstr, -1,
                                             NLIB_NULL, 0);
-    LPWSTR norm = VirtualAlloc(NLIB_NULL, (DWORD)normalized_length * sizeof(wchar_t),
-                               MEM_COMMIT, PAGE_READWRITE);
+    LPWSTR norm = (LPWSTR)VirtualAlloc(NLIB_NULL, (DWORD)normalized_length * sizeof(wchar_t),
+                                       MEM_COMMIT, PAGE_READWRITE);
     NormalizeString(NormalizationC, wcstr, -1, norm, normalized_length);
 
     VirtualFree(wcstr, 0, MEM_RELEASE);
@@ -1481,7 +1481,7 @@ header_function
 void ut_Test (Bool cond,
               Char *cond_str,
               Char *filename, U32 line_num) {
-    if (!(cond)) {
+    if (!cond) {
         report("Test Failed: (%s:%u) %s\n", filename, line_num, cond_str);
         quit();
     }
@@ -2305,23 +2305,25 @@ Size strsuffix (Char *str, Char *suf)
  */
 
 /* API ----------------------------------------
- * T* raCreate           (T *ptr)
- * T* raCreateSized      (T *ptr, Size min_capacity)
- * T* raCreateAlloc      (T *ptr, Memory_Allocator allocator)
- * T* raCreateAllocSized (T *ptr, Size min_capacity, Memory_Allocator allocator)
+ * ra(T)
+ * T* raCreate           (ra(T) ptr)
+ * T* raCreateSized      (ra(T) ptr, Size min_capacity)
+ * T* raCreateAlloc      (ra(T) ptr, Memory_Allocator allocator)
+ * T* raCreateAllocSized (ra(T) ptr, Size min_capacity, Memory_Allocator allocator)
  *
- * Size  raAdd         (T *ptr, T elem)
- * void  raDelete      (T *ptr)
- * void  raClear       (T *ptr) : Make everything zero
- * Size  raResize      (T *ptr, Size new_size) : Increase size of the underlying buffer
+ * void  raDelete      (ra(T) ptr)
  *
- * Size  raSizeof      (T *ptr)
- * Size  raElemin      (T *ptr)
- * Size  raMaxSizeof   (T *ptr)
- * Size  raMaxElemin   (T *ptr)
+ * Size  raAdd         (ra(T)ptr, T elem)
+ * void  raClear       (ra(T)ptr) : Make everything zero
+ * Size  raResize      (ra(T)ptr, Size new_size) : Increase size of the underlying buffer
  *
- * T*    raLast        (T *ptr) : Return the pointer to last filled element
- * T*    raOnePastLast (T *ptr) : Return the pointer to the first empty element
+ * Size  raSizeof      (ra(T)ptr)
+ * Size  raElemin      (ra(T)ptr)
+ * Size  raMaxSizeof   (ra(T)ptr)
+ * Size  raMaxElemin   (ra(T)ptr)
+ *
+ * T*    raLast        (ra(T)ptr) : Return the pointer to last filled element
+ * T*    raOnePastLast (ra(T)ptr) : Return the pointer to the first empty element
  *
  * Size  raUnsortedRemove (T* ptr, Size index)
  */
@@ -2345,19 +2347,29 @@ typedef struct Ra_Header {
 #  define ra_Cap(sb)          (ra_GetHeader(sb)->cap)
 
 #  define ra_IsFull(sb)       ((ra_Len(sb)+1) > ra_Cap(sb))
+#  define ra_IsNULL(sb)       ((sb) == NULL)
+
 #  define ra_CheckAndGrow(sb) (ra_IsFull(sb) ? ra_Grow((sb), sizeof(*(sb))) : (sb))
+
+#  define ra(T) T *
 
 #  define raCreate(var)                           ra_Create(sizeof(*(var)),  0,       memCRTGet())
 #  define raCreateSized(var, min_cap)             ra_Create(sizeof(*(var)),  min_cap, memCRTGet())
 #  define raCreateAlloc(var, alloc)               ra_Create(sizeof(*(var)),  0,       alloc)
 #  define raCreateAllocSized(var, min_cap, alloc) ra_Create(sizeof(*(var)),  min_cap, alloc)
 
+#  define raDelete(sb)      (ra_Delete((sb), sizeof(*sb)), (sb) = NULL)
+
 #  define raAdd(sb, ...)    ((sb) = ra_CheckAndGrow(sb),        \
                              (sb)[ra_Len(sb)] = (__VA_ARGS__),  \
                              ((ra_GetHeader(sb))->len)++)
-#  define raDelete(sb)      (ra_Delete((sb), sizeof(*sb)), (sb) = NULL)
+
+# define raRemoveUnsorted(sb, i) (((sb)[(i)] = (sb)[ra_Len(sb) - 1]),   \
+                                  ((ra_GetHeader(sb)->len)--))
+
 #  define raClear(sb)       (memset((sb), 0, raSizeof(sb)), ra_GetHeader(sb)->len = 0)
-#  define raResize(sb, n)   ((n) > raMaxElemin(sb) ?                    \
+
+#  define raResize(sb, n)   ((n) > ra_Cap(sb) ?                         \
                              ((sb) = ra_GrowToSize(sb, n, sizeof(*(sb)))) : \
                              sb)
 
@@ -2366,11 +2378,10 @@ typedef struct Ra_Header {
 #  define raMaxSizeof(sb)    (ra_Cap(sb) * sizeof(*(sb)))
 #  define raMaxElemin(sb)    (ra_Cap(sb))
 
+#  define raPtr(sb)          (sb)
 #  define raOnePastLast(sb)  ((sb) + ra_Len(sb))
 #  define raLast(sb)         ((sb) + (ra_Len(sb) - 1))
 
-# define raUnsortedRemove(sb, i) (((sb)[(i)] = (sb)[ra_Len(sb) - 1]),   \
-                                  ((ra_GetHeader(sb)->len)--))
 
 #  if defined(COMPILER_CLANG)
 #   pragma clang diagnostic push
@@ -2378,7 +2389,7 @@ typedef struct Ra_Header {
 #  endif
 
 header_function
-    void* ra_Create (Size elem_size, Size min_cap, Memory_Allocator allocator)
+void* ra_Create (Size elem_size, Size min_cap, Memory_Allocator allocator)
 {
     Size new_cap = (min_cap != 0) ? min_cap : 16;
     Size new_size = (new_cap * elem_size) + memAlignUp(sizeof(Ra_Header));
@@ -2432,21 +2443,169 @@ void* ra_Grow (void *buf, Size elem_size)
 #  if defined(COMPILER_CLANG)
 #   pragma clang diagnostic pop // -Wcast-align
 #  endif
-# endif // defined(LANG_C) && !defined(NLIB_EXCLUDE_RA)
+
+# elif defined(LANG_CPP) && !defined(NLIB_EXCLUDE_RA)
+
+template <typename T>
+struct Ra_Struct {
+    Size cap; // NOTE(naman): Maximum number of elements that can be stored
+    Size len; // NOTE(naman): Count of elements actually stored
+    Memory_Allocator allocator;
+    T *buf;
+
+    void _InsertElementAtIndexDirectlyWithoutUpdatingMetaData (Size index, T elem) {
+        buf[index] = elem;
+    }
+
+    Bool _IsTheVariablePointingToAllocatedBufferEqualToNULL (void) {
+        return buf == NLIB_NULL;
+    }
+
+    T operator[] (Size index) const {
+        T result = buf[index];
+        return result;
+    }
+
+    Bool _IsFull (void) {
+        return len + 1 > cap;
+    }
+
+    void Add (T elem) {
+        if (unlikely(_IsFull())) Grow();
+        buf[len] = elem;
+        len++;
+    }
+
+    void RemoveUnsorted (Size index) {
+        buf[index] = buf[len - 1];
+        len--;
+    }
+
+    void Clear (void) {
+        memset(buf, 0, len * sizeof(T));
+        len = 0;
+    }
+
+    void Resize (Size new_count) {
+        if (new_count > cap) {
+            GrowToSize(new_count);
+        }
+    }
+
+    Size Sizeof    (void) { return len * sizeof(T); }
+    Size Elemin    (void) { return len;             }
+    Size MaxSizeof (void) { return cap * sizeof(T); }
+    Size MaxElemin (void) { return len * sizeof(T); }
+
+    T* OnePastLast (void) {
+        return buf + len;
+    }
+
+    T* Last (void) {
+        return buf + (len - 1);
+    }
+
+    void GrowToSize (Size elem_count) {
+        Size old_size = MaxSizeof();
+
+        Size new_cap = mMax(elem_count, 16U);
+        Size new_size = new_cap * sizeof(T);
+
+        buf = (T *)memRealloc(allocator, buf, new_size, old_size);
+
+        cap = new_cap;
+    }
+
+    void Grow (void) {
+        Size new_cap = mMax(2 * cap, 16U);
+        GrowToSize(new_cap);
+    }
+};
+
+#  define ra(T) Ra_Struct<T>
+
+#  define ra_IsNULL(sb)       ((sb)._IsTheVariablePointingToAllocatedBufferEqualToNULL())
+
+template <typename T>
+header_function
+ra(T) ra_Create (ra(T) *, Size min_cap, Memory_Allocator allocator)
+{
+    ra(T) result = NLIB_ZERO_INIT_LIST;
+
+    Size new_cap = (min_cap != 0) ? min_cap : 16;
+    Size new_size = (new_cap * sizeof(T));
+
+    T *new_buffer = (T *)memAlloc(allocator, new_size);
+
+    result.cap = new_cap;
+    result.allocator = allocator;
+    result.buf = new_buffer;
+
+    return result;
+}
+
+#  define raCreate(var)                           ra_Create(&var, 0,       memCRTGet())
+#  define raCreateSized(var, min_cap)             ra_Create(&var, min_cap, memCRTGet())
+#  define raCreateAlloc(var, alloc)               ra_Create(&var, 0,       alloc)
+#  define raCreateAllocSized(var, min_cap, alloc) ra_Create(&var, min_cap, alloc)
+
+template <typename T>
+header_function
+void ra_Delete (ra(T) &sb)
+{
+    Size old_size = sb.MaxSizeof();
+    memDealloc(sb.allocator, sb.buf, old_size);
+    sb.buf = NLIB_NULL;
+    sb.~ra(T)();
+    return;
+}
+
+#  define raDelete(sb)      ra_Delete(sb)
+
+#  define raAdd(sb, ...)    ((sb).Add(__VA_ARGS__))
+
+# define raRemoveUnsorted(sb, i) ((sb).RemoveUnsorted(i))
+
+#  define raClear(sb)       ((sb).Clear())
+
+#  define raResize(sb, n)   ((sb).Resize(n))
+
+#  define raSizeof(sb)       ((sb).Sizeof())
+#  define raElemin(sb)       ((sb).Elemin())
+#  define raMaxSizeof(sb)    ((sb).MaxSizeof())
+#  define raMaxElemin(sb)    ((sb).MaxElemin())
+
+#  define raPtr(sb)          ((sb).buf)
+#  define raOnePastLast(sb)  ((sb).OnePastLast())
+#  define raLast(sb)         ((sb).Last())
+
+
+# endif // !defined(NLIB_EXCLUDE_RA)
 
 /* ===============================
  * String Builder (stringbuilder)
  */
 
-# if defined(LANG_C) && !defined(NLIB_EXCLUDE_STRING_BUILDER)
+# if !defined(NLIB_EXCLUDE_STRING_BUILDER)
 
-#  define sbCreate()                         ra_Create(sizeof(Char),  0,       memCRTGet())
-#  define sbCreateSized(min_cap)             ra_Create(sizeof(Char),  min_cap, memCRTGet())
-#  define sbCreateAlloc(alloc)               ra_Create(sizeof(Char),  0,       alloc)
-#  define sbCreateAllocSized(min_cap, alloc) ra_Create(sizeof(Char),  min_cap, alloc)
+typedef struct {
+    ra(Char) str;
+} String_Builder;
 
-#  define sbPrint(sb, ...)         ((sb) = sb_Print((sb), __VA_ARGS__))
-//#  define sbPrintSized(sb, s, ...) ((sb) = sb_PrintSized((sb), s, __VA_ARGS__))
+#  if defined(LANG_C)
+#   define sbCreate()                         (String_Builder){.str = ra_Create(sizeof(Char),  0,       memCRTGet())}
+#   define sbCreateSized(min_cap)             (String_Builder){.str = ra_Create(sizeof(Char),  min_cap, memCRTGet())}
+#   define sbCreateAlloc(alloc)               (String_Builder){.str = ra_Create(sizeof(Char),  0,       alloc)}
+#   define sbCreateAllocSized(min_cap, alloc) (String_Builder){.str = ra_Create(sizeof(Char),  min_cap, alloc)}
+#  elif defined(LANG_CPP)
+#   define sbCreate()                         {ra_Create((ra(Char)*)NULL,  0,       memCRTGet())}
+#   define sbCreateSized(min_cap)             {ra_Create((ra(Char)*)NULL,  min_cap, memCRTGet())}
+#   define sbCreateAlloc(alloc)               {ra_Create((ra(Char)*)NULL,  0,       alloc)}
+#   define sbCreateAllocSized(min_cap, alloc) {ra_Create((ra(Char)*)NULL,  min_cap, alloc)}
+#  endif
+
+#  define sbPrint(sb, ...)         ((sb).str = sb_Print((sb).str, __VA_ARGS__))
+//#  define sbPrintSized(sb, s, ...) ((sb).str = sb_PrintSized((sb).str, s, __VA_ARGS__))
 
 #  if defined(COMPILER_CLANG)
 #   pragma clang diagnostic push
@@ -2456,7 +2615,7 @@ void* ra_Grow (void *buf, Size elem_size)
 __attribute__((format(__printf__, 2, 3)))
 #  endif
 header_function
-Char* sb_Print (Char *buf, const Char *fmt, ...)
+ra(Char) sb_Print (ra(Char) buf, const Char *fmt, ...)
 {
     va_list args;
 
@@ -2473,7 +2632,12 @@ Char* sb_Print (Char *buf, const Char *fmt, ...)
         va_end(args);
     }
 
+#  if defined(LANG_C)
     ra_GetHeader(buf)->len += (n - 1);
+#  elif defined(LANG_CPP)
+    buf.len += (n - 1);
+#  endif
+
     return buf;
 }
 
@@ -2497,7 +2661,7 @@ Char* sb_Print (Char *buf, const Char *fmt, ...)
 #   pragma clang diagnostic pop // -Wformat-nonliteral
 #  endif
 
-# endif // defined(LANG_C) && !defined(NLIB_EXCLUDE_STRING_BUILDER)
+# endif // !defined(NLIB_EXCLUDE_STRING_BUILDER)
 
 /* ===============================
  * Intrusive Circular Doubly Linked List
@@ -2664,14 +2828,14 @@ void listSpliceInit (List_Node *list, List_Node *node)
  * Interning
  */
 
-# if defined(LANG_C) && !defined(NLIB_EXCLUDE_INTERN)
+# if !defined(NLIB_EXCLUDE_INTERN)
 #  define INTERN_EQUALITY(func_name) Bool func_name (void *a, void *b, Size b_index)
 typedef INTERN_EQUALITY(Intern_Equality_Function);
 
 typedef struct Intern {
     struct Intern_List {
-        Size *indices;
-        U8 *secondary_hashes;
+        ra(Size) indices;
+        ra(U8) secondary_hashes;
     } lists[256];
 } Intern;
 
@@ -2682,7 +2846,7 @@ Intern internCreate (void)
 
     for (Size i = 0; i < elemin(it.lists); i++) {
         it.lists[i].indices = raCreate(it.lists[i].indices);
-        it.lists[i].secondary_hashes = raCreate(it.lists[i].indices);
+        it.lists[i].secondary_hashes = raCreate(it.lists[i].secondary_hashes);
     }
 
     return it;
@@ -2694,7 +2858,7 @@ Bool internCheck (Intern *it, U8 hash1, U8 hash2,
                   void *datum, void *data, Intern_Equality_Function *eqf,
                   Size *result)
 {
-    if (it->lists[hash1].secondary_hashes != NULL) {
+    if (ra_IsNULL(it->lists[hash1].secondary_hashes) == false) {
         // Our data has probably been inserted already.
         // (or atleast some data with same hash has been inserted :)
         for (Size i = 0;
@@ -2703,7 +2867,7 @@ Bool internCheck (Intern *it, U8 hash1, U8 hash2,
             Size index = it->lists[hash1].indices[i];
             if ((it->lists[hash1].secondary_hashes[i] == hash2) && eqf(datum, data, index)) {
                 // This is our data, return it
-                if (result != NULL) {
+                if (result != NLIB_NULL) {
                     *result = index;
                 }
                 return true;
@@ -2770,7 +2934,7 @@ U8 internStringPearsonHash (void *buffer, Size len, Bool which)
             216, 131,  89,  21,  28, 133,  37, 153, 149,  80, 170,  68,   6, 169, 234, 151, // 16
         };
 
-    Char *string = buffer;
+    Char *string = (Char*)buffer;
 
     U8 hash = (U8)len;
     for (Size i = 0; i < len; i++) {
@@ -2786,15 +2950,15 @@ U8 internStringPearsonHash (void *buffer, Size len, Bool which)
 
 typedef struct Intern_String {
     Intern intern;
-    Char **strings;
+    ra(ra(Char)) strings;
 } Intern_String;
 
 header_function
 INTERN_EQUALITY(internStringEquality) {
-    Char *sa = a;
-    Char **ss = b;
-    Char *sb = ss[b_index];
-    Bool result = streq(sa, sb);
+    Char *sa = (Char*)a;
+    ra(Char) *ss = (ra(Char) *)b;
+    ra(Char) sb = ss[b_index];
+    Bool result = streq(sa, raPtr(sb));
     return result;
 }
 
@@ -2816,13 +2980,14 @@ Char *internString (Intern_String *is, Char *str)
 
     Size index = 0;
 
-    if (internCheck(&is->intern, hash1, hash2, str, is->strings, internStringEquality, &index)) {
-        Char *result = is->strings[index];
+    if (internCheck(&is->intern, hash1, hash2,
+                    str, raPtr(is->strings), internStringEquality, &index)) {
+        Char *result = raPtr(is->strings[index]);
         return result;
     } else {
         Size index_new = raElemin(is->strings);
 
-        Char *str_new = raCreate(str_new);
+        ra(Char) str_new = raCreate(str_new);
         for (Char *s = str; s[0] != '\0'; s++) {
             raAdd(str_new, s[0]);
         }
@@ -2831,7 +2996,7 @@ Char *internString (Intern_String *is, Char *str)
         raAdd(is->strings, str_new);
 
         internData(&is->intern, hash1, hash2, index_new);
-        Char *result = is->strings[index_new];
+        Char *result = raPtr(is->strings[index_new]);
         return result;
     }
 }
@@ -2844,11 +3009,12 @@ Char *internStringCheck (Intern_String *is, Char *str)
 
     Size index = 0;
 
-    if (internCheck(&is->intern, hash1, hash2, str, is->strings, &internStringEquality, &index)) {
-        Char *result = is->strings[index];
+    if (internCheck(&is->intern, hash1, hash2,
+                    str, raPtr(is->strings), &internStringEquality, &index)) {
+        Char *result = raPtr(is->strings[index]);
         return result;
     } else {
-        return NULL;
+        return NLIB_NULL;
     }
 }
 
@@ -2859,7 +3025,7 @@ void internStringDebugPrint (Intern_String *is)
 {
     for (Size i = 0; i < elemin(is->intern.lists); i++) {
         for (Size j = 0; j < raElemin(is->intern.lists[i].indices); j++) {
-            report("%s\n", is->strings[is->intern.lists[i].indices[j]]);
+            report("%s\n", raPtr(is->strings[is->intern.lists[i].indices[j]]));
         }
     }
 }
@@ -2868,7 +3034,7 @@ void internStringDebugPrint (Intern_String *is)
 
 typedef struct Intern_Integer {
     Intern intern;
-    U64 *integers;
+    ra(U64) integers;
 } Intern_Integer;
 
 header_function
@@ -2922,7 +3088,7 @@ U64 internInteger (Intern_Integer *ii, U64 num)
     Size index = 0;
 
     if (internCheck(&ii->intern, hash1, hash2,
-                    &num_copy, ii->integers, &internIntegerEquality, &index)) {
+                    &num_copy, raPtr(ii->integers), &internIntegerEquality, &index)) {
         return num;
     } else {
         raAdd(ii->integers, num);
@@ -2941,7 +3107,7 @@ U64 internIntegerCheck (Intern_Integer *ii, U64 num)
     Size index = 0;
 
     if (internCheck(&ii->intern, hash1, hash2,
-                    &num_copy, ii->integers, &internIntegerEquality, &index)) {
+                    &num_copy, raPtr(ii->integers), &internIntegerEquality, &index)) {
         return num;
     } else {
         return false;
@@ -2963,7 +3129,7 @@ U64 internIntegerCheck (Intern_Integer *ii, U64 num)
  * U64        htRemove (Hash_Table *ht, U64 key);
  */
 
-# if defined(LANG_C) && !defined(NLIB_EXCLUDE_HASH_TABLE)
+# if !defined(NLIB_EXCLUDE_HASH_TABLE)
 
 typedef struct Hash_Table {
     Hash_Universal univ;
@@ -2983,7 +3149,7 @@ typedef struct Hash_Table {
 header_function
 Hash_Table ht_Create (Size slots_atleast, Memory_Allocator allocator)
 {
-    Hash_Table ht = {0};
+    Hash_Table ht = NLIB_ZERO_INIT_LIST;
 
     // NOTE(naman): We try to make the initial hash table a bit larger than expected.
     // The reason for this is that if we have only a small amount of elements, we would
@@ -2996,8 +3162,8 @@ Hash_Table ht_Create (Size slots_atleast, Memory_Allocator allocator)
 
     ht.allocator = allocator;
 
-    ht.keys     = memAlloc(ht.allocator, ht.slot_count * sizeof(*(ht.keys)));
-    ht.values   = memAlloc(ht.allocator, ht.slot_count * sizeof(*(ht.values)));
+    ht.keys     = (U64*)memAlloc(ht.allocator, ht.slot_count * sizeof(*(ht.keys)));
+    ht.values   = (U64*)memAlloc(ht.allocator, ht.slot_count * sizeof(*(ht.values)));
 
     memset(ht.keys,   0, ht.slot_count * sizeof(*(ht.keys)));
     memset(ht.values, 0, ht.slot_count * sizeof(*(ht.values)));
@@ -3082,8 +3248,8 @@ U64 htInsert (Hash_Table *ht, U64 key, U64 value)
         Size k_size = ht->slot_count * sizeof(*(ht->keys));
         Size v_size = ht->slot_count * sizeof(*(ht->values));
 
-        ht->keys   = memAlloc(ht->allocator, k_size);
-        ht->values = memAlloc(ht->allocator, v_size);
+        ht->keys   = (U64*)memAlloc(ht->allocator, k_size);
+        ht->values = (U64*)memAlloc(ht->allocator, v_size);
 
         memset(ht->keys,   0, k_size);
         memset(ht->values, 0, v_size);
@@ -3158,20 +3324,34 @@ U64 htRemove (Hash_Table *ht, U64 key)
  */
 
 /* API ----------------------------------------
+ * T* mapCreate           (map(T) ptr)
+ * T* mapCreateSized      (map(T) ptr, Size min_capacity)
+ * T* mapCreateAlloc      (map(T) ptr, Memory_Allocator allocator)
+ * T* mapCreateAllocSized (map(T) ptr, Size min_capacity, Memory_Allocator allocator)
+ *
+ * void  mapDelete     (T *ptr)
+ *
  * void  mapInsert     (T *ptr, U64 key, T value)
  * void  mapRemove     (T *ptr, U64 key)
- * Bool   mapExists     (T *ptr, U64 key)
+ * Bool  mapExists     (T *ptr, U64 key)
  * T     mapLookup     (T *ptr, U64 key)
  * T*    mapGetRef     (T *ptr, U64 key)
- * void  mapDelete     (T *ptr)
  */
 
 # if defined(LANG_C) && !defined(NLIB_EXCLUDE_MAP)
 typedef struct Map_Userdata {
     Hash_Table table;
     Memory_Allocator allocator;
-    Size *free_list;
+    ra(Size) free_list;
 } Map_Userdata;
+
+#  define map(T) ra(T)
+
+#  define map_DataPtrType(T) Map_Userdata *
+#  define map_GetDataPtr(v)  (ra_GetHeader(v)->userdata)
+
+#  define map_DirtySlots(m) raElemin(m)
+#  define map_TotalSlots(m) raMaxElemin(m)
 
 #  define mapCreate(var)                           map_Create(sizeof(*(var)),  0,       memCRTGet())
 #  define mapCreateSized(var, min_cap)             map_Create(sizeof(*(var)),  min_cap, memCRTGet())
@@ -3208,7 +3388,7 @@ void* map_Create (Size elem_size, Size min_cap, Memory_Allocator allocator)
         if (raElemin(mud->free_list) > 0) {                     \
             (_map)[mud->free_list[0]] = (_value);               \
             insertion_index = mud->free_list[0];                \
-            raUnsortedRemove(mud->free_list, 0);                \
+            raRemoveUnsorted(mud->free_list, 0);                \
         } else {                                                \
             raAdd((_map), (_value));                            \
             insertion_index = rhdr->len - 1;                    \
@@ -3220,7 +3400,8 @@ void* map_Create (Size elem_size, Size min_cap, Memory_Allocator allocator)
     } while (0)
 
 header_function
-Bool mapExists (void *map, U64 key) {
+Bool mapExists (void *map, U64 key)
+{
     Ra_Header *rhdr = ra_GetHeader(map);
     Map_Userdata *mud = rhdr->userdata;
 
@@ -3230,10 +3411,6 @@ Bool mapExists (void *map, U64 key) {
     }
     return false;
 }
-
-#  define mapLookup(_map, _key) ((_map)[(htLookup(&((Map_Userdata*)(ra_GetHeader(_map))->userdata)->table, \
-                                                  (_key)))])
-#  define mapGetRef(_map, _key) (&mapLookup((_map), (_key)))
 
 header_function
 void mapRemove (void *map, U64 key)
@@ -3247,6 +3424,10 @@ void mapRemove (void *map, U64 key)
 
     return;
 }
+
+#  define mapLookup(_map, _key) ((_map)[(htLookup(&((Map_Userdata*)(ra_GetHeader(_map))->userdata)->table, \
+                                                  (_key)))])
+#  define mapGetRef(_map, _key) (&mapLookup((_map), (_key)))
 
 header_function
 void map_Delete (void *map, Size elem_size)
@@ -3264,7 +3445,110 @@ void map_Delete (void *map, Size elem_size)
 
 #  define mapDelete(_map) (map_Delete((_map), sizeof(*(_map))))
 
-# endif // LANG_C
+# elif defined(LANG_CPP) && !defined(NLIB_EXCLUDE_MAP)
+
+template <typename T>
+struct Map_Struct {
+    Hash_Table table;
+    Memory_Allocator allocator;
+    ra(Size) free_list;
+    ra(T) data;
+
+    void Insert (U64 key, T value) {
+        Size insertion_index = 0;
+
+        claim(key != 0);
+
+        if (raElemin(free_list) > 0) {
+            Size index = free_list[0];
+            data._InsertElementAtIndexDirectlyWithoutUpdatingMetaData(index, value);
+            insertion_index = free_list[0];
+            raRemoveUnsorted(free_list, 0);
+        } else {
+            raAdd(data, value);
+            insertion_index = raElemin(data) - 1;
+        }
+
+        htInsert(&table, key, insertion_index);
+    }
+
+    Bool Exists (U64 key) {
+        Size index = htLookup(&table, key);
+        if (index != 0) return true;
+        return false;
+    }
+
+    T Lookup (U64 key) {
+        U64 index = htLookup(&table, key);
+        T result = data[index];
+        return result;
+    }
+
+    T* GetRef (U64 key) {
+        U64 index = htLookup(&table, key);
+        T *result = &(data[index]);
+        return result;
+    }
+
+    void Remove (U64 key) {
+        Size index = htLookup(&table, key);
+        raAdd(free_list, index);
+        htRemove(&table, key);
+    }
+
+};
+
+#  define map(T) Map_Struct<T>
+
+#  define map_DirtySlots(m) raElemin(m.data)
+#  define map_TotalSlots(m) raMaxElemin(m.data)
+
+#  define map_DataPtrType(T) Map_Struct<T> *
+#  define map_GetDataPtr(v)  &v
+
+#  define mapCreate(var)                           map_Create(&var, 0,       memCRTGet())
+#  define mapCreateSized(var, min_cap)             map_Create(&var, min_cap, memCRTGet())
+#  define mapCreateAlloc(var, alloc)               map_Create(&var, 0,       alloc)
+#  define mapCreateAllocSized(var, min_cap, alloc) map_Create(&var, min_cap, alloc)
+
+template <typename T>
+header_function
+map(T) map_Create (map(T) *, Size min_cap, Memory_Allocator allocator)
+{
+    map(T) m = NLIB_ZERO_INIT_LIST;
+
+    m.data = raCreateAllocSized(m.data, min_cap, allocator);
+    m.data.len++;
+
+    m.table = htCreateAlloc(allocator);
+    m.free_list = raCreateAllocSized(m.free_list, min_cap, allocator);
+    m.allocator = allocator;
+
+    return m;
+}
+
+#  define mapDelete(m) map_Delete(m)
+
+template <typename T>
+header_function
+void map_Delete (map(T) &m)
+{
+    htDelete(m.table);
+    raDelete(m.free_list);
+    raDelete(m.data);
+
+    m.~map(T)();
+    return;
+}
+
+#  define mapInsert(m, k, v) ((m).Insert(k, v))
+#  define mapRemove(m, k)    ((m).Remove(k))
+
+#  define mapExists(m, k)   ((m).Exists(k))
+#  define mapLookup(m, k)   ((m).Lookup(k))
+#  define mapGetRef(m, k)   ((m).GetRef(k))
+
+# endif // !defined(NLIB_EXCLUDE_MAP)
 
 /* ==============
  * Concurrent Ring (Lock-based Multi-producer Multi-consumer)

@@ -9,6 +9,12 @@ Sint main (Sint argc, Char *argv[])
     unused_variable(argc);
     unused_variable(argv);
 
+    raUnitTest(); // Uses sbufPrint, so tests might clash with printUnitTest
+    htUnitTest();
+    internUnitTest();
+    mapUnitTest();
     printUnitTest();
-    return 0;
+    // ringLockedUnitTest();
+    // queueLockedUnitTest();
+   return 0;
 }

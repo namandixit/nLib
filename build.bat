@@ -32,55 +32,116 @@ PUSHD %BuildDirectory%
 ECHO Entering directory `%cd%'
 
 REM .....................................................................
-REM BUILD
+REM C
 REM `````````````````````````````````````````````````````````````````````
 
-SET Source=%ProjectRoot%\test.c
-SET Target=test.exe
-SET TargetPath=%BuildDirectory%\%Target%
+SET CSource=%ProjectRoot%\test.c
+SET CTarget=test.c.exe
+SET CTargetPath=%BuildDirectory%\%CTarget%
 
 REM LINK.EXE does some incremental linking thing-a-majig and deleting executable prevents it
-REM IF EXIST %Target% del %Target%
+REM IF EXIST %CTarget% del %CTarget%
 
 REM SYNTAX CHECK ========================================================
 
-SET SynCompiler=clang
-SET SynCompilerFlags=-fsyntax-only
-SET SynLanguageFlags=--std=c18 -DBUILD_INTERNAL -DBUILD_DEBUG -DBUILD_SLOW
-SET SynWarningFlags=-Weverything -Wpedantic -pedantic-errors -Werror ^
-                    -Wno-c++98-compat
+ECHO C Syntax Check (Clang) ===========================================
 
-WHERE %SynCompiler% >nul 2>&1
+SET CSynCompiler=clang
+SET CSynCompilerFlags=-fsyntax-only
+SET CSynLanguageFlags=--std=c18 -DBUILD_INTERNAL -DBUILD_DEBUG -DBUILD_SLOW
+SET CSynWarningFlags=-Weverything -Wpedantic -pedantic-errors -Werror ^
+                     -Wno-c++98-compat
+
+WHERE %CSynCompiler% >nul 2>&1
 IF %ERRORLEVEL% EQU 0 (
-    %SynCompiler% %SynCompilerFlags% %SynLanguageFlags% %SynWarningFlags% %Source%
+    %CSynCompiler% %CSynCompilerFlags% %CSynLanguageFlags% %CSynWarningFlags% %CSource%
 )
 
 REM COMPILING ===========================================================
 
-SET Compiler=cl
-SET CompilerFlags=/nologo /Zi /FC /Oi /I .
+ECHO C Compile (MSVC) =================================================
+
+SET CCompiler=cl
+SET CCompilerFlags=/nologo /Zi /FC /Oi
 REM nologo - Don't print MSVC version info upon invocation
 REM Zi - Create debug info
 REM FC - Give full file paths in diagnostics
 REM Oi - Use compiler intrinsics (built-ins) when possible
-SET LanguageFlags= /std:c17 /DBUILD_INTERNAL /DBUILD_DEBUG /DBUILD_SLOW
-SET WarningFlags=/W4 /WX /wd4200
+SET CLanguageFlags=/TC /std:c17 /DBUILD_INTERNAL /DBUILD_DEBUG /DBUILD_SLOW
+REM TC - Treat source file as C code
+SET CWarningFlags=/W4 /WX /wd4200
 REM W4  - set warning level to max (equivalent to Clang's -Weverything)
 REM WX - treat warnings as errors
 REM Disabled Warnigs:
 REM     wd4200 - nonstandard extension used : zero-sized array in struct/union
-SET LinkerFlags= /Fe%TargetPath%
+SET CLinkerFlags= /Fe%CTargetPath%
 
-SET CompilerExists=yes
-WHERE %Compiler% >nul 2>&1
-IF %ERRORLEVEL% NEQ 0 SET CompilerExists=no
+SET CCompilerExists=yes
+WHERE %CCompiler% >nul 2>&1
+IF %ERRORLEVEL% NEQ 0 SET CCompilerExists=no
 
-IF %CompilerExists%==yes (
-    %Compiler% %CompilerFlags% %LanguageFlags% %WarningFlags% %Source% %LinkerFlags%
+IF %CCompilerExists%==yes (
+    %CCompiler% %CCompilerFlags% %CLanguageFlags% %CWarningFlags% %CSource% %CLinkerFlags%
 )
 
-IF %CompilerExists%==no (
-    ECHO "MSVC installation not found"
+IF %CCompilerExists%==no (
+    ECHO MSVC installation not found
+)
+
+REM .....................................................................
+REM C++
+REM `````````````````````````````````````````````````````````````````````
+
+SET CPPSource=%ProjectRoot%\test.cpp
+SET CPPTarget=test.cpp.exe
+SET CPPTargetPath=%BuildDirectory%\%CPPTarget%
+
+REM LINK.EXE does some incremental linking thing-a-majig and deleting executable prevents it
+REM IF EXIST %CPPTarget% del %CPPTarget%
+
+REM SYNTAX CHECK ========================================================
+
+ECHO C++ Syntax Check (Clang) =========================================
+
+SET CPPSynCompiler=clang++
+SET CPPSynCompilerFlags=-fsyntax-only
+SET CPPSynLanguageFlags=--std=c++11 -DBUILD_INTERNAL -DBUILD_DEBUG -DBUILD_SLOW
+SET CPPSynWarningFlags=-Weverything -Wpedantic -pedantic-errors -Werror ^
+                       -Wno-old-style-cast -Wno-c++98-compat-pedantic -Wno-writable-strings
+
+WHERE %CPPSynCompiler% >nul 2>&1
+IF %ERRORLEVEL% EQU 0 (
+    %CPPSynCompiler% %CPPSynCompilerFlags% %CPPSynLanguageFlags% %CPPSynWarningFlags% %CPPSource%
+)
+
+REM COMPILING ===========================================================
+
+ECHO C++ Compile (MSVC) ===============================================
+
+SET CPPCompiler=cl
+SET CPPCompilerFlags=/nologo /Zi /FC /Oi
+REM nologo - Don't print MSVC version info upon invocation
+REM Zi - Create debug info
+REM FC - Give full file paths in diagnostics
+REM Oi - Use compiler intrinsics (built-ins) when possible
+SET CPPLanguageFlags=/TP /DBUILD_INTERNAL /DBUILD_DEBUG /DBUILD_SLOW
+REM TP - Treat source file as C++ code
+SET CPPWarningFlags=/W4 /WX
+REM W4  - set warning level to max (equivalent to Clang's -Weverything)
+REM WX - treat warnings as errors
+REM Disabled Warnigs:
+SET CPPLinkerFlags= /Fe%CPPTargetPath%
+
+SET CPPCompilerExists=yes
+WHERE %CPPCompiler% >nul 2>&1
+IF %ERRORLEVEL% NEQ 0 SET CPPCompilerExists=no
+
+IF %CPPCompilerExists%==yes (
+    %CPPCompiler% %CPPCompilerFlags% %CPPLanguageFlags% %CPPWarningFlags% %CPPSource% %CPPLinkerFlags%
+)
+
+IF %CPPCompilerExists%==no (
+    ECHO MSVC installation not found
 )
 
 POPD

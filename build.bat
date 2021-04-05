@@ -69,11 +69,12 @@ REM FC - Give full file paths in diagnostics
 REM Oi - Use compiler intrinsics (built-ins) when possible
 SET CLanguageFlags=/TC /std:c17 /DBUILD_INTERNAL /DBUILD_DEBUG /DBUILD_SLOW
 REM TC - Treat source file as C code
-SET CWarningFlags=/W4 /WX /wd4200
+SET CWarningFlags=/W4 /WX /wd4200 /wd4201
 REM W4  - set warning level to max (equivalent to Clang's -Weverything)
 REM WX - treat warnings as errors
 REM Disabled Warnigs:
 REM     wd4200 - nonstandard extension used : zero-sized array in struct/union
+REM     wd4201 - nonstandard extension used : nameless struct/union
 SET CLinkerFlags= /Fe%CTargetPath%
 
 SET CCompilerExists=yes
@@ -105,9 +106,10 @@ ECHO C++ Syntax Check (Clang) =========================================
 
 SET CPPSynCompiler=clang++
 SET CPPSynCompilerFlags=-fsyntax-only
-SET CPPSynLanguageFlags=--std=c++11 -DBUILD_INTERNAL -DBUILD_DEBUG -DBUILD_SLOW
+SET CPPSynLanguageFlags=--std=c++14 -DBUILD_INTERNAL -DBUILD_DEBUG -DBUILD_SLOW
 SET CPPSynWarningFlags=-Weverything -Wpedantic -pedantic-errors -Werror ^
-                       -Wno-old-style-cast -Wno-c++98-compat-pedantic -Wno-writable-strings
+                       -Wno-old-style-cast -Wno-c++98-compat-pedantic -Wno-writable-strings ^
+                       -Wno-gnu-anonymous-struct
 
 WHERE %CPPSynCompiler% >nul 2>&1
 IF %ERRORLEVEL% EQU 0 (
@@ -124,12 +126,13 @@ REM nologo - Don't print MSVC version info upon invocation
 REM Zi - Create debug info
 REM FC - Give full file paths in diagnostics
 REM Oi - Use compiler intrinsics (built-ins) when possible
-SET CPPLanguageFlags=/TP /DBUILD_INTERNAL /DBUILD_DEBUG /DBUILD_SLOW
+SET CPPLanguageFlags=/TP /std:c++14 /DBUILD_INTERNAL /DBUILD_DEBUG /DBUILD_SLOW
 REM TP - Treat source file as C++ code
-SET CPPWarningFlags=/W4 /WX
+SET CPPWarningFlags=/W4 /WX /wd4201
 REM W4  - set warning level to max (equivalent to Clang's -Weverything)
 REM WX - treat warnings as errors
 REM Disabled Warnigs:
+REM     wd4201 - nonstandard extension used : nameless struct/union
 SET CPPLinkerFlags= /Fe%CPPTargetPath%
 
 SET CPPCompilerExists=yes

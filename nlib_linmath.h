@@ -6,7 +6,15 @@
 
 #if !defined(NLIB_LINMATH_H_INCLUDE_GUARD)
 
-#include "mathematics.h"
+# if defined(LANG_C)
+#  define NLIB_LINMATH_ZERO_INIT_LIST {0}
+# elif defined(LANG_CPP)
+#  define NLIB_LINMATH_ZERO_INIT_LIST {}
+# endif
+
+# ifdef LANG_CPP
+extern "C" {
+# endif
 
 /* 2-D Vectors */
 
@@ -20,7 +28,7 @@ typedef union {
 header_function
 Vec2 vec2 (F32 x, F32 y)
 {
-    Vec2 result = {0};
+    Vec2 result = NLIB_LINMATH_ZERO_INIT_LIST;
     result.x = x;
     result.y = y;
 
@@ -78,7 +86,7 @@ Vec2 vec2Lerp (Vec2 v, Vec2 u, F32 factor)
 header_function
 F32 vec2Mag (Vec2 v)
 {
-    return mathSqrtF32((v.x * v.x) +
+    return mSqrtF32((v.x * v.x) +
                        (v.y * v.y));
 }
 
@@ -108,7 +116,7 @@ Vec2 vec2Norm (Vec2 v)
 
 typedef union {
     struct {
-        F32 x, y, z;
+        F32 x, y, z, _pad;
     };
     alignas(16) Byte alignment[16];
 } Vec3;
@@ -116,7 +124,11 @@ typedef union {
 header_function
 Vec3 vec3 (F32 x, F32 y, F32 z)
 {
-    Vec3 result = {.x = x, .y = y, .z = z};
+    Vec3 result = NLIB_LINMATH_ZERO_INIT_LIST;
+    result.x = x;
+    result.y = y;
+    result.z = z;
+
     return result;
 }
 
@@ -185,7 +197,7 @@ Vec3 vec3Lerp (Vec3 v, Vec3 u, F32 factor)
 header_function
 F32 vec3Mag (Vec3 v)
 {
-    return mathSqrtF32((v.x * v.x) +
+    return mSqrtF32((v.x * v.x) +
                        (v.y * v.y) +
                        (v.z * v.z));
 }
@@ -225,7 +237,13 @@ typedef union {
 header_function
 Quat quatNew (F32 r, F32 i, F32 j, F32 k)
 {
-    return (Quat){.r = r, .i = i, .j = j, .k = k};
+    Quat result = NLIB_LINMATH_ZERO_INIT_LIST;
+    result.r = r;
+    result.i = i;
+    result.j = j;
+    result.k = k;
+
+    return result;
 }
 
 static inline
@@ -249,7 +267,7 @@ F32 quatMagSq (Quat q)
 static inline
 F32 quatMag (Quat q)
 {
-    return mathSqrtF32(quatMagSq(q));
+    return mSqrtF32(quatMagSq(q));
 }
 
 static inline
@@ -365,7 +383,7 @@ Mat4 mat4Identity (void)
 header_function
 Mat4 mat4Add (Mat4 m, Mat4 n)
 {
-    Mat4 o = {0};
+    Mat4 o = NLIB_LINMATH_ZERO_INIT_LIST;
 
     for (int i = 0; i < 16; ++i) {
         o.elem[i] = m.elem[i] + n.elem[i];
@@ -377,7 +395,7 @@ Mat4 mat4Add (Mat4 m, Mat4 n)
 header_function
 Mat4 mat4Sub (Mat4 m, Mat4 n)
 {
-    Mat4 o = {0};
+    Mat4 o = NLIB_LINMATH_ZERO_INIT_LIST;
 
     for (int i = 0; i < 16; ++i) {
         o.elem[i] = m.elem[i] - n.elem[i];
@@ -390,7 +408,7 @@ Mat4 mat4Sub (Mat4 m, Mat4 n)
 header_function
 Mat4 mat4Mul (Mat4 m, Mat4 n)
 {
-    Mat4 o = {0};
+    Mat4 o = NLIB_LINMATH_ZERO_INIT_LIST;
 
     for (int i = 0; i < 16; i = i + 4) {
         for (int j = 0; j < 16; j = j + 4) {
@@ -408,7 +426,7 @@ Mat4 mat4Mul (Mat4 m, Mat4 n)
 header_function
 Mat4 mat4MulScalar (Mat4 m, F32 r)
 {
-    Mat4 n = {0};
+    Mat4 n = NLIB_LINMATH_ZERO_INIT_LIST;
 
     for (int i = 0; i < 16; ++i) {
         n.elem[i] = m.elem[i] * r;
@@ -818,7 +836,7 @@ Mat4 mat4OrthographicD3D11 (F32 width, F32 height, F32 near_plane, F32 far_plane
 header_function
 Mat4 mat4PerspectiveGL (F32 y_fov, F32 aspect, F32 near_plane, F32 far_plane)
 {
-    F32 a = 1.0f/mathTanF32(y_fov/2.0f);
+    F32 a = 1.0f/mTanF32(y_fov/2.0f);
 
     F32 plane_add = near_plane + far_plane;
     F32 plane_sub = near_plane - far_plane;
@@ -852,7 +870,7 @@ Mat4 mat4PerspectiveGL (F32 y_fov, F32 aspect, F32 near_plane, F32 far_plane)
 header_function
 Mat4 mat4PerspectiveD3D11 (F32 y_fov, F32 aspect, F32 near_plane, F32 far_plane)
 {
-    F32 a = 1.0f/mathTanF32(y_fov/2.0f);
+    F32 a = 1.0f/mTanF32(y_fov/2.0f);
 
     F32 plane_sub = near_plane - far_plane;
 
@@ -880,6 +898,10 @@ Mat4 mat4PerspectiveD3D11 (F32 y_fov, F32 aspect, F32 near_plane, F32 far_plane)
 
     return m;
 }
+
+# ifdef LANG_CPP
+}
+# endif
 
 #define NLIB_LINMATH_H_INCLUDE_GUARD
 #endif

@@ -6,7 +6,11 @@
 
 #if !defined(NLIB_COLOR_H_INCLUDE_GUARD)
 
-typedef union {
+#ifdef LANG_CPP
+extern "C" {
+#endif
+
+typedef union Color {
     F32 elem[4];
     struct { F32 r, g, b, a; } rgba; // Red, Blue, Green, Alpha
     struct { F32 h, s, v, a; } hsva; // Hue, Saturation, Value (brightness), Alpha
@@ -17,7 +21,12 @@ typedef union {
 header_function
 Color colorNew (F32 a, F32 b, F32 c, F32 d)
 {
-    Color result = (Color){.rgba = {a, b, c, d}};
+    Color result;
+    result.rgba.r = a;
+    result.rgba.g = b;
+    result.rgba.b = c;
+    result.rgba.a = d;
+
     return result;
 }
 
@@ -26,6 +35,10 @@ U32 colorBGRX32LE(U8 r, U8 g, U8 b)
 {
     return (((U32)r << 16U) | ((U32)g << 8U) | (U32)b);
 }
+
+#ifdef LANG_CPP
+}
+#endif
 
 #define NLIB_COLOR_H_INCLUDE_GUARD
 #endif

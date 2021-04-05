@@ -5,6 +5,9 @@
 
 #include "nlib_tests.h"
 
+#include "nlib_color.h"
+#include "nlib_linmath.h"
+
 Sint main (Sint argc, Char *argv[])
 {
     unused_variable(argc);

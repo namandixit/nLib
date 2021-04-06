@@ -2,7 +2,7 @@
  * Creator: Naman Dixit
  * Notice: © Copyright 2018 Naman Dixit
  * SPDX-License-Identifier: 0BSD
- * Version: 546
+ * Version: 629
  */
 
 // TODO(naman): Make all these data structures handle allocation failure gracefully. This is especially
@@ -325,6 +325,13 @@ typedef char                 Char;
 #  define NLIB_ZERO_INIT_LIST {}
 # endif
 
+# define gensym_uniq(prefix) NLIB_gensym2_(prefix, __COUNTER__)
+# define gensym_line(prefix) NLIB_gensym2_(prefix, __LINE__)
+# define gensym_func(prefix) NLIB_gensym2_(prefix, __func__)
+# define gensym_file(prefix) NLIB_gensym2_(prefix, __FILE__)
+
+# define NLIB_gensym2_(prefix, suffix) NLIB_gensym_cat_(prefix, suffix)
+# define NLIB_gensym_cat_(prefix, suffix) prefix ## suffix
 
 /* =======================
  * @Unicode
@@ -3188,6 +3195,60 @@ void htDelete (Hash_Table ht)
 }
 
 header_function
+Size ht_GetFilledSlot (Hash_Table *ht, Size *last_index_ptr,
+                       U64 *key_out, U64 *value_out)
+{
+    Bool found = 0;
+    Size index = 0;
+
+    Size last_index = 0;
+    if (last_index_ptr) last_index = (*last_index_ptr) + 1;
+
+    for (Size i = last_index; i < ht->slot_count; ++i) {
+        U64 key = ht->keys[i];
+        if (key != 0) {
+            found = true;
+            index = i;
+
+            U64 value = ht->values[i];
+            *key_out = key;
+            *value_out = value;
+
+            break;
+        }
+    }
+
+    if (found) {
+        return index;
+    } else {
+        *key_out = 0;
+        *value_out = 0;
+
+        return 0;
+    }
+}
+
+#define ht_ForEachWithStmt(arg_ht, arg_key, arg_val, arg_code_stmt)     \
+    goto gensym_line(jump_to_else);                                     \
+                                                                        \
+    while (true)                                                        \
+        if (true) {                                                     \
+            /* This block executes after the following code block */    \
+            break;                                                      \
+        } else gensym_line(jump_to_else):                               \
+            for (Size gensym_line(ht_i) = ht_GetFilledSlot((arg_ht),    \
+                                                           NLIB_NULL,   \
+                                                           &(arg_key),  \
+                                                           &(arg_val)); \
+                 (arg_code_stmt), (arg_key) != 0;                       \
+                 gensym_line(ht_i) = ht_GetFilledSlot((arg_ht),         \
+                                                      &(gensym_line(ht_i)), \
+                                                      &(arg_key),       \
+                                                      &(arg_val)))
+
+#define htForEach(arg_ht, arg_key, arg_val) ht_ForEachWithStmt(arg_ht, arg_key, arg_val, (void)arg_ht)
+
+header_function
 Bool ht_LinearProbeSearch (Hash_Table *ht, U64 key, U64 hash, Size *value_index)
 {
     Size index = 0;
@@ -3461,6 +3522,13 @@ void map_Delete (void *map, Size elem_size)
 
 #  define mapDelete(arg_map) (map_Delete((arg_map), sizeof(*(arg_map))))
 
+#define mapForEach(arg_map, arg_key, arg_val)                           \
+    U64 gensym_line(map_iter_ht_value) = 0;                             \
+    ht_ForEachWithStmt(&((Map_Userdata*)(ra_GetHeader(arg_map))->userdata)->table, \
+                       arg_key,                                         \
+                       gensym_line(map_iter_ht_value),                  \
+                       ((arg_val) = (arg_map)[gensym_line(map_iter_ht_value)]))
+
 # elif defined(LANG_CPP) && !defined(NLIB_EXCLUDE_MAP)
 
 template <typename T>
@@ -3513,6 +3581,14 @@ struct Map_Struct {
     }
 
 };
+
+#define mapForEach(arg_map, arg_key, _val)                              \
+    U64 gensym_line(map_iter_htarg_value) = 0;                          \
+    ht_ForEachWithStmt(&((arg_map).table),                              \
+                       (arg_key),                                       \
+                       gensym_line(map_iter_htarg_value),               \
+                       ((_val) = ((arg_map).data)[gensym_line(map_iter_htarg_value)]))
+
 
 #  define map(T) Map_Struct<T>
 

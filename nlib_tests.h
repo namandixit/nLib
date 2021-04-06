@@ -235,24 +235,65 @@ void htUnitTest (void)
     /* Insertion Test */
     Size f0 = ht.slot_filled;
 
+    htInsert(&ht, 0, 0);
+    utTest(ht.slot_filled == f0);
+    utTest(htLookup(&ht, 0) == 0);
+    utTest(htLookup(&ht, 1) == 0);
+    utTest(htLookup(&ht, 2) == 0);
+
+    htInsert(&ht, 0, 1);
+    utTest(ht.slot_filled == f0);
+    utTest(htLookup(&ht, 0) == 0);
+    utTest(htLookup(&ht, 1) == 0);
+    utTest(htLookup(&ht, 2) == 0);
+
+    htInsert(&ht, 1, 0);
+    utTest(ht.slot_filled == f0);
+    utTest(htLookup(&ht, 0) == 0);
+    utTest(htLookup(&ht, 1) == 0);
+    utTest(htLookup(&ht, 2) == 0);
+
     htInsert(&ht, 1, 1);
     utTest(ht.slot_filled == (f0 + 1));
     utTest(htLookup(&ht, 0) == 0);
     utTest(htLookup(&ht, 1) == 1);
     utTest(htLookup(&ht, 2) == 0);
 
+    htInsert(&ht, 1, 0); // Equivalent to htRemove
+    utTest(ht.slot_filled == f0);
+    utTest(htLookup(&ht, 0) == 0);
+    utTest(htLookup(&ht, 1) == 0);
+    utTest(htLookup(&ht, 2) == 0);
+
+    htInsert(&ht, 1, 10);
+    utTest(ht.slot_filled == (f0 + 1));
+    utTest(htLookup(&ht, 0) == 0);
+    utTest(htLookup(&ht, 1) == 10);
+    utTest(htLookup(&ht, 2) == 0);
+
     htInsert(&ht, 2, 42);
     utTest(ht.slot_filled == (f0 + 2));
     utTest(htLookup(&ht, 0) == 0);
-    utTest(htLookup(&ht, 1) == 1);
+    utTest(htLookup(&ht, 1) == 10);
     utTest(htLookup(&ht, 2) == 42);
 
     /* Duplicate Key */
     U64 v1 = htInsert(&ht, 2, 24);
     utTest(v1 == 42);
     utTest(htLookup(&ht, 0) == 0);
-    utTest(htLookup(&ht, 1) == 1);
+    utTest(htLookup(&ht, 1) == 10);
     utTest(htLookup(&ht, 2) == 24);
+
+    /* Iteration Test */
+    U64 k_i, v_i, c_i = 0;
+    htForEach (&ht, k_i, v_i) {
+        switch (k_i) {
+            case 0: utTest(v_i == 0);  c_i++; break;
+            case 1: utTest(v_i = 1);   c_i++; break;
+            case 2: utTest(v_i == 24); c_i++; break;
+        }
+    }
+    utTest(c_i == 2); // Only keys 1 and 2 wil be returned to us
 
     /* Removal Test */
     U64 v2 = htRemove(&ht, 2);
@@ -260,7 +301,7 @@ void htUnitTest (void)
     utTest(htLookup(&ht, 2) == 0);
 
     U64 v3 = htRemove(&ht, 1);
-    utTest(v3 == 1);
+    utTest(v3 == 10);
     utTest(htLookup(&ht, 1) == 0);
 
     /* NULL Check */
@@ -372,6 +413,17 @@ void mapUnitTest (void)
     mapInsert(fm, 2, 24.0f);
     utTest(mapLookup(fm, 1) == 1.0f);
     utTest(mapLookup(fm, 2) == 24.0f);
+
+    F32 v_i = 0.0f;
+    U64 k_i = 0;
+    Size c_i = 0;
+    mapForEach(fm, k_i, v_i) {
+        switch (k_i) {
+            case 1: utTest(v_i == 1.0f);  c_i++; break;
+            case 2: utTest(v_i == 24.0f); c_i++; break;
+        }
+    }
+    utTest(c_i == 2);
 
     /* Removal Test */
     Size fh_r = fmd->table.slot_filled;

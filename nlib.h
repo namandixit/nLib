@@ -1755,32 +1755,20 @@ void profilerDelete (Profiler *profiler)
 # if !defined(NLIB_EXCLUDE_BIT)
 
 // NOTE(naman): Bit vectors are supposed to be zero-indexed.
-// NOTE(naman): Base type of bit vectors shouldn't have size > 8 (to prevent shift overflow).
+// NOTE(naman): Base type of bit vectors shouldn't have size > 8 bytes (to prevent shift overflow).
 
 #  define bitToBytes(b) (((b)+(CHAR_BIT-1))/(CHAR_BIT))
 
-#  define bit_I(array, index) ((index)/(CHAR_BIT * sizeof(*(array))))
-#  define bit_M(array, index) ((index)%(CHAR_BIT * sizeof(*(array))))
+#  define bit_ValInBuf(array, index) ((index)/(CHAR_BIT * sizeof(*(array))))
+#  define bit_BitInVal(array, index) ((index)%(CHAR_BIT * sizeof(*(array))))
 #  define bitSet(array, index)                                          \
-    ((array)[bit_I(array, index)] |= (1LLU << bit_M(array, index)))
+    ((array)[bit_ValInBuf(array, index)] |= (1LLU << bit_BitInVal(array, index)))
 #  define bitReset(array, index)                                        \
-    ((array)[bit_I(array, index)] &= ~(1LLU << bit_M(array, index)))
+    ((array)[bit_ValInBuf(array, index)] &= ~(1LLU << bit_BitInVal(array, index)))
 #  define bitToggle(array, index)                                       \
-    ((array)[bit_I(array, index)] ^= ~(1LLU << bit_M(array, index)))
+    ((array)[bit_ValInBuf(array, index)] ^= ~(1LLU << bit_BitInVal(array, index)))
 #  define bitTest(array, index)                                         \
-    ((array)[bit_I(array, index)] & (1LLU << bit_M(array, index)))
-
-#  if defined(LANG_C) && LANG_C >= 2011
-#   define bitFindMSB(x) _Generic((x),                  \
-                                  U32: bitFindMSBU32,   \
-                                  U64: bitFindMSBU64,   \
-        )(x)
-
-#   define bitFindLSB(x) _Generic((x),                  \
-                                  U32: bitFindLSBU32,   \
-                                  U64: bitFindLSBU64,   \
-        )(x)
-#  endif // LANG_C
+    ((array)[bit_ValInBuf(array, index)] & (1LLU << bit_BitInVal(array, index)))
 
 #  if defined(COMPILER_MSVC)
 
@@ -1867,6 +1855,23 @@ U64 bitFindLSBU64 (U64 x)
 }
 
 #  endif
+
+#  if defined(LANG_C) && LANG_C >= 2011
+#   define bitFindMSB(x) _Generic((x),                  \
+                                  U32: bitFindMSBU32,   \
+                                  U64: bitFindMSBU64,   \
+        )(x)
+
+#   define bitFindLSB(x) _Generic((x),                  \
+                                  U32: bitFindLSBU32,   \
+                                  U64: bitFindLSBU64,   \
+        )(x)
+#  elif defined(LANG_CPP)
+header_function U32 bitFindMSB (U32 x) { return bitFindMSBU32(x); }
+header_function U64 bitFindMSB (U64 x) { return bitFindMSBU64(x); }
+header_function U32 bitFindLSB (U32 x) { return bitFindLSBU32(x); }
+header_function U64 bitFindLSB (U64 x) { return bitFindLSBU64(x); }
+#  endif // !LANG_C && !LANG_CPP
 
 # endif // NLIB_EXCLUDE_BIT
 
@@ -3183,7 +3188,7 @@ void htDelete (Hash_Table ht)
 }
 
 header_function
-Bool ht_LinearProbeSearch (Hash_Table *ht, U64 key, U64 hash, Size *value)
+Bool ht_LinearProbeSearch (Hash_Table *ht, U64 key, U64 hash, Size *value_index)
 {
     Size index = 0;
     Bool found = false;
@@ -3196,7 +3201,7 @@ Bool ht_LinearProbeSearch (Hash_Table *ht, U64 key, U64 hash, Size *value)
         }
     }
 
-    *value = index;
+    *value_index = index;
 
     return found;
 }
@@ -3222,13 +3227,20 @@ U64 ht_LinearProbeInsertion (Hash_Table *ht,
     return result_value;
 }
 
+header_function U64 htRemove (Hash_Table *ht, U64 key); // Forward Declaration
+
 header_function
 U64 htInsert (Hash_Table *ht, U64 key, U64 value)
 {
     // FIXME(naman): Figure out the correct condition on which to resize on.
     const Uint max_collisions_allowed = (Uint)ht->slot_count;
 
-    if ((key == 0) || (value == 0)) return 0;
+    if (key == 0) {
+        return 0;
+    } else if (value == 0) {
+        U64 result = htRemove(ht, key);
+        return result;
+    }
 
     if ((ht->collision_count > max_collisions_allowed) ||
         ((2 * ht->slot_filled) >= ht->slot_count)) {
@@ -3375,28 +3387,28 @@ void* map_Create (Size elem_size, Size min_cap, Memory_Allocator allocator)
     return value_ra;
 }
 
-// FIXME(naman): Once C23 comes out, use typeof() or auto to assign _value to a variable,
+// FIXME(naman): Once C23 comes out, use typeof() or auto to assign arg_value to a variable,
 // then move everything into a function (since value can then be passed as pointer)
-#  define mapInsert(_map, _key, _value) do {                    \
-        Ra_Header *rhdr = ra_GetHeader((_map));                 \
+#  define mapInsert(arg_map, arg_key, arg_value) do {           \
+        Ra_Header *rhdr = ra_GetHeader((arg_map));              \
         Map_Userdata *mud = rhdr->userdata;                     \
                                                                 \
         Size insertion_index = 0;                               \
                                                                 \
-        claim(_key != 0);                                       \
+        claim(arg_key != 0);                                    \
                                                                 \
         if (raElemin(mud->free_list) > 0) {                     \
-            (_map)[mud->free_list[0]] = (_value);               \
+            (arg_map)[mud->free_list[0]] = (arg_value);         \
             insertion_index = mud->free_list[0];                \
             raRemoveUnsorted(mud->free_list, 0);                \
         } else {                                                \
-            raAdd((_map), (_value));                            \
+            raAdd((arg_map), (arg_value));                      \
             insertion_index = rhdr->len - 1;                    \
         }                                                       \
                                                                 \
-        rhdr = ra_GetHeader((_map));                            \
+        rhdr = ra_GetHeader((arg_map));                         \
         mud = rhdr->userdata;                                   \
-        htInsert(&(mud->table), (_key), insertion_index);       \
+        htInsert(&(mud->table), (arg_key), insertion_index);    \
     } while (0)
 
 header_function
@@ -3404,6 +3416,8 @@ Bool mapExists (void *map, U64 key)
 {
     Ra_Header *rhdr = ra_GetHeader(map);
     Map_Userdata *mud = rhdr->userdata;
+
+    if (key == 0) return false;
 
     Size index = htLookup(&(mud->table), key);
     if (index != 0) {
@@ -3418,6 +3432,8 @@ void mapRemove (void *map, U64 key)
     Ra_Header *rhdr = ra_GetHeader(map);
     Map_Userdata *mud = rhdr->userdata;
 
+    if (key == 0) return;
+
     Size index = htLookup(&(mud->table), key);
     raAdd(mud->free_list, index);
     htRemove(&(mud->table), key);
@@ -3425,9 +3441,9 @@ void mapRemove (void *map, U64 key)
     return;
 }
 
-#  define mapLookup(_map, _key) ((_map)[(htLookup(&((Map_Userdata*)(ra_GetHeader(_map))->userdata)->table, \
-                                                  (_key)))])
-#  define mapGetRef(_map, _key) (&mapLookup((_map), (_key)))
+#  define mapLookup(arg_map, arg_key) ((arg_map)[(htLookup(&((Map_Userdata*)(ra_GetHeader(arg_map))->userdata)->table, \
+                                                           (arg_key)))])
+#  define mapGetRef(arg_map, arg_key) (&mapLookup((arg_map), (arg_key)))
 
 header_function
 void map_Delete (void *map, Size elem_size)
@@ -3443,7 +3459,7 @@ void map_Delete (void *map, Size elem_size)
     ra_Delete(map, elem_size);
 }
 
-#  define mapDelete(_map) (map_Delete((_map), sizeof(*(_map))))
+#  define mapDelete(arg_map) (map_Delete((arg_map), sizeof(*(arg_map))))
 
 # elif defined(LANG_CPP) && !defined(NLIB_EXCLUDE_MAP)
 

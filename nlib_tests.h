@@ -417,7 +417,7 @@ header_function
 void ringLockedUnitTest (void)
 {
 #  if defined(OS_WINDOWS)
-    report("ringLocked not implemented\n");
+    report("ringLocked not implemented on Windows\n");
 #  else
     Size *r = ringLockedCreate(Size, 4);
 
@@ -451,7 +451,7 @@ header_function
 void queueLockedUnitTest (void)
 {
 #  if defined(OS_WINDOWS)
-    report("queueLocked not implemented\n");
+    report("queueLocked not implemented on Windows\n");
 #  else
     typedef struct QE {
         Queue_Locked_Entry entry;

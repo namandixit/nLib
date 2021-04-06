@@ -675,11 +675,11 @@ Size printStringVarArg (Char *buffer, Size buffer_size, Char const *format, va_l
     Size needed_size = 0;
     Bool resume_output = true;
 
-#  define IS_OUTPUT_RESUMABLE(arg__space)       \
+#  define IS_OUTPUT_RESUMABLE(arg_space)        \
     do {                                        \
         if (resume_output &&                    \
             ((buffer == NLIB_NULL) ||           \
-             ((Uptr)(buf + (Uptr)arg__space) >= \
+             ((Uptr)(buf + (Uptr)arg_space) >=  \
               (Uptr)(buffer + buffer_size)))) { \
             resume_output = false;              \
         }                                       \
@@ -1513,7 +1513,7 @@ typedef struct {
 
     Bool grouped_reads;
 
-    Byte _pad[7];
+    Byte pad_[7];
 #  endif
 } Profiler;
 
@@ -1569,7 +1569,7 @@ typedef struct {
     U64 time_enabled;
     U64 time_running;
     U64 id;
-} Profiler__Linux_Output;
+} Profiler_Linux_Output_;
 
 #   if defined(LANG_CPP)
 #    define FLEXIBLE_ARRAY_MEMBER_SYNTAX 0
@@ -1584,12 +1584,12 @@ typedef struct {
         U64 value;
         U64 id;
     } values[FLEXIBLE_ARRAY_MEMBER_SYNTAX];
-} Profiler__Linux_Group_Output;
+} Profiler_Linux_Group_Output_;
 #   undef FLEXIBLE_ARRAY_MEMBER_SYNTAX
 
 header_function
-int Profiler__LinuxPerfEventOpen (struct perf_event_attr *hw_event, pid_t pid,
-                                  int cpu, int group_fd, unsigned long flags)
+int profiler_LinuxPerfEventOpen (struct perf_event_attr *hw_event, pid_t pid,
+                                 int cpu, int group_fd, unsigned long flags)
 {
     int ret = (int)syscall(__NR_perf_event_open, hw_event, pid, cpu, group_fd, flags);
     return ret;
@@ -1616,7 +1616,7 @@ Profiler profilerCreate (U64 flags)
 
         profiler.grouped_reads = (group_leader.read_format & PERF_FORMAT_GROUP) != 0;
 
-        profiler.group_leader_fd = Profiler__LinuxPerfEventOpen(&group_leader, 0, -1, -1, 0);
+        profiler.group_leader_fd = profiler_LinuxPerfEventOpen(&group_leader, 0, -1, -1, 0);
         if (profiler.group_leader_fd == -1) {
             report("Error opening leader %llx\n", group_leader.config);
             return profiler;
@@ -1632,7 +1632,7 @@ Profiler profilerCreate (U64 flags)
             .config = PERF_COUNT_HW_REF_CPU_CYCLES,
         };
 
-        profiler.cycles_fd = Profiler__LinuxPerfEventOpen(&cycles, 0, -1, profiler.group_leader_fd, 0);
+        profiler.cycles_fd = profiler_LinuxPerfEventOpen(&cycles, 0, -1, profiler.group_leader_fd, 0);
 
         if (profiler.cycles_fd == -1) {
             report("Error opening leader %llx\n", cycles.config);
@@ -1649,7 +1649,7 @@ Profiler profilerCreate (U64 flags)
             .config = PERF_COUNT_HW_INSTRUCTIONS,
         };
 
-        profiler.instructions_fd = Profiler__LinuxPerfEventOpen(&instructions, 0, -1, profiler.group_leader_fd, 0);
+        profiler.instructions_fd = profiler_LinuxPerfEventOpen(&instructions, 0, -1, profiler.group_leader_fd, 0);
 
         if (profiler.instructions_fd == -1) {
             report("Error opening leader %llx\n", instructions.config);
@@ -1666,7 +1666,7 @@ Profiler profilerCreate (U64 flags)
             .config = PERF_COUNT_SW_TASK_CLOCK ,
         };
 
-        profiler.task_clock_fd = Profiler__LinuxPerfEventOpen(&task_clock, 0, -1, profiler.group_leader_fd, 0);
+        profiler.task_clock_fd = profiler_LinuxPerfEventOpen(&task_clock, 0, -1, profiler.group_leader_fd, 0);
 
         if (profiler.task_clock_fd == -1) {
             report("Error opening leader %llx\n", task_clock.config);
@@ -1699,12 +1699,12 @@ Profiler_Result profilerEndProfile (Profiler *profiler)
 
         if (profiler->grouped_reads) {
             Char buffer[4096]; // NOTE(naman): Make sure this isn't changed to be too big for stack
-            static_assert(sizeof(buffer) >= (sizeof(Profiler__Linux_Group_Output) +
+            static_assert(sizeof(buffer) >= (sizeof(Profiler_Linux_Group_Output_) +
                                              Profiler_TOTAL * 2 * sizeof(U64)),
                           "Profiler (Linux): Buffer is not large enough to hold all data of all events");
             read(profiler->group_leader_fd, buffer, sizeof(buffer));
 
-            Profiler__Linux_Group_Output* output = (Profiler__Linux_Group_Output*)buffer;
+            Profiler_Linux_Group_Output_* output = (Profiler_Linux_Group_Output_*)buffer;
 
 #   define EVENT_IS(s, C) ((output->values[i].id == profiler->s##_id) && profilerHasFlag(profiler, Profiler_##C))
             for (U64 i = 0; i < output->count; i++) {
@@ -1718,7 +1718,7 @@ Profiler_Result profilerEndProfile (Profiler *profiler)
             }
 #   undef EVENT_IS
         } else {
-            Profiler__Linux_Output cycles, instructions, time;
+            Profiler_Linux_Output_ cycles, instructions, time;
             read(profiler->cycles_fd, &cycles, sizeof(cycles));
             read(profiler->instructions_fd, &instructions, sizeof(instructions));
             read(profiler->task_clock_fd, &time, sizeof(time));
@@ -2337,7 +2337,7 @@ typedef struct Ra_Header {
     Size len; // NOTE(naman): Count of elements actually stored
     void *userdata;
     Memory_Allocator allocator;
-    Byte _pad[8];
+    Byte pad_[8];
     alignas(alignof(max_align_t)) Byte buf[];
 } Ra_Header;
 
@@ -2453,11 +2453,11 @@ struct Ra_Struct {
     Memory_Allocator allocator;
     T *buf;
 
-    void _InsertElementAtIndexDirectlyWithoutUpdatingMetaData (Size index, T elem) {
+    void InsertElementAtIndexDirectlyWithoutUpdatingMetaData_ (Size index, T elem) {
         buf[index] = elem;
     }
 
-    Bool _IsTheVariablePointingToAllocatedBufferEqualToNULL (void) {
+    Bool IsTheVariablePointingToAllocatedBufferEqualToNULL_ (void) {
         return buf == NLIB_NULL;
     }
 
@@ -2466,12 +2466,12 @@ struct Ra_Struct {
         return result;
     }
 
-    Bool _IsFull (void) {
+    Bool IsFull_ (void) {
         return len + 1 > cap;
     }
 
     void Add (T elem) {
-        if (unlikely(_IsFull())) Grow();
+        if (unlikely(IsFull_())) Grow();
         buf[len] = elem;
         len++;
     }
@@ -2524,7 +2524,7 @@ struct Ra_Struct {
 
 #  define ra(T) Ra_Struct<T>
 
-#  define ra_IsNULL(sb)       ((sb)._IsTheVariablePointingToAllocatedBufferEqualToNULL())
+#  define ra_IsNULL(sb)       ((sb).IsTheVariablePointingToAllocatedBufferEqualToNULL_())
 
 template <typename T>
 header_function
@@ -2696,7 +2696,7 @@ typedef struct List_Node {
 #  define listNodeInit(ptr) do{(ptr)->next = (ptr); (ptr)->prev = (ptr);}while(0)
 
 header_function
-void list__Add (List_Node *new, List_Node *prev, List_Node *next)
+void list_Add (List_Node *new, List_Node *prev, List_Node *next)
 {
     next->prev = new;
     new->next = next;
@@ -2707,17 +2707,17 @@ void list__Add (List_Node *new, List_Node *prev, List_Node *next)
 header_function
 void listAddAfter (List_Node *new, List_Node *after_this)
 {
-    list__Add(new, after_this, after_this->next);
+    list_Add(new, after_this, after_this->next);
 }
 
 header_function
 void listAddBefore (List_Node *new, List_Node *before_this)
 {
-    list__Add(new, before_this->prev, before_this);
+    list_Add(new, before_this->prev, before_this);
 }
 
 header_function
-void list__RemoveNodeBetween (List_Node * prev, List_Node * next)
+void list_RemoveNodeBetween (List_Node * prev, List_Node * next)
 {
     next->prev = prev;
     prev->next = next;
@@ -2726,7 +2726,7 @@ void list__RemoveNodeBetween (List_Node * prev, List_Node * next)
 header_function
 void listRemove (List_Node *entry)
 {
-    list__RemoveNodeBetween(entry->prev, entry->next);
+    list_RemoveNodeBetween(entry->prev, entry->next);
     entry->next = NULL;
     entry->prev = NULL;
 }
@@ -2734,7 +2734,7 @@ void listRemove (List_Node *entry)
 header_function
 void listRemoveAndInit (List_Node *entry)
 {
-    list__RemoveNodeBetween(entry->prev, entry->next);
+    list_RemoveNodeBetween(entry->prev, entry->next);
     listNodeInit(entry);
 }
 
@@ -2768,14 +2768,14 @@ void listSwap(List_Node *entry1, List_Node *entry2)
 header_function
 void listMoveAfter (List_Node *list, List_Node *after_this)
 {
-    list__RemoveNodeBetween(list->prev, list->next);
+    list_RemoveNodeBetween(list->prev, list->next);
     listAddAfter(list, after_this);
 }
 
 header_function
 void listMoveBefore (List_Node *list, List_Node *before_this)
 {
-    list__RemoveNodeBetween(list->prev, list->next);
+    list_RemoveNodeBetween(list->prev, list->next);
     listAddBefore(list, before_this);
 }
 
@@ -2788,7 +2788,7 @@ Bool listIsEmpty (List_Node *node)
 
 // Splice in a List list, between the Nodes node and node->next
 header_function
-void list__Splice (List_Node *list, List_Node *node)
+void list_Splice (List_Node *list, List_Node *node)
 {
     List_Node *first = list->next;
     List_Node *last = list->prev;
@@ -2805,14 +2805,14 @@ void list__Splice (List_Node *list, List_Node *node)
 header_function
 void listSplice (List_Node *list, List_Node *node)
 {
-    if (!listIsEmpty(list)) list__Splice(list, node);
+    if (!listIsEmpty(list)) list_Splice(list, node);
 }
 
 header_function
 void listSpliceInit (List_Node *list, List_Node *node)
 {
     if (!listIsEmpty(list)) {
-        list__Splice(list, node);
+        list_Splice(list, node);
         listNodeInit(list);
     }
 }
@@ -3461,7 +3461,7 @@ struct Map_Struct {
 
         if (raElemin(free_list) > 0) {
             Size index = free_list[0];
-            data._InsertElementAtIndexDirectlyWithoutUpdatingMetaData(index, value);
+            data.InsertElementAtIndexDirectlyWithoutUpdatingMetaData_(index, value);
             insertion_index = free_list[0];
             raRemoveUnsorted(free_list, 0);
         } else {
@@ -3568,7 +3568,7 @@ void map_Delete (map(T) &m)
 
 #  if defined(OS_LINUX)
 
-typedef struct Ring_Locked__Head {
+typedef struct Ring_Locked_Header {
     sem_t fill_count; // How many are filled?
     sem_t empty_count; // How many are empty?
     pthread_mutex_t buffer_lock;
@@ -3578,19 +3578,19 @@ typedef struct Ring_Locked__Head {
     Size allocation_size;
     Byte _pad[8];
     alignas(alignof(max_align_t)) Byte buffer[];
-} Ring_Locked__Head;
+} Ring_Locked_Header;
 
-#   define ringLockedCreate(type, size) ringLocked__Create(sizeof(type), size)
+#   define ringLockedCreate(type, size) ringLocked_Create(sizeof(type), size)
 
 header_function
-void* ringLocked__Create (Size elemsize, Size buffersize)
+void* ringLocked_Create (Size elemsize, Size buffersize)
 {
     Size ring_size = elemsize * buffersize;
-    Size header_size = memAlignUp(sizeof(Ring_Locked__Head));
+    Size header_size = memAlignUp(sizeof(Ring_Locked_Header));
     Size total_size = header_size + ring_size;
 
-    Ring_Locked__Head *head = memAlloc(NLIB_RING_LOCKED_ALLOCATOR, total_size);
-    *head = (Ring_Locked__Head)NLIB_ZERO_INIT_LIST;
+    Ring_Locked_Header *head = memAlloc(NLIB_RING_LOCKED_ALLOCATOR, total_size);
+    *head = (Ring_Locked_Header)NLIB_ZERO_INIT_LIST;
 
     head->allocation_size = total_size;
 
@@ -3604,10 +3604,10 @@ void* ringLocked__Create (Size elemsize, Size buffersize)
     return result;
 }
 
-#   define ringLocked__GetHead(r) containerof(r, Ring_Locked__Head, buffer)
+#   define ringLocked_GetHead(r) containerof(r, Ring_Locked_Header, buffer)
 
 #   define ringLockedPush(ring, elem) do {                      \
-        Ring_Locked__Head *head = ringLocked__GetHead(ring);    \
+        Ring_Locked_Header *head = ringLocked_GetHead(ring);    \
                                                                 \
         sem_wait(&head->empty_count);                           \
         pthread_mutex_lock(&head->buffer_lock);                 \
@@ -3621,7 +3621,7 @@ void* ringLocked__Create (Size elemsize, Size buffersize)
     } while (0)
 
 #   define ringLockedPull(ring, dest) do {                              \
-        Ring_Locked__Head *head = ringLocked__GetHead(ring);            \
+        Ring_Locked_Header *head = ringLocked_GetHead(ring);            \
                                                                         \
         sem_wait(&head->fill_count);                                    \
         pthread_mutex_lock(&head->buffer_lock);                         \
@@ -3638,7 +3638,7 @@ void* ringLocked__Create (Size elemsize, Size buffersize)
 header_function
 void ringLockedDelete (void *ring)
 {
-    Ring_Locked__Head *head = ringLocked__GetHead(ring);
+    Ring_Locked_Header *head = ringLocked_GetHead(ring);
     memDealloc(NLIB_RING_LOCKED_ALLOCATOR, head, head->allocation_size);
 }
 
@@ -3668,17 +3668,17 @@ void ringLockedDelete (void *ring)
 
 typedef List_Node Queue_Locked_Entry;
 
-typedef struct Queue_Locked__Head {
+typedef struct Queue_Locked_Head_Node_ {
     pthread_mutex_t list_lock;
     pthread_cond_t  list_filled_signal;
     Queue_Locked_Entry list;
-} Queue_Locked__Head;
+} Queue_Locked_Head_Node_;
 
 header_function
 Queue_Locked_Entry* queueLockedCreate (void)
 {
-    Queue_Locked__Head *qh = memAlloc(NLIB_QUEUE_LOCKED_ALLOCATOR, sizeof(*qh));
-    *qh = (Queue_Locked__Head)NLIB_ZERO_INIT_LIST;
+    Queue_Locked_Head_Node_ *qh = memAlloc(NLIB_QUEUE_LOCKED_ALLOCATOR, sizeof(*qh));
+    *qh = (Queue_Locked_Head_Node_)NLIB_ZERO_INIT_LIST;
     Queue_Locked_Entry *qe = &qh->list;
     listNodeInit(qe);
 
@@ -3688,7 +3688,7 @@ Queue_Locked_Entry* queueLockedCreate (void)
     return qe;
 }
 
-#   define queueLocked__GetHead(q) containerof(q, Queue_Locked__Head, list)
+#   define queueLocked_GetHead(q) containerof(q, Queue_Locked_Head_Node_, list)
 
 // NOTE(naman): When a thread in pthread_cond_wait is cancelled, it is first
 // brought out of the wait, meaning that it first regains the mutex. This
@@ -3696,47 +3696,47 @@ Queue_Locked_Entry* queueLockedCreate (void)
 // thread will unlock the mutex so that no other thread waiting on the
 // same condition variable will deadlock.
 header_function
-void queueLocked__CondWaitCleaner (void *arg)
+void queueLocked_CondWaitCleaner (void *arg)
 {
     pthread_mutex_unlock(arg);
 }
 
-#   define queueLockedEnqueue(queue, qiptr) do {                \
-        Queue_Locked__Head *head = queueLocked__GetHead(queue); \
-                                                                \
-        pthread_mutex_lock(&head->list_lock);                   \
-                                                                \
-        listAddBefore(qiptr, &head->list);                      \
-                                                                \
-        pthread_cond_broadcast(&head->list_filled_signal);      \
-        pthread_mutex_unlock(&head->list_lock);                 \
+#   define queueLockedEnqueue(queue, qiptr) do {                        \
+        Queue_Locked_Head_Node_ *head = queueLocked_GetHead(queue);     \
+                                                                        \
+        pthread_mutex_lock(&head->list_lock);                           \
+                                                                        \
+        listAddBefore(qiptr, &head->list);                              \
+                                                                        \
+        pthread_cond_broadcast(&head->list_filled_signal);              \
+        pthread_mutex_unlock(&head->list_lock);                         \
     } while (0)
 
-#   define queueLockedDequeue(queue, qiptr) do {                \
-        Queue_Locked__Head *head = queueLocked__GetHead(queue); \
-                                                                \
-        pthread_mutex_lock(&head->list_lock);                   \
-                                                                \
-        while (listIsEmpty(&head->list)) {                      \
-            pthread_cleanup_push(&queueLocked__CondWaitCleaner, \
-                                 &head->list_lock);             \
-            pthread_cond_wait(&head->list_filled_signal,        \
-                              &head->list_lock);                \
-            pthread_cleanup_pop(0);                             \
-        }                                                       \
-                                                                \
-        Queue_Locked_Entry *que = head->list.next;              \
-        listRemoveAndInit(que);                                 \
-        qiptr = que;                                            \
-                                                                \
-        pthread_mutex_unlock(&head->list_lock);                 \
+#   define queueLockedDequeue(queue, qiptr) do {                        \
+        Queue_Locked_Head_Node_ *head = queueLocked_GetHead(queue);     \
+                                                                        \
+        pthread_mutex_lock(&head->list_lock);                           \
+                                                                        \
+        while (listIsEmpty(&head->list)) {                              \
+            pthread_cleanup_push(&queueLocked_CondWaitCleaner,          \
+                                 &head->list_lock);                     \
+            pthread_cond_wait(&head->list_filled_signal,                \
+                              &head->list_lock);                        \
+            pthread_cleanup_pop(0);                                     \
+        }                                                               \
+                                                                        \
+        Queue_Locked_Entry *que = head->list.next;                      \
+        listRemoveAndInit(que);                                         \
+        qiptr = que;                                                    \
+                                                                        \
+        pthread_mutex_unlock(&head->list_lock);                         \
     } while (0)
 
 // FIXME(naman): Can this function be called if some threads are stuck inside Pull?
 header_function
 void queueLockedDelete (void *queue)
 {
-    Queue_Locked__Head *head = queueLocked__GetHead(queue);
+    Queue_Locked_Head_Node_ *head = queueLocked_GetHead(queue);
     memDealloc(NLIB_QUEUE_LOCKED_ALLOCATOR, head, sizeof(*head));
 }
 

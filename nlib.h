@@ -2,7 +2,7 @@
  * Creator: Naman Dixit
  * Notice: © Copyright 2018 Naman Dixit
  * SPDX-License-Identifier: 0BSD
- * Version: 629
+ * Version: 749
  */
 
 // TODO(naman): Make all these data structures handle allocation failure gracefully.
@@ -740,8 +740,9 @@ void unicodeWin32UTF16Dealloc (LPWSTR utf16, Size utf16_size)
 #   endif
 #  endif
 
-// TODO(naman): Float support has been removed. Understand the float printing code from stb,
-// then add it again by implementing it from scratch.
+// FIXME(naman): Float support has been removed. Understand the float printing code from
+// either STB, Dragon4, Grisu3, Ryu, Schubfach or Dragonbox (github.com/abolz/Drachennest),
+// then add it again by implementing any of the above from scratch.
 #  define NLIB_PRINT_NO_FLOAT
 
 typedef enum Print_Flags {
@@ -764,6 +765,13 @@ typedef enum Print_Flags {
 // get the actual characters) in cases when the buffer is too small the first time.
 // FIXME(naman): Replace memcpy, etc. with loops so that atleast some of the characters
 // can get copied if the buffer is too small. Once this is done, uncomment sbPrintSized()
+// TODO(naman): Add the following features:
+//                  * Comma in numbers
+//                    + Indian style  (`)
+//                    + Western style (')
+//                  * Unit suffix
+//                    + SI  (1 K = 1000) (:)
+//                    + IEC (1 K = 1024) (;)
 header_function
 Size printStringVarArg (Char *buffer, Size buffer_size, Char const *format, va_list va)
 {
@@ -771,13 +779,13 @@ Size printStringVarArg (Char *buffer, Size buffer_size, Char const *format, va_l
     Char *buf = buffer;
     Size needed_size = 0;
     Bool resume_output = true;
+    if (buffer == NLIB_NULL) resume_output = false;
 
 #  define IS_OUTPUT_RESUMABLE(arg_space)        \
     do {                                        \
         if (resume_output &&                    \
-            ((buffer == NLIB_NULL) ||           \
-             ((Uptr)(buf + (Uptr)arg_space) >=  \
-              (Uptr)(buffer + buffer_size)))) { \
+            ((Uptr)(buf + (Uptr)arg_space) >=   \
+             (Uptr)(buffer + buffer_size))) {   \
             resume_output = false;              \
         }                                       \
     } while (0)
@@ -800,7 +808,7 @@ Size printStringVarArg (Char *buffer, Size buffer_size, Char const *format, va_l
             fmt++;
 
             // read the modifiers first
-            Sint field_width = 0;
+            Sint minimum_width = 0; // called field width in documentation
             Sint precision = -1;
             Sint trailing_zeroes = 0;
             U32 flags = 0;
@@ -823,7 +831,7 @@ Size printStringVarArg (Char *buffer, Size buffer_size, Char const *format, va_l
                         fmt++;
                         continue;
                     } break;
-                    case ' ': { // if we have leading plus
+                    case ' ': { // if we have leading space
                         flags |= Print_Flags_LEADING_SPACE;
                         fmt++;
                         continue;
@@ -842,11 +850,11 @@ Size printStringVarArg (Char *buffer, Size buffer_size, Char const *format, va_l
 
             // get the field width
             if (fmt[0] == '*') {
-                field_width = va_arg(va, Sint);
+                minimum_width = va_arg(va, Sint);
                 fmt++;
             } else {
                 while ((fmt[0] >= '0') && (fmt[0] <= '9')) {
-                    field_width = (field_width * 10) + (fmt[0] - '0');
+                    minimum_width = (minimum_width * 10) + (fmt[0] - '0');
                     fmt++;
                 }
             }
@@ -859,9 +867,16 @@ Size printStringVarArg (Char *buffer, Size buffer_size, Char const *format, va_l
                     fmt++;
                 } else {
                     precision = 0;
-                    while ((fmt[0] >= '0') && (fmt[0] <= '9')) {
-                        precision = (precision * 10) + (fmt[0] - '0');
+
+                    if (fmt[0] == '-') { // Negative precision is treated as if precision was omitted
                         fmt++;
+                        precision = -1;
+                        while ((fmt[0] >= '0') && (fmt[0] <= '9'));
+                    } else {
+                        while ((fmt[0] >= '0') && (fmt[0] <='9')) {
+                            precision = (precision * 10) + (fmt[0] - '0');
+                            fmt++;
+                        }
                     }
                 }
             }
@@ -941,122 +956,26 @@ Size printStringVarArg (Char *buffer, Size buffer_size, Char const *format, va_l
                     *d = (Sint)(buf - buffer);
                 } break;
 
-                case 'b': case 'B': { // binary
-                    Bool upper = (fmt[0] == 'B') ? true : false;
-
-                    U64 num = 0;
-                    if (flags & Print_Flags_INT64) {
-                        num = va_arg(va, U64);
-                    } else {
-                        num = va_arg(va, U32);
+                case 'b': case 'B':
+                case 'o': case 'O' :
+                case 'x': case 'X': { // binary
+                    enum { BIN, OCT, HEX } base;
+                    Bool upper = false;
+                    Char type = fmt[0];
+                    switch (type) {
+                        case 'b': base = BIN;               break;
+                        case 'B': base = BIN; upper = true; break;
+                        case 'o': base = OCT;               break;
+                        case 'O': base = OCT; upper = true; break;
+                        case 'x': base = HEX;               break;
+                        case 'X': base = HEX; upper = true; break;
+                        default:  {
+                            base = BIN; // To silence unitialized variable warning
+                            claim_err("Print: Integer base unitialized");
+                        } break;
                     }
 
-                    U64 num_dec = num;
-                    if (flags & Print_Flags_INT8) {
-                        num_dec = (U8)num_dec;
-                    } else if (flags & Print_Flags_INT16) {
-                        num_dec = (U16)num_dec;
-                    }
-
-                    str = num_str + PRINT_STR_SIZE;
-
-                    while (true) {
-                        U64 n = num_dec & 0x1;
-                        num_dec = num_dec >> 1;
-
-                        str--;
-                        *str = (n == 1) ? '1' : '0';
-
-                        if ((num_dec != 0) || (((num_str + PRINT_STR_SIZE) - str) < precision)) {
-                            continue;
-                        } else {
-                            break;
-                        }
-                    }
-
-                    len = (((Uptr)num_str + PRINT_STR_SIZE) - (Uptr)str);
-
-                    if (flags & Print_Flags_ALTERNATE_FORM) {
-                        head_str[head_index++] = '0';
-                        if (upper) {
-                            head_str[head_index++] = 'B';
-                        } else {
-                            head_str[head_index++] = 'b';
-                        }
-                    }
-
-                    if (precision < 0) {
-                        precision = 0;
-                    }
-                } break;
-
-                case 'o': case 'O': { // octal
-                    Bool upper = (fmt[0] == 'O') ? true : false;
-
-                    U64 num = 0;
-                    if (flags & Print_Flags_INT64) {
-                        num = va_arg(va, U64);
-                    } else {
-                        num = va_arg(va, U32);
-                    }
-
-                    U64 num_dec = num;
-                    if (flags & Print_Flags_INT8) {
-                        num_dec = (U8)num_dec;
-                    } else if (flags & Print_Flags_INT16) {
-                        num_dec = (U16)num_dec;
-                    }
-
-                    str = num_str + PRINT_STR_SIZE;
-
-                    while (true) {
-                        U64 n = num_dec & 0x7;
-                        num_dec = num_dec >> 3;
-
-                        str--;
-                        switch (n) {
-                            case 0: *str = '0'; break;
-                            case 1: *str = '1'; break;
-                            case 2: *str = '2'; break;
-                            case 3: *str = '3'; break;
-                            case 4: *str = '4'; break;
-                            case 5: *str = '5'; break;
-                            case 6: *str = '6'; break;
-                            case 7: *str = '7'; break;
-                        }
-
-                        if ((num_dec != 0) || (((num_str + PRINT_STR_SIZE) - str) < precision)) {
-                            continue;
-                        } else {
-                            break;
-                        }
-                    }
-
-                    len = (((Uptr)num_str + PRINT_STR_SIZE) - (Uptr)str);
-
-                    if (flags & Print_Flags_ALTERNATE_FORM) {
-                        head_str[head_index++] = '0';
-#  if !defined(NLIB_TESTS)
-                        if (upper) {
-                            head_str[head_index++] = 'O';
-                        } else {
-                            head_str[head_index++] = 'o';
-                        }
-#  else
-                        unused_variable(upper);
-#  endif
-                    }
-
-                    if (precision < 0) {
-                        precision = 0;
-                    }
-                } break;
-
-                case 'X':
-                case 'x': { // hex
-                    Bool upper = (fmt[0] == 'X') ? true : false;
-
-                    U64 num = 0;
+                    U64 num;
                     if (flags & Print_Flags_INT64) {
                         num = va_arg(va, U64);
                     } else {
@@ -1077,27 +996,62 @@ Size printStringVarArg (Char *buffer, Size buffer_size, Char const *format, va_l
                     }
 
                     while (true) {
-                        U64 n = num_dec & 0xf;
-                        num_dec = num_dec >> 4;
+                        U64 and_mask = 0;
+                        switch (base) {
+                            case BIN: and_mask = 0x1ULL; break;
+                            case OCT: and_mask = 0x7ULL; break;
+                            case HEX: and_mask = 0xFULL; break;
+                        }
+
+                        U64 shift_magnitude = 0;
+                        switch (base) {
+                            case BIN: shift_magnitude = 1ULL; break;
+                            case OCT: shift_magnitude = 3ULL; break;
+                            case HEX: shift_magnitude = 4ULL; break;
+                        }
+
+                        U64 n = num_dec & and_mask;
+                        num_dec = num_dec >> shift_magnitude;
 
                         str--;
-                        switch (n) {
-                            case 0x0: *str = '0'; break;
-                            case 0x1: *str = '1'; break;
-                            case 0x2: *str = '2'; break;
-                            case 0x3: *str = '3'; break;
-                            case 0x4: *str = '4'; break;
-                            case 0x5: *str = '5'; break;
-                            case 0x6: *str = '6'; break;
-                            case 0x7: *str = '7'; break;
-                            case 0x8: *str = '8'; break;
-                            case 0x9: *str = '9'; break;
-                            case 0xA: *str = upper ? 'A' : 'a'; break;
-                            case 0xB: *str = upper ? 'B' : 'b'; break;
-                            case 0xC: *str = upper ? 'C' : 'c'; break;
-                            case 0xD: *str = upper ? 'D' : 'd'; break;
-                            case 0xE: *str = upper ? 'E' : 'e'; break;
-                            case 0xF: *str = upper ? 'F' : 'f'; break;
+                        switch (base) {
+                            case BIN: {
+                                *str = (n == 1) ? '1' : '0';
+                            } break;
+
+                            case OCT: {
+                                switch (n) {
+                                    case 0: *str = '0'; break;
+                                    case 1: *str = '1'; break;
+                                    case 2: *str = '2'; break;
+                                    case 3: *str = '3'; break;
+                                    case 4: *str = '4'; break;
+                                    case 5: *str = '5'; break;
+                                    case 6: *str = '6'; break;
+                                    case 7: *str = '7'; break;
+                                }
+                            } break;
+
+                            case HEX: {
+                                switch (n) {
+                                    case 0x0: *str = '0'; break;
+                                    case 0x1: *str = '1'; break;
+                                    case 0x2: *str = '2'; break;
+                                    case 0x3: *str = '3'; break;
+                                    case 0x4: *str = '4'; break;
+                                    case 0x5: *str = '5'; break;
+                                    case 0x6: *str = '6'; break;
+                                    case 0x7: *str = '7'; break;
+                                    case 0x8: *str = '8'; break;
+                                    case 0x9: *str = '9'; break;
+                                    case 0xA: *str = upper ? 'A' : 'a'; break;
+                                    case 0xB: *str = upper ? 'B' : 'b'; break;
+                                    case 0xC: *str = upper ? 'C' : 'c'; break;
+                                    case 0xD: *str = upper ? 'D' : 'd'; break;
+                                    case 0xE: *str = upper ? 'E' : 'e'; break;
+                                    case 0xF: *str = upper ? 'F' : 'f'; break;
+                                }
+                            } break;
                         }
 
                         if ((num_dec != 0) || (((num_str + PRINT_STR_SIZE) - str) < precision)) {
@@ -1109,12 +1063,19 @@ Size printStringVarArg (Char *buffer, Size buffer_size, Char const *format, va_l
 
                     len = (((Uptr)num_str + PRINT_STR_SIZE) - (Uptr)str);
 
+                    Char head_char = 0;
+                    switch (base) {
+                        case BIN: head_char = upper ? 'B' : 'b'; break;
+                        case OCT: head_char = upper ? 'O' : 'o'; break;
+                        case HEX: head_char = upper ? 'X' : 'x'; break;
+                    }
+
                     if (flags & Print_Flags_ALTERNATE_FORM) {
                         head_str[head_index++] = '0';
                         if (upper) {
-                            head_str[head_index++] = 'X';
+                            head_str[head_index++] = head_char;
                         } else {
-                            head_str[head_index++] = 'x';
+                            head_str[head_index++] = head_char;
                         }
                     }
 
@@ -1256,11 +1217,23 @@ Size printStringVarArg (Char *buffer, Size buffer_size, Char const *format, va_l
                     precision = 0;
                 } break;
 
-                default: { // unknown, just copy code
+                case '\0': {
+                    // NOTE(naman): If the format string ends prematurely, we print
+                    // whatever half-formed conversion specification came through;
+                    // to do that, we decrement the pointer since we need to make
+                    // sure that we don't end up copying the terminating null byte,
+                    // since that will be put in the final output at the end. We
+                    // also want to decrement since after the next fmt++ (at the
+                    // end of the function), we want fmt to point to the null byte
+                    // so that the priting will properly end.
+                    fmt--;
+                    goto nlib_print_unimplemented_feature;
+                } break;
+
+                default: { // unknown, just copy conversion specification
                 nlib_print_unimplemented_feature:
                     str = num_str;
-
-                    while (format_pointer < fmt) {
+                    while (format_pointer <= fmt) {
                         str[0] = format_pointer[0];
                         format_pointer++;
                         str++;
@@ -1277,37 +1250,37 @@ Size printStringVarArg (Char *buffer, Size buffer_size, Char const *format, va_l
             Size tail_size = tail_index;
             tail_index = 0;
 
-            // get field_width=leading/trailing space, precision=leading zeros
+            // get minimum_width=leading/trailing space, precision=leading zeros
             if ((Size)precision < len) {
                 precision = (Sint)len;
             }
 
             Sint zeros_head_tail = precision + (Sint)head_size + (Sint)tail_size + trailing_zeroes;
-            if (field_width < zeros_head_tail) {
-                field_width = zeros_head_tail;
+            if (minimum_width < zeros_head_tail) {
+                minimum_width = zeros_head_tail;
             }
 
-            field_width -= zeros_head_tail;
+            minimum_width -= zeros_head_tail;
             precision -= (Sint)len;
 
             // handle right justify and leading zeros
             if ((flags & Print_Flags_LEFT_JUSTIFIED) == 0) {
                 if (flags & Print_Flags_LEADING_ZERO) { // then everything is in precision
-                    precision = (field_width > precision) ? field_width : precision;
-                    field_width = 0;
+                    precision = (minimum_width > precision) ? minimum_width : precision;
+                    minimum_width = 0;
                 }
             }
 
             // copy leading spaces
-            if ((field_width + precision) > 0) {
+            if ((minimum_width + precision) > 0) {
                 // copy leading spaces (or when doing %8.4d stuff)
                 if ((flags & Print_Flags_LEFT_JUSTIFIED) == 0) {
-                    IS_OUTPUT_RESUMABLE(field_width);
+                    IS_OUTPUT_RESUMABLE(minimum_width);
                     if (resume_output) {
-                        memset(buf, ' ', (Size)field_width);
-                        buf += field_width;
+                        memset(buf, ' ', (Size)minimum_width);
+                        buf += minimum_width;
                     }
-                    needed_size += (Size)field_width;
+                    needed_size += (Size)minimum_width;
                 }
 
                 { // copy the head
@@ -1373,13 +1346,13 @@ Size printStringVarArg (Char *buffer, Size buffer_size, Char const *format, va_l
 
             // handle the left justify
             if (flags & Print_Flags_LEFT_JUSTIFIED)
-                if (field_width > 0) {
-                    IS_OUTPUT_RESUMABLE(field_width);
+                if (minimum_width > 0) {
+                    IS_OUTPUT_RESUMABLE(minimum_width);
                     if (resume_output) {
-                        memset(buf, ' ', (Size)field_width);
-                        buf += field_width;
+                        memset(buf, ' ', (Size)minimum_width);
+                        buf += minimum_width;
                     }
-                    needed_size += (Size)field_width;
+                    needed_size += (Size)minimum_width;
                 }
 
             fmt++;
@@ -1422,8 +1395,11 @@ Size printConsole (Sint fd, Char const *format, va_list ap)
 
     if ((out_stream != NLIB_NULL) && (out_stream != INVALID_HANDLE_VALUE)) {
         DWORD written = 0;
-        // FIXME(naman): Convert this ASCII/UTF-8 buffer to UTF-16 maybe
-        WriteConsoleA(out_stream, buffer, (DWORD)buffer_size, &written, NLIB_NULL);
+        // FIND(naman): Should we convert this ASCII/UTF-8 buffer to UTF-16?
+        // NOTE(naman): We use WriteFile instead of WriteConsoleA/W here since
+        // WriteConsole functions can't be redirected to write to a file,
+        // while WriteFile obviously can be.
+        WriteFile(out_stream, buffer, (DWORD)buffer_size, &written, NLIB_NULL);
     }
 
     memDealloc(NLIB_PRINT_ALLOCATOR, (void*)buffer, buffer_size + 1);
@@ -1446,9 +1422,10 @@ Size printDebugOutputV (Char const *format, va_list ap)
     Char *buffer = (Char*)memAlloc(NLIB_PRINT_ALLOCATOR, buffer_size + 1);
     printStringVarArg(buffer, buffer_size + 1, format, ap2);
 
-    LPWSTR wcstr = unicodeWin32UTF16FromUTF8(buffer);
+    Size wcstr_size;
+    LPWSTR wcstr = unicodeWin32UTF16FromUTF8(buffer, &wcstr_size);
     OutputDebugStringW(wcstr);
-    unicodeWin32UTF16Dealloc(wcstr);
+    unicodeWin32UTF16Dealloc(wcstr, wcstr_size);
 
     memDealloc(NLIB_PRINT_ALLOCATOR, (void*)buffer, buffer_size + 1);
 
@@ -1512,10 +1489,6 @@ Size printString (Char *buffer, Size buffer_size, Char const *format, ...)
     return result;
 }
 
-#  if defined(COMPILER_CLANG)
-#   pragma clang diagnostic push
-#    pragma clang diagnostic ignored "-Wformat-nonliteral"
-#  endif
 #  if defined(COMPILER_CLANG) || defined(COMPILER_GCC)
 __attribute__((format(__printf__, 1, 2)))
 #  endif
@@ -1538,10 +1511,6 @@ Size sayv (Char const *format, va_list ap)
     return result;
 }
 
-#  if defined(COMPILER_CLANG)
-#   pragma clang diagnostic push
-#    pragma clang diagnostic ignored "-Wformat-nonliteral"
-#  endif
 #  if defined(COMPILER_CLANG) || defined(COMPILER_GCC)
 __attribute__((format(__printf__, 1, 2)))
 #  endif

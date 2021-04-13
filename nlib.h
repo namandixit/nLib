@@ -339,49 +339,66 @@ typedef char                 Char;
 
 
 
-
-
-
-
-header_function
-{
-    } else {
-    }
-
-header_function
-{
-}
-
-header_function
-{
-
-
 /* ==================
- * Print interface partially predeclared
- * (because C can't handle out-of-order declarations)
+ * @Report
  */
 
-#  if defined(OS_WINDOWS)
-#   if defined(BUILD_DEBUG)
-#    define report(...)              printDebugOutput(__VA_ARGS__)
-#    define reportv(format, va_list) printDebugOutputV(format, va_list)
-#   else // = if !defined(BUILD_DEBUG)
-#    define report(...)
-#    define reportv(format, va_list)
-#   endif // defined(BUILD_DEBUG)
-#  elif defined(OS_LINUX)
-#   if defined(BUILD_DEBUG)
-#    define report(...)              err(__VA_ARGS__)
-#    define reportv(format, va_list) errv(format, va_list)
-#   else // = if !defined(BUILD_DEBUG)
-#    define report(...)
-#    define reportv(format, va_list)
-#   endif // defined(BUILD_DEBUG)
-#  endif // defined(OS_WINDOWS) || defined(OS_LINUX)
-header_function Size err (Char const *format, ...);
+/* API ----------------------------------------
+ * Size report (Char *fmt, ...)
+ * Size reportv (Char *fmt, va_list ap)
+ *   Output text on debugging channel
+ *     fmt: String with print-compatible conversion specifications
+ *     Returns the count of characters printed (excluding the terminating null)
+ *
+ *     On Windows, if a debugger is attached, it prints the formatted string to the
+ *     debugger output; else, in every other circumstance, it prints to the stderr.
+ */
+
+# if !defined(NLIB_EXCLUDE_REPORT)
+
+// Print interface partially predeclared
 header_function Size errv (Char const *format, va_list ap);
 header_function Size printDebugOutputV (Char const *format, va_list ap);
-header_function Size printDebugOutput (Char const *format, ...);
+
+#  if defined(OS_WINDOWS)
+// NOTE(naman): In non-debug mode, redirect stderr to a log file, etc. using SetStdHandle:
+// social.msdn.microsoft.com/Forums/vstudio/en-US/a111b4c6-c491-4586-8fcb-2ad67bfbbae8/is-setstdhandlestdoutputhandle-broken-under-windows-7-
+// stackoverflow.com/q/58807775
+header_function
+Size reportv (Char const *format, va_list ap)
+{
+    Size result;
+    if (IsDebuggerPresent()) {
+        result = printDebugOutputV(format, ap);
+    } else {
+        result = errv(format, ap);
+    }
+
+    return result;
+}
+#  elif defined(OS_LINUX)
+// NOTE(naman): In non-debug mode, redirect stderr to a log file, etc. using freopen(2)
+header_function
+Size reportv (Char const *format, va_list ap)
+{
+    Size result = errv(format, ap);
+    return result;
+}
+#  endif // !windows && !linux
+
+header_function
+Size report (Char const *format, ...)
+{
+    va_list ap;
+
+    va_start(ap, format);
+    Size result = reportv(format, ap);
+    va_end(ap);
+
+    return result;
+}
+
+# endif // @report
 
 /* ====================
  * @Debug
@@ -389,30 +406,40 @@ header_function Size printDebugOutput (Char const *format, ...);
 
 # if !defined(NLIB_EXCLUDE_DEBUG)
 
+/* API ----------------------------------------
+ * Size breakpoint (Char *fmt, ...)
+ *
+ *     If BUILD_DEBUG is defined, this causes a breakpoint – if the program is open in
+ *     a debugger, that breakpoint will be caught and handled; however, if the program is not
+ *     in a debugger,
+ */
+
 #  if defined(OS_WINDOWS)
-#   if defined(BUILD_DEBUG)
+#   define quit() ExitProcess(0)
+#  elif defined(OS_LINUX)
+#   define quit() exit(0)
+#  endif // !window && !linux
+
+#  if defined(BUILD_DEBUG)
+#   if defined(OS_WINDOWS)
 #    define breakpoint() __debugbreak()
-#    define quit() breakpoint()
-#   else
-#    define breakpoint() do{report("Fired breakpoint in release code, quitting...\n");quit();}while(0)
-#    define quit() ExitProcess(0)
-#   endif
-#  else
-#   if defined(COMPILER_GCC) || defined(COMPILER_CLANG)
+#   elif defined(OS_LINUX)
 #    if defined(ARCH_X86) || defined(ARCH_X64)
-#     if defined(BUILD_DEBUG)
+#     if defined(COMPILER_GCC) || defined(COMPILER_CLANG)
 #      define breakpoint() __asm__ volatile("int $0x03")
-#      define quit() breakpoint()
-#     else
-#      define breakpoint() do{report("Fired breakpoint in release code, quitting...\n");quit();}while(0)
-#      define quit() exit(0)
-#     endif // BUILD_DEBUG
-#    endif // Architecture/OS
-#   endif // Compiler
-#  endif // Operating Systems
+#     endif // !GCC && !Clang
+#    endif // !x86 && !x64
+#   endif // !window && !linux
+#  else // !BUILD_DEBUG
+header_function
+void breakpoint(void) {
+    report("Fired breakpoint in release code, quitting...\n");
+    quit();
+}
+#  endif // !debug && !!debug
 
-# endif // NLIB_EXCLUDE_DEBUG
 
+# endif // @debug
 
 /* ==============
  * @Claim (assert)
@@ -421,7 +448,8 @@ header_function Size printDebugOutput (Char const *format, ...);
 # if !defined(NLIB_EXCLUDE_CLAIM)
 
 #  if defined(BUILD_DEBUG)
-#   define claim(cond) claim_(cond, #cond, __FILE__, __LINE__)
+#   define claim(cond)    claim_(cond,  #cond, __FILE__, __LINE__)
+#   define claim_err(str) claim_(false, str,   __FILE__, __LINE__)
 header_function
 void claim_ (Bool cond,
              Char const *cond_str,
@@ -431,14 +459,14 @@ void claim_ (Bool cond,
         report("Claim \"%s\" Failed in %s:%u\n\n",
                cond_str, filename, line_num);
 
-        quit();
+        breakpoint();
     }
 }
-#  else
+#  else // !BUILD_DEBUG
 #   define claim(cond) ((void)(cond))
-#  endif
+#  endif // BUILD_DEBUG
 
-# endif // NLIB_EXCLUDE_CLAIM
+# endif // @claim
 
 /* ===============
  * @Memory
@@ -502,12 +530,12 @@ MEMORY_ALLOCATOR_FUNCTION(memCRT)
 
         case Memory_DEALLOCATE_ALL:
         case Memory_NONE: {
-            claim(false && "Control shouldn't reach here");
+            claim_err("Control shouldn't reach here");
             return NLIB_NULL;
         } break;
     }
 
-    claim(false && "Control shouldn't reach here");
+    claim_err("Control shouldn't reach here");
     return NLIB_NULL;
 }
 
@@ -1522,7 +1550,7 @@ void ut_Test (Bool cond,
               Char *filename, U32 line_num) {
     if (!cond) {
         report("Test Failed: (%s:%u) %s\n", filename, line_num, cond_str);
-        quit();
+        breakpoint();
     }
 }
 

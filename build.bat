@@ -21,9 +21,9 @@ SET ProjectRoot=%~dp0
 SET BuildDirectory=%ProjectRoot%bin\%BuildPlatform%\%BuildArchitecture%
 IF NOT EXIST %BuildDirectory% MKDIR %BuildDirectory%
 
-SET /p VersionNumberOld=<version
+SET /p VersionNumberOld=<%ProjectRoot%\version
 SET /a VersionNumber=%VersionNumberOld% + 1
-ECHO %VersionNumber%> ./version
+ECHO %VersionNumber%> %ProjectRoot%\version
 
 REM -b makes sed treat file as binary, so that it doesn't replace \n with \r\n
 SED -i -b "s/^[[:space:]]\* Version: .*$/ * Version: %VersionNumber%/" nlib.h

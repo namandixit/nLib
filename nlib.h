@@ -228,19 +228,23 @@
 #  define unlikely(x) (x)
 
 // NOTE(naman): MSVC doesn't seem to define max_align_t for C11 code, so this will suffice for now.
-// https://web.archive.org/web/20170804183620/https://msdn.microsoft.com/en-us/library/ycsb6wwf.aspx
+// The aignment is 8 for x86 and 16 for x64, see here:
+// docs.microsoft.com/en-us/cpp/c-runtime-library/reference/malloc?view=msvc-160
 #  if defined(ARCH_x86)
 // Alignment is 8 bytes
 typedef union {
     alignas(8) char alignment[8];
     double a;
 } max_align_t;
+static_assert(alignof(max_align_t) == 8, "Alignment of max_align_t is not 8");
 #  elif defined(ARCH_X64)
 // Alignment is 16 bytes
 typedef union {
+    __m128 sse; // 16-byte aligned (docs.microsoft.com/en-us/cpp/cpp/m128?view=msvc-160)
     alignas(16) char alignment[16];
     alignas(16) struct { double a, b; } f;
 } max_align_t;
+static_assert(alignof(max_align_t) == 16, "Alignment of max_align_t is not 16");
 #  endif
 
 # elif defined(COMPILER_CLANG) || defined(COMPILER_GCC)

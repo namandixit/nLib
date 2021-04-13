@@ -5,9 +5,22 @@
  * Version: 629
  */
 
-// TODO(naman): Make all these data structures handle allocation failure gracefully. This is especially
-// important since we are going to implement fixed buffer data structures by making the allocation function
-// return NULL after the buffer has been filled.
+// TODO(naman): Make all these data structures handle allocation failure gracefully.
+// This is especially important since we are going to implement fixed buffer data
+// structures by making the allocation function return NULL after the buffer has
+// been filled. Any allocation failures have to be handled inside the Allocator.
+// This means that the Allocator returning NULL doesn't imply a failure to allocate,
+// but a refusal to do so (either due to underlying semantics, or failure).
+
+// NOTE(naman): Some variables are initialized to 0 even when they will get initialized
+// inside a conditional/switch anyway, since in MSVC, "potentially uninitialized local variable"
+// warning number is 4701, and according to MSDN (docs.microsoft.com/en-us/cpp/preprocessor/warning):
+//     Warning numbers in the range 4700-4999 are associated with code
+//     generation. For these warnings, the state of the warning in
+//     effect when the compiler reaches the function definition remains
+//     in effect for the rest of the function. Use of the warning pragma
+//     in the function to change the state of a warning number larger
+//     than 4699 only takes effect after the end of the function.
 
 #if !defined(NLIB_H_INCLUDE_GUARD)
 
@@ -324,18 +337,18 @@ typedef char                 Char;
 # if defined(LANG_C)
 #  define NLIB_NULL NULL
 #  define NLIB_ZERO_INIT_LIST {0}
-# else
+# elif defined(LANG_CPP)
 #  define NLIB_NULL nullptr
 #  define NLIB_ZERO_INIT_LIST {}
 # endif
 
-# define gensym_uniq(prefix) NLIB_gensym2_(prefix, __COUNTER__)
-# define gensym_line(prefix) NLIB_gensym2_(prefix, __LINE__)
-# define gensym_func(prefix) NLIB_gensym2_(prefix, __func__)
-# define gensym_file(prefix) NLIB_gensym2_(prefix, __FILE__)
+# define gensym_uniq(prefix) gensym2_(prefix, __COUNTER__)
+# define gensym_line(prefix) gensym2_(prefix, __LINE__)
+# define gensym_func(prefix) gensym2_(prefix, __func__)
+# define gensym_file(prefix) gensym2_(prefix, __FILE__)
 
-# define NLIB_gensym2_(prefix, suffix) NLIB_gensym_cat_(prefix, suffix)
-# define NLIB_gensym_cat_(prefix, suffix) prefix ## suffix
+# define gensym2_(prefix, suffix) gensym_cat_(prefix, suffix)
+# define gensym_cat_(prefix, suffix) prefix ## suffix
 
 
 
@@ -553,7 +566,7 @@ Memory_Allocator memCRTGet (void)
 #  define memCRTRealloc(ptr, size) memCRT(Memory_REALLOCATE, 0, size, ptr,  NULL)
 #  define memCRTDealloc(ptr)       memCRT(Memory_DEALLOCATE, 0, 0,    ptr,  NULL)
 
-# endif // NLIB_EXCLUDE_MEMORY
+# endif // @memory
 
 /* =======================
  * @Unicode
@@ -1949,19 +1962,19 @@ header_function U64 bitFindLSB (U64 x) { return bitFindLSBU64(x); }
 
 # if !defined(NLIB_EXCLUDE_MATH)
 
-#  define Mk_E(type)            (type)2.718281828459045235360287471352662498 /* e */
-#  define Mk_LOG2_E(type)       (type)1.442695040888963407359924681001892137 /* log_2 e */
-#  define Mk_LOG10_E(type)      (type)0.434294481903251827651128918916605082 /* log_10 e */
-#  define Mk_LN_2(type)         (type)0.693147180559945309417232121458176568 /* log_e 2 */
-#  define Mk_LN_10(type)        (type)2.302585092994045684017991454684364208 /* log_e 10 */
-#  define Mk_PI(type)           (type)3.141592653589793238462643383279502884 /* pi */
-#  define Mk_PI_BY_2(type)      (type)1.570796326794896619231321691639751442 /* pi/2 */
-#  define Mk_PI_BY_4(type)      (type)0.785398163397448309615660845819875721 /* pi/4 */
-#  define Mk_1_BY_PI(type)      (type)0.318309886183790671537767526745028724 /* 1/pi */
-#  define Mk_2_BY_PI(type)      (type)0.636619772367581343075535053490057448 /* 2/pi */
-#  define Mk_2_BY_SQRT_PI(type) (type)1.128379167095512573896158903121545172 /* 2/sqrt(pi) */
-#  define Mk_SQRT_2(type)       (type)1.414213562373095048801688724209698079 /* sqrt(2) */
-#  define Mk_1_BY_SQRT_2(type)  (type)0.707106781186547524400844362104849039 /* 1/sqrt(2) */
+#  define Mk_E(type)            ((type)2.718281828459045235360287471352662498) /* e */
+#  define Mk_LOG2_E(type)       ((type)1.442695040888963407359924681001892137) /* log_2 e */
+#  define Mk_LOG10_E(type)      ((type)0.434294481903251827651128918916605082) /* log_10 e */
+#  define Mk_LN_2(type)         ((type)0.693147180559945309417232121458176568) /* log_e 2 */
+#  define Mk_LN_10(type)        ((type)2.302585092994045684017991454684364208) /* log_e 10 */
+#  define Mk_PI(type)           ((type)3.141592653589793238462643383279502884) /* pi */
+#  define Mk_PI_BY_2(type)      ((type)1.570796326794896619231321691639751442) /* pi/2 */
+#  define Mk_PI_BY_4(type)      ((type)0.785398163397448309615660845819875721) /* pi/4 */
+#  define Mk_1_BY_PI(type)      ((type)0.318309886183790671537767526745028724) /* 1/pi */
+#  define Mk_2_BY_PI(type)      ((type)0.636619772367581343075535053490057448) /* 2/pi */
+#  define Mk_2_BY_SQRT_PI(type) ((type)1.128379167095512573896158903121545172) /* 2/sqrt(pi) */
+#  define Mk_SQRT_2(type)       ((type)1.414213562373095048801688724209698079) /* sqrt(2) */
+#  define Mk_1_BY_SQRT_2(type)  ((type)0.707106781186547524400844362104849039) /* 1/sqrt(2) */
 
 // FIXME(naman): Make these functions not depend on libm
 
@@ -2216,7 +2229,7 @@ U64 hashInteger(U64 x)
     return x;
 }
 
-/* Universal Hashing: https://en.wikipedia.org/wiki/Universal_hashing#Avoiding_modular_arithmetic
+/* Universal Hashing: en.wikipedia.org/wiki/Universal_hashing#Avoiding_modular_arithmetic
  *
  * NOTE(naman): Implementation notes
  * w is number of bits in machine word (64 in our case)
@@ -2225,7 +2238,7 @@ U64 hashInteger(U64 x)
  * m is log2(s) (=> m = 2^s) and is equal to the number of bits in the final hash
  * a is a random odd positive integer < 2^w (fitting in w bits)
  * b is a random non-negative integer < 2^(w-m) (fitting in (w-m) bits)
- * SEE(naman): https://en.wikipedia.org/wiki/Universal_hashing#Avoiding_modular_arithmetic
+ * en.wikipedia.org/wiki/Universal_hashing#Avoiding_modular_arithmetic
  *
  * r is the last random number generated and is just an implementation detail.
  */
@@ -2455,10 +2468,6 @@ typedef struct Ra_Header {
 #  define raLast(sb)         ((sb) + (ra_Len(sb) - 1))
 
 
-#  if defined(COMPILER_CLANG)
-#   pragma clang diagnostic push
-#    pragma clang diagnostic ignored "-Wcast-align"
-#  endif
 
 header_function
 void* ra_Create (Size elem_size, Size min_cap, Memory_Allocator allocator)
@@ -2511,10 +2520,6 @@ void* ra_Grow (void *buf, Size elem_size)
     void *result = ra_GrowToSize(buf, new_cap, elem_size);
     return result;
 }
-
-#  if defined(COMPILER_CLANG)
-#   pragma clang diagnostic pop // -Wcast-align
-#  endif
 
 # elif defined(LANG_CPP) && !defined(NLIB_EXCLUDE_RA)
 
@@ -2679,10 +2684,6 @@ typedef struct {
 #  define sbPrint(sb, ...)         ((sb).str = sb_Print((sb).str, __VA_ARGS__))
 //#  define sbPrintSized(sb, s, ...) ((sb).str = sb_PrintSized((sb).str, s, __VA_ARGS__))
 
-#  if defined(COMPILER_CLANG)
-#   pragma clang diagnostic push
-#    pragma clang diagnostic ignored "-Wformat-nonliteral"
-#  endif
 #  if defined(COMPILER_CLANG) || defined(COMPILER_GCC)
 __attribute__((format(__printf__, 2, 3)))
 #  endif
@@ -2729,15 +2730,11 @@ ra(Char) sb_Print (ra(Char) buf, const Char *fmt, ...)
 /*     return buf; */
 /* } */
 
-#  if defined(COMPILER_CLANG)
-#   pragma clang diagnostic pop // -Wformat-nonliteral
-#  endif
-
 # endif // !defined(NLIB_EXCLUDE_STRING_BUILDER)
 
 /* ===============================
  * Intrusive Circular Doubly Linked List
- * Inspired from https://github.com/torvalds/linux/blob/master/include/linux/list.h
+ * Inspired from github.com/torvalds/linux/blob/master/include/linux/list.h
  */
 
 # if defined(LANG_C) && !defined(NLIB_EXCLUDE_LIST)
@@ -2964,7 +2961,7 @@ header_function
 U8 internStringPearsonHash (void *buffer, Size len, Bool which)
 {
     // NOTE(naman): Pearson's hash for 8-bit hashing
-    // https://en.wikipedia.org/wiki/Pearson_hashing
+    // en.wikipedia.org/wiki/Pearson_hashing
     persistent_value U8 hash_lookup_table1[256] =
         {
             // 0-255 shuffled in any (random) order suffices
@@ -3128,7 +3125,7 @@ INTERN_EQUALITY(internIntegerEquality) {
     return result;
 }
 
-// SEE(naman): https://stackoverflow.com/a/8546542
+// NOTE(naman): stackoverflow.com/a/8546542
 header_function
 U8 internIntegerHash8Bit (U64 key, Bool which)
 {

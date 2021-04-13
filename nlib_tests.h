@@ -41,7 +41,7 @@ void printUnitTest (void)
     CHECK3("20 0020", "%u %04u", 20u, 20u);
     CHECK4("12 1e 3C", "%o %x %X", 10u, 30u, 60u);
     CHECK4(" 12 1e 3C ", "%3o %2x %-3X", 10u, 30u, 60u);
-    CHECK4("012 0x1e 0X3C", "%#o %#x %#X", 10u, 30u, 60u);
+    CHECK5("0o12 0O24 0x1e 0X3C", "%#o %#O %#x %#X", 10u, 20u, 30u, 60u);
     CHECK2("", "%.0x", 0);
     CHECK2("",  "%.0d", 0);  // glibc gives "" as specified by C99(?)
     CHECK3("33 5551", "%d %ld", (S16)33, (S64)5551);

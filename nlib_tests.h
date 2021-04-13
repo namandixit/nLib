@@ -8,9 +8,9 @@
 # define NLIB_TESTS
 # include "nlib.h"
 
-# define CHECK_END(str) do { utTest(streq(buf, (str)) && ((unsigned) ret == strlen(str))); memset(buf, 0, elemin(buf)); } while(0)
+# define CHECK_END(str) do { utTest(streq(buf, (str)) && (cast_val(ret, Uint) == strlen(str))); memset(buf, 0, elemin(buf)); } while(0)
 # define SPRINTF(b, ...) printString(b, 1024, __VA_ARGS__)
-# define SNPRINTF(b, s, ...) (Sint)printString(b, 1024, __VA_ARGS__)
+# define SNPRINTF(b, s, ...) cast_val(printString(b, 1024, __VA_ARGS__), Sint)
 
 # define CHECK9(str, v1, v2, v3, v4, v5, v6, v7, v8, v9) do { Size ret = SPRINTF(buf, v1, v2, v3, v4, v5, v6, v7, v8, v9); CHECK_END(str); } while (0)
 # define CHECK8(str, v1, v2, v3, v4, v5, v6, v7, v8    ) do { Size ret = SPRINTF(buf, v1, v2, v3, v4, v5, v6, v7, v8    ); CHECK_END(str); } while (0)
@@ -44,9 +44,9 @@ void printUnitTest (void)
     CHECK5("0o12 0O24 0x1e 0X3C", "%#o %#O %#x %#X", 10u, 20u, 30u, 60u);
     CHECK2("", "%.0x", 0);
     CHECK2("",  "%.0d", 0);  // glibc gives "" as specified by C99(?)
-    CHECK3("33 5551", "%d %ld", (S16)33, (S64)5551);
+    CHECK3("33 5551", "%d %ld", cast_val(33, S16), cast_val(5551, S64));
 //    CHECK2("9888777666", "%llu", 9888777666llu); // TODO(naman): Implement %llu
-    CHECK4("2 -3 %.", "%zd %td %.", (S64)2, (Dptr)-3, 23);
+    CHECK4("2 -3 %.", "%zd %td %.", cast_val(2, S64), cast_val(-3, Dptr), 23);
 
 # if !defined(NLIB_PRINT_NO_FLOAT)
     // floating-point numbers
@@ -98,7 +98,7 @@ void printUnitTest (void)
 # endif // defined(NLIB_PRINT_NO_FLOAT)
 
     // %p
-    CHECK2("0000000000000000", "%p", (void*) NLIB_NULL);
+    CHECK2("0000000000000000", "%p", cast_val(NLIB_NULL, void*));
 
     // %n
     CHECK3("aaa ", "%.3s %n", "aaaaaaaaaaaaa", &n);
@@ -146,7 +146,7 @@ void printUnitTest (void)
 # endif
 
     // things not supported by glibc
-    CHECK2("null", "%s", (char*) NLIB_NULL);
+    CHECK2("null", "%s", cast_val(NLIB_NULL, Char*));
     CHECK2("100000000", "%b", 256);
     CHECK3("0b10 0B11", "%#b %#B", 2, 3);
 # if 0

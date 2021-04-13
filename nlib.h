@@ -2,7 +2,7 @@
  * Creator: Naman Dixit
  * Notice: © Copyright 2018 Naman Dixit
  * SPDX-License-Identifier: 0BSD
- * Version: 749
+ * Version: 809
  */
 
 // TODO(naman): Make all these data structures handle allocation failure gracefully.
@@ -342,6 +342,18 @@ typedef char                 Char;
 #  define NLIB_ZERO_INIT_LIST {}
 # endif
 
+// NOTE(naman): If in doubt, first attempt cast_val and then cast_mem
+// NOTE(naman): For cast_mem, the `m` should be a variable (something which is in memory)
+// and not just an expression.
+# if defined(LANG_C)
+#  define cast_mem(m, T) (*((T*)(&(m))))
+#  define cast_val(v, T) ((T)(v))
+# elif defined(LANG_CPP)
+#  define cast_mem(m, T) (reinterpret_cast<T>(m))
+#  define cast_val(v, T) (static_cast<T>(v))
+#  define NLIB_ZERO_INIT_LIST {}
+# endif
+
 # define gensym_uniq(prefix) gensym2_(prefix, __COUNTER__)
 # define gensym_line(prefix) gensym2_(prefix, __LINE__)
 # define gensym_func(prefix) gensym2_(prefix, __func__)
@@ -619,7 +631,7 @@ B64 unicodeCodepointFromUTF16Surrogate (U16 surrogate, U16 *prev_surrogate, U32 
             // NOTE(naman): In this line, the numbers get promoted from U16 to S32,
             // so storing them in a U32 results in a inmpicit sign conversion.
             // That is why we are casting manually.
-            *codepoint = (U32)((*prev_surrogate - utf16_hi_surrogate_start) << 10U);
+            *codepoint = cast_val(((*prev_surrogate - utf16_hi_surrogate_start) << 10U), U32);
             *codepoint |= (low_surrogate - utf16_lo_surrogate_start);
             *codepoint += 0x10000;
 
@@ -658,25 +670,25 @@ Size unicodeUTF8FromUTF32 (U32 *codepoints, Size codepoint_count, Char *buffer)
 
         for (Size i = 0; i < codepoint_count; i++) {
             if (codepoints[i] <= 0x7F) {
-                buffer[0] = (Char)codepoints[i];
+                buffer[0] = cast_val(codepoints[i], Char);
                 buffer += 1;
                 length += 1;
             } else if (codepoints[i] <= 0x7FF) {
-                buffer[0] = (Char)(0xC0 | (codepoints[i] >> 6));            /* 110xxxxx */
-                buffer[1] = (Char)(0x80 | (codepoints[i] & 0x3F));          /* 10xxxxxx */
+                buffer[0] = cast_val((0xC0 | (codepoints[i] >> 6)), Char);            /* 110xxxxx */
+                buffer[1] = cast_val((0x80 | (codepoints[i] & 0x3F)), Char);          /* 10xxxxxx */
                 buffer += 2;
                 length += 2;
             } else if (codepoints[i] <= 0xFFFF) {
-                buffer[0] = (Char)(0xE0 | (codepoints[i] >> 12));           /* 1110xxxx */
-                buffer[1] = (Char)(0x80 | ((codepoints[i] >> 6) & 0x3F));   /* 10xxxxxx */
-                buffer[2] = (Char)(0x80 | (codepoints[i] & 0x3F));          /* 10xxxxxx */
+                buffer[0] = cast_val((0xE0 | (codepoints[i] >> 12)), Char);           /* 1110xxxx */
+                buffer[1] = cast_val((0x80 | ((codepoints[i] >> 6) & 0x3F)), Char);   /* 10xxxxxx */
+                buffer[2] = cast_val((0x80 | (codepoints[i] & 0x3F)), Char);          /* 10xxxxxx */
                 buffer += 3;
                 length += 3;
             } else if (codepoints[i] <= 0x10FFFF) {
-                buffer[0] = (Char)(0xF0 | (codepoints[i] >> 18));           /* 11110xxx */
-                buffer[1] = (Char)(0x80 | ((codepoints[i] >> 12) & 0x3F));  /* 10xxxxxx */
-                buffer[2] = (Char)(0x80 | ((codepoints[i] >> 6) & 0x3F));   /* 10xxxxxx */
-                buffer[3] = (Char)(0x80 | (codepoints[i] & 0x3F));          /* 10xxxxxx */
+                buffer[0] = cast_val((0xF0 | (codepoints[i] >> 18)), Char);           /* 11110xxx */
+                buffer[1] = cast_val((0x80 | ((codepoints[i] >> 12) & 0x3F)), Char);  /* 10xxxxxx */
+                buffer[2] = cast_val((0x80 | ((codepoints[i] >> 6) & 0x3F)), Char);   /* 10xxxxxx */
+                buffer[3] = cast_val((0x80 | (codepoints[i] & 0x3F)), Char);          /* 10xxxxxx */
                 buffer += 4;
                 length += 4;
             }
@@ -694,15 +706,15 @@ header_function
 LPWSTR unicodeWin32UTF16FromUTF8 (Char *utf8, Size *utf16_size)
 {
     int wcstr_length = MultiByteToWideChar(CP_UTF8, 0, utf8, -1, NLIB_NULL, 0);
-    DWORD wcstr_size = (DWORD)wcstr_length * sizeof(wchar_t);
-    LPWSTR wcstr = (LPWSTR)memAlloc(NLIB_UNICODE_ALLOCATOR, wcstr_size);
+    DWORD wcstr_size = cast_val(wcstr_length, DWORD) * sizeof(wchar_t);
+    LPWSTR wcstr = cast_val(memAlloc(NLIB_UNICODE_ALLOCATOR, wcstr_size), LPWSTR);
     MultiByteToWideChar(CP_UTF8, 0, utf8, -1, wcstr, wcstr_length);
 
     int normalized_length = NormalizeString(NormalizationC,
                                             wcstr, -1,
                                             NLIB_NULL, 0);
-    Size normalized_size = (DWORD)normalized_length * sizeof(wchar_t);
-    LPWSTR norm = (LPWSTR)memAlloc(NLIB_UNICODE_ALLOCATOR, normalized_size);
+    Size normalized_size = cast_val(normalized_length, Size) * sizeof(wchar_t);
+    LPWSTR norm = cast_val(memAlloc(NLIB_UNICODE_ALLOCATOR, normalized_size), LPWSTR);
     NormalizeString(NormalizationC, wcstr, -1, norm, normalized_length);
     *utf16_size = normalized_size;
 
@@ -781,13 +793,13 @@ Size printStringVarArg (Char *buffer, Size buffer_size, Char const *format, va_l
     Bool resume_output = true;
     if (buffer == NLIB_NULL) resume_output = false;
 
-#  define IS_OUTPUT_RESUMABLE(arg_space)        \
-    do {                                        \
-        if (resume_output &&                    \
-            ((Uptr)(buf + (Uptr)arg_space) >=   \
-             (Uptr)(buffer + buffer_size))) {   \
-            resume_output = false;              \
-        }                                       \
+#  define IS_OUTPUT_RESUMABLE(arg_space)                                \
+    do {                                                                \
+        Char *buf_extra  = buf + cast_val(arg_space, Uptr);             \
+        Char *buffer_end = buffer + buffer_size;                        \
+        if (resume_output && (cast_mem(buf_extra, Uptr) >= cast_mem(buffer_end, Uptr))) { \
+            resume_output = false;                                      \
+        }                                                               \
     } while (0)
 
     while (true) {
@@ -887,7 +899,7 @@ Size printStringVarArg (Char *buffer, Size buffer_size, Char const *format, va_l
                     flags |= Print_Flags_INT16;
                     fmt++;
                     if (fmt[0] == 'h') {
-                        flags &= (U32)~Print_Flags_INT16;
+                        flags &= ~cast_val(Print_Flags_INT16, U32);
                         flags |= Print_Flags_INT8;
                         fmt++;
                     }
@@ -911,6 +923,7 @@ Size printStringVarArg (Char *buffer, Size buffer_size, Char const *format, va_l
 
 #  define PRINT_STR_SIZE 2048ULL
             Char num_str[PRINT_STR_SIZE];
+            Char *num_str_ptr = num_str;
             Char *str = NLIB_NULL;
 
             Char head_str[8] = {0};
@@ -936,8 +949,8 @@ Size printStringVarArg (Char *buffer, Size buffer_size, Char const *format, va_l
 
                     // clamp to precision
                     // Since precision inits at -1, if none was mentioned, this will not execute
-                    if (len > (Size)precision) {
-                        len = (Size)precision;
+                    if (len > cast_val(precision, Size)) {
+                        len = cast_val(precision, Size);
                     }
 
                     precision = 0;
@@ -945,15 +958,15 @@ Size printStringVarArg (Char *buffer, Size buffer_size, Char const *format, va_l
 
                 case 'c': { // char
                     // get the character
-                    str = num_str + PRINT_STR_SIZE - 1;
-                    *str = (Char)va_arg(va, Sint);
+                    str = num_str_ptr + PRINT_STR_SIZE - 1;
+                    *str = cast_val(va_arg(va, Sint), Char);
                     len = 1;
                     precision = 0;
                 } break;
 
                 case 'n': { // weird write-bytes specifier
                     Sint *d = va_arg(va, Sint*);
-                    *d = (Sint)(buf - buffer);
+                    *d = cast_val((buf - buffer), Sint);
                 } break;
 
                 case 'b': case 'B':
@@ -984,12 +997,12 @@ Size printStringVarArg (Char *buffer, Size buffer_size, Char const *format, va_l
 
                     U64 num_dec = num;
                     if (flags & Print_Flags_INT8) {
-                        num_dec = (U8)num_dec;
+                        num_dec = cast_val(num_dec, U8);
                     } else if (flags & Print_Flags_INT16) {
-                        num_dec = (U16)num_dec;
+                        num_dec = cast_val(num_dec, U16);
                     }
 
-                    str = num_str + PRINT_STR_SIZE;
+                    str = num_str_ptr + PRINT_STR_SIZE;
 
                     if ((num == 0) && (precision == 0)) {
                         break;
@@ -1054,14 +1067,14 @@ Size printStringVarArg (Char *buffer, Size buffer_size, Char const *format, va_l
                             } break;
                         }
 
-                        if ((num_dec != 0) || (((num_str + PRINT_STR_SIZE) - str) < precision)) {
+                        if ((num_dec != 0) || (((num_str_ptr + PRINT_STR_SIZE) - str) < precision)) {
                             continue;
                         } else {
                             break;
                         }
                     }
 
-                    len = (((Uptr)num_str + PRINT_STR_SIZE) - (Uptr)str);
+                    len = (cast_mem(num_str_ptr, Uptr) + PRINT_STR_SIZE) - cast_mem(str, Uptr);
 
                     Char head_char = 0;
                     switch (base) {
@@ -1090,16 +1103,16 @@ Size printStringVarArg (Char *buffer, Size buffer_size, Char const *format, va_l
                     U64 num = 0;
                     if (flags & Print_Flags_INT64) {
                         S64 i64 = va_arg(va, S64);
-                        num = (U64)i64;
+                        num = cast_val(i64, U64);
                         if ((fmt[0] != 'u') && (i64 < 0)) {
-                            num = (U64)-i64;
+                            num = cast_val(-i64, U64);
                             flags |= Print_Flags_NEGATIVE;
                         }
                     } else {
                         S32 i = va_arg(va, S32);
-                        num = (U32)i;
+                        num = cast_val(i, U32);
                         if ((fmt[0] != 'u') && (i < 0)) {
-                            num = (U32)-i;
+                            num = cast_val(-i, U32);
                             flags |= Print_Flags_NEGATIVE;
                         }
                     }
@@ -1107,12 +1120,12 @@ Size printStringVarArg (Char *buffer, Size buffer_size, Char const *format, va_l
                     // convert to string
                     U64 num_dec = num;
                     if (flags & Print_Flags_INT8) {
-                        num_dec = (U8)num_dec;
+                        num_dec = cast_val(num_dec, U8);
                     } else if (flags & Print_Flags_INT16) {
-                        num_dec = (U16)num_dec;
+                        num_dec = cast_val(num_dec, U16);
                     }
 
-                    str = num_str + PRINT_STR_SIZE;
+                    str = num_str_ptr + PRINT_STR_SIZE;
 
                     if ((num == 0) && (precision == 0)) {
                         break;
@@ -1120,12 +1133,12 @@ Size printStringVarArg (Char *buffer, Size buffer_size, Char const *format, va_l
 
                     while (num_dec) {
                         str--;
-                        *str = (Char)(num_dec % 10) + '0';
+                        *str = cast_val(num_dec % 10, Char) + '0';
                         num_dec /= 10;
                     }
 
                     // get the length that we copied
-                    len = (((Uptr)num_str + PRINT_STR_SIZE) - (Uptr)str);
+                    len = (cast_mem(num_str_ptr, Uptr) + PRINT_STR_SIZE) - cast_mem(str, Uptr);
 
                     if (len == 0) {
                         --str;
@@ -1168,7 +1181,7 @@ Size printStringVarArg (Char *buffer, Size buffer_size, Char const *format, va_l
                     }
 
                     U64 num_dec = num;
-                    str = num_str + PRINT_STR_SIZE;
+                    str = num_str_ptr + PRINT_STR_SIZE;
 
                     while (true) {
                         U64 n = num_dec & 0xf;
@@ -1194,14 +1207,14 @@ Size printStringVarArg (Char *buffer, Size buffer_size, Char const *format, va_l
                             case 0xF: *str = 'F'; break;
                         }
 
-                        if ((num_dec != 0) || (((num_str + PRINT_STR_SIZE) - str) < precision)) {
+                        if ((num_dec != 0) || (((num_str_ptr + PRINT_STR_SIZE) - str) < precision)) {
                             continue;
                         } else {
                             break;
                         }
                     }
 
-                    len = (((Uptr)num_str + PRINT_STR_SIZE) - (Uptr)str);
+                    len = (cast_mem(num_str_ptr, Uptr) + PRINT_STR_SIZE) - cast_mem(str, Uptr);
                 } break;
 
                 case 'f': case 'F':
@@ -1211,7 +1224,7 @@ Size printStringVarArg (Char *buffer, Size buffer_size, Char const *format, va_l
                 } break;
 
                 case '%': {
-                    str = num_str;
+                    str = num_str_ptr;
                     str[0] = '%';
                     len = 1;
                     precision = 0;
@@ -1232,15 +1245,15 @@ Size printStringVarArg (Char *buffer, Size buffer_size, Char const *format, va_l
 
                 default: { // unknown, just copy conversion specification
                 nlib_print_unimplemented_feature:
-                    str = num_str;
+                    str = num_str_ptr;
                     while (format_pointer <= fmt) {
                         str[0] = format_pointer[0];
                         format_pointer++;
                         str++;
                     }
 
-                    len = (Size)(Dptr)(str - num_str);
-                    str = num_str;
+                    len = cast_val(str - num_str_ptr, Size);
+                    str = num_str_ptr;
                     precision = 0;
                 } break;
             }
@@ -1251,17 +1264,20 @@ Size printStringVarArg (Char *buffer, Size buffer_size, Char const *format, va_l
             tail_index = 0;
 
             // get minimum_width=leading/trailing space, precision=leading zeros
-            if ((Size)precision < len) {
-                precision = (Sint)len;
+            if (cast_val(precision, Size) < len) {
+                precision = cast_val(len, Sint);
             }
 
-            Sint zeros_head_tail = precision + (Sint)head_size + (Sint)tail_size + trailing_zeroes;
+            Sint zeros_head_tail = (precision +
+                                    cast_val(head_size, Sint) +
+                                    cast_val(tail_size, Sint) +
+                                    trailing_zeroes);
             if (minimum_width < zeros_head_tail) {
                 minimum_width = zeros_head_tail;
             }
 
             minimum_width -= zeros_head_tail;
-            precision -= (Sint)len;
+            precision -= cast_val(len, Sint);
 
             // handle right justify and leading zeros
             if ((flags & Print_Flags_LEFT_JUSTIFIED) == 0) {
@@ -1277,10 +1293,10 @@ Size printStringVarArg (Char *buffer, Size buffer_size, Char const *format, va_l
                 if ((flags & Print_Flags_LEFT_JUSTIFIED) == 0) {
                     IS_OUTPUT_RESUMABLE(minimum_width);
                     if (resume_output) {
-                        memset(buf, ' ', (Size)minimum_width);
+                        memset(buf, ' ', cast_val(minimum_width, Size));
                         buf += minimum_width;
                     }
-                    needed_size += (Size)minimum_width;
+                    needed_size += cast_val(minimum_width, Size);
                 }
 
                 { // copy the head
@@ -1296,10 +1312,10 @@ Size printStringVarArg (Char *buffer, Size buffer_size, Char const *format, va_l
                 { // copy leading zeros
                     IS_OUTPUT_RESUMABLE(precision);
                     if (resume_output) {
-                        memset(buf, '0', (Size)precision);
+                        memset(buf, '0', cast_val(precision, Size));
                         buf += precision;
                     }
-                    needed_size += (Size)precision;
+                    needed_size += cast_val(precision, Size);
                 }
             }
 
@@ -1329,10 +1345,10 @@ Size printStringVarArg (Char *buffer, Size buffer_size, Char const *format, va_l
             { // copy trailing zeroes
                 IS_OUTPUT_RESUMABLE(trailing_zeroes);
                 if (resume_output) {
-                    memset(buf, '0', (Size)trailing_zeroes);
-                    buf += (Size)trailing_zeroes;
+                    memset(buf, '0', cast_val(trailing_zeroes, Size));
+                    buf += cast_val(trailing_zeroes, Size);
                 }
-                needed_size += (Size)trailing_zeroes;
+                needed_size += cast_val(trailing_zeroes, Size);
             }
 
             { // copy the tail
@@ -1349,10 +1365,10 @@ Size printStringVarArg (Char *buffer, Size buffer_size, Char const *format, va_l
                 if (minimum_width > 0) {
                     IS_OUTPUT_RESUMABLE(minimum_width);
                     if (resume_output) {
-                        memset(buf, ' ', (Size)minimum_width);
+                        memset(buf, ' ', cast_val(minimum_width, Size));
                         buf += minimum_width;
                     }
-                    needed_size += (Size)minimum_width;
+                    needed_size += cast_val(minimum_width, Size);
                 }
 
             fmt++;
@@ -1383,7 +1399,7 @@ Size printConsole (Sint fd, Char const *format, va_list ap)
 
     // FIXME(naman): Remove these double calls once printStringVarArg starts yielding
     Size buffer_size = printStringVarArg(NLIB_NULL, 0, format, ap1);
-    Char *buffer = (Char*)memAlloc(NLIB_PRINT_ALLOCATOR, buffer_size + 1);
+    Char *buffer = cast_val(memAlloc(NLIB_PRINT_ALLOCATOR, buffer_size + 1), Char*);
     printStringVarArg(buffer, buffer_size + 1, format, ap2);
 
     HANDLE out_stream;
@@ -1399,10 +1415,10 @@ Size printConsole (Sint fd, Char const *format, va_list ap)
         // NOTE(naman): We use WriteFile instead of WriteConsoleA/W here since
         // WriteConsole functions can't be redirected to write to a file,
         // while WriteFile obviously can be.
-        WriteFile(out_stream, buffer, (DWORD)buffer_size, &written, NLIB_NULL);
+        WriteFile(out_stream, buffer, cast_val(buffer_size, DWORD), &written, NLIB_NULL);
     }
 
-    memDealloc(NLIB_PRINT_ALLOCATOR, (void*)buffer, buffer_size + 1);
+    memDealloc(NLIB_PRINT_ALLOCATOR, cast_val(buffer, void*), buffer_size + 1);
 
     va_end(ap1);
     va_end(ap2);
@@ -1419,7 +1435,7 @@ Size printDebugOutputV (Char const *format, va_list ap)
 
     // FIXME(naman): Remove these double calls once printStringVarArg starts yielding
     Size buffer_size = printStringVarArg(NLIB_NULL, 0, format, ap1);
-    Char *buffer = (Char*)memAlloc(NLIB_PRINT_ALLOCATOR, buffer_size + 1);
+    Char *buffer = cast_val(memAlloc(NLIB_PRINT_ALLOCATOR, buffer_size + 1), Char*);
     printStringVarArg(buffer, buffer_size + 1, format, ap2);
 
     Size wcstr_size;
@@ -1427,7 +1443,7 @@ Size printDebugOutputV (Char const *format, va_list ap)
     OutputDebugStringW(wcstr);
     unicodeWin32UTF16Dealloc(wcstr, wcstr_size);
 
-    memDealloc(NLIB_PRINT_ALLOCATOR, (void*)buffer, buffer_size + 1);
+    memDealloc(NLIB_PRINT_ALLOCATOR, cast_val(buffer, void*), buffer_size + 1);
 
     va_end(ap1);
     va_end(ap2);
@@ -1888,16 +1904,16 @@ U64 bitFindLSBU64 (U64 x)
 header_function
 U32 bitFindMSBU32 (U32 x)
 {
-    if (x == 0) return (U32)-1;
-    U32 result = 32U - (U32)__builtin_clz(x) - 1U;
+    if (x == 0) return cast_val(-1, U32);
+    U32 result = 32U - cast_val(__builtin_clz(x), U32) - 1U;
     return result;
 }
 
 header_function
 U64 bitFindMSBU64 (U64 x)
 {
-    if (x == 0) return (U64)-1;
-    U64 result = 64LLU - (U64)__builtin_clzll(x) - 1LLU;
+    if (x == 0) return cast_val(-1LL, U64);
+    U64 result = 64LLU - cast_val(__builtin_clzll(x), U64) - 1LLU;
     return result;
 }
 
@@ -1907,16 +1923,16 @@ U64 bitFindMSBU64 (U64 x)
 header_function
 U32 bitFindLSBU32 (U32 x)
 {
-    if (x == 0) return (U32)-1;
-    U32 result = (U32)__builtin_ctz(x);
+    if (x == 0) return cast_val(-1, U32);
+    U32 result = cast_val(__builtin_ctz(x), U32);
     return result;
 }
 
 header_function
 U64 bitFindLSBU64 (U64 x)
 {
-    if (x == 0) return (U64)-1;
-    U64 result = (U64)__builtin_ctzll(x);
+    if (x == 0) return cast_val(-1LL, U64);
+    U64 result = cast_val(__builtin_ctzll(x), U64);
     return result;
 }
 
@@ -1948,19 +1964,19 @@ header_function U64 bitFindLSB (U64 x) { return bitFindLSBU64(x); }
 
 # if !defined(NLIB_EXCLUDE_MATH)
 
-#  define Mk_E(type)            ((type)2.718281828459045235360287471352662498) /* e */
-#  define Mk_LOG2_E(type)       ((type)1.442695040888963407359924681001892137) /* log_2 e */
-#  define Mk_LOG10_E(type)      ((type)0.434294481903251827651128918916605082) /* log_10 e */
-#  define Mk_LN_2(type)         ((type)0.693147180559945309417232121458176568) /* log_e 2 */
-#  define Mk_LN_10(type)        ((type)2.302585092994045684017991454684364208) /* log_e 10 */
-#  define Mk_PI(type)           ((type)3.141592653589793238462643383279502884) /* pi */
-#  define Mk_PI_BY_2(type)      ((type)1.570796326794896619231321691639751442) /* pi/2 */
-#  define Mk_PI_BY_4(type)      ((type)0.785398163397448309615660845819875721) /* pi/4 */
-#  define Mk_1_BY_PI(type)      ((type)0.318309886183790671537767526745028724) /* 1/pi */
-#  define Mk_2_BY_PI(type)      ((type)0.636619772367581343075535053490057448) /* 2/pi */
-#  define Mk_2_BY_SQRT_PI(type) ((type)1.128379167095512573896158903121545172) /* 2/sqrt(pi) */
-#  define Mk_SQRT_2(type)       ((type)1.414213562373095048801688724209698079) /* sqrt(2) */
-#  define Mk_1_BY_SQRT_2(type)  ((type)0.707106781186547524400844362104849039) /* 1/sqrt(2) */
+#  define Mk_E(type)            (cast_val(2.718281828459045235360287471352662498, type)) /* e */
+#  define Mk_LOG2_E(type)       (cast_val(1.442695040888963407359924681001892137, type)) /* log_2 e */
+#  define Mk_LOG10_E(type)      (cast_val(0.434294481903251827651128918916605082, type)) /* log_10 e */
+#  define Mk_LN_2(type)         (cast_val(0.693147180559945309417232121458176568, type)) /* log_e 2 */
+#  define Mk_LN_10(type)        (cast_val(2.302585092994045684017991454684364208, type)) /* log_e 10 */
+#  define Mk_PI(type)           (cast_val(3.141592653589793238462643383279502884, type)) /* pi */
+#  define Mk_PI_BY_2(type)      (cast_val(1.570796326794896619231321691639751442, type)) /* pi/2 */
+#  define Mk_PI_BY_4(type)      (cast_val(0.785398163397448309615660845819875721, type)) /* pi/4 */
+#  define Mk_1_BY_PI(type)      (cast_val(0.318309886183790671537767526745028724, type)) /* 1/pi */
+#  define Mk_2_BY_PI(type)      (cast_val(0.636619772367581343075535053490057448, type)) /* 2/pi */
+#  define Mk_2_BY_SQRT_PI(type) (cast_val(1.128379167095512573896158903121545172, type)) /* 2/sqrt(pi) */
+#  define Mk_SQRT_2(type)       (cast_val(1.414213562373095048801688724209698079, type)) /* sqrt(2) */
+#  define Mk_1_BY_SQRT_2(type)  (cast_val(0.707106781186547524400844362104849039, type)) /* 1/sqrt(2) */
 
 // FIXME(naman): Make these functions not depend on libm
 
@@ -2164,8 +2180,8 @@ U64 randomU64 (U64 seed)
 
     U64 a = 214013ULL;
 
-    __uint128_t product = (__uint128_t)previous * (__uint128_t)a;
-    U64 upper = product >> 64, lower = (U64)product;
+    __uint128_t product = cast_val(previous, __uint128_t) * cast_val(a, __uint128_t);
+    U64 upper = product >> 64, lower = cast_val(product, U64);
     U64 log_upper = upper ? mLog2U64(upper) : 0;
     U64 shift_amount = 64 - (log_upper + 1);
     upper = (upper << shift_amount) | (lower >> log_upper);
@@ -2193,7 +2209,7 @@ U64 hashString (Char *str)
 {
     U64 hash = 0xCBF29CE484222325ULL; // FNV_offset_basis
     for (Size i = 0; str[i] != '\0'; i++) {
-        hash = hash ^ (U64)str[i];
+        hash = hash ^ cast_val(str[i], U64);
         hash = hash * 0x100000001B3ULL; // FNV_prime
     }
 
@@ -2574,7 +2590,7 @@ struct Ra_Struct {
         Size new_cap = mMax(elem_count, 16U);
         Size new_size = new_cap * sizeof(T);
 
-        buf = (T *)memRealloc(allocator, buf, new_size, old_size);
+        buf = cast_val(memRealloc(allocator, buf, new_size, old_size), T *);
 
         cap = new_cap;
     }
@@ -2598,7 +2614,7 @@ ra(T) ra_Create (ra(T) *, Size min_cap, Memory_Allocator allocator)
     Size new_cap = (min_cap != 0) ? min_cap : 16;
     Size new_size = (new_cap * sizeof(T));
 
-    T *new_buffer = (T *)memAlloc(allocator, new_size);
+    T *new_buffer = cast_val(memAlloc(allocator, new_size), T *);
 
     result.cap = new_cap;
     result.allocator = allocator;
@@ -2661,10 +2677,10 @@ typedef struct {
 #   define sbCreateAlloc(alloc)               (String_Builder){.str = ra_Create(sizeof(Char),  0,       alloc)}
 #   define sbCreateAllocSized(min_cap, alloc) (String_Builder){.str = ra_Create(sizeof(Char),  min_cap, alloc)}
 #  elif defined(LANG_CPP)
-#   define sbCreate()                         {ra_Create((ra(Char)*)NULL,  0,       memCRTGet())}
-#   define sbCreateSized(min_cap)             {ra_Create((ra(Char)*)NULL,  min_cap, memCRTGet())}
-#   define sbCreateAlloc(alloc)               {ra_Create((ra(Char)*)NULL,  0,       alloc)}
-#   define sbCreateAllocSized(min_cap, alloc) {ra_Create((ra(Char)*)NULL,  min_cap, alloc)}
+#   define sbCreate()                         {ra_Create(cast_val(NLIB_NULL, ra(Char)*),  0,       memCRTGet())}
+#   define sbCreateSized(min_cap)             {ra_Create(cast_val(NLIB_NULL, ra(Char)*),  min_cap, memCRTGet())}
+#   define sbCreateAlloc(alloc)               {ra_Create(cast_val(NLIB_NULL, ra(Char)*),  0,       alloc)}
+#   define sbCreateAllocSized(min_cap, alloc) {ra_Create(cast_val(NLIB_NULL, ra(Char)*),  min_cap, alloc)}
 #  endif
 
 #  define sbPrint(sb, ...)         ((sb).str = sb_Print((sb).str, __VA_ARGS__))
@@ -2679,13 +2695,14 @@ ra(Char) sb_Print (ra(Char) buf, const Char *fmt, ...)
     va_list args;
 
     va_start(args, fmt);
-    size_t cap = raMaxElemin(buf) - raElemin(buf);
-    Size n = 1 + printStringVarArg(raOnePastLast(buf), cap, fmt, args);
+    Size cap = raMaxElemin(buf) - raElemin(buf);
+    Size print_size = printStringVarArg(raOnePastLast(buf), cap, fmt, args);
+    Size n = 1 + print_size;
     va_end(args);
 
-    if ((Size)n > cap) {
+    if (cast_val(n, Size) > cap) {
         raResize(buf, raSizeof(buf) + n);
-        size_t new_cap = raMaxSizeof(buf) - raSizeof(buf);
+        Size new_cap = raMaxSizeof(buf) - raSizeof(buf);
         va_start(args, fmt);
         n = 1 + printStringVarArg(raOnePastLast(buf), new_cap, fmt, args);
         va_end(args);
@@ -2989,9 +3006,9 @@ U8 internStringPearsonHash (void *buffer, Size len, Bool which)
             216, 131,  89,  21,  28, 133,  37, 153, 149,  80, 170,  68,   6, 169, 234, 151, // 16
         };
 
-    Char *string = (Char*)buffer;
+    Char *string = cast_val(buffer, Char*);
 
-    U8 hash = (U8)len;
+    U8 hash = cast_val(len, U8);
     for (Size i = 0; i < len; i++) {
         if (which == true) {
             hash = hash_lookup_table1[hash ^ string[i]];
@@ -3010,8 +3027,8 @@ typedef struct Intern_String {
 
 header_function
 INTERN_EQUALITY(internStringEquality) {
-    Char *sa = (Char*)a;
-    ra(Char) *ss = (ra(Char) *)b;
+    Char *sa = cast_val(a, Char*);
+    ra(Char) *ss = cast_val(b, ra(Char) *);
     ra(Char) sb = ss[b_index];
     Bool result = streq(sa, raPtr(sb));
     return result;
@@ -3104,8 +3121,8 @@ Intern_Integer internIntegerCreate (void)
 
 header_function
 INTERN_EQUALITY(internIntegerEquality) {
-    U64 ia = ((U64*)a)[0];
-    U64 ib = ((U64*)b)[b_index];
+    U64 ia = (cast_val(a, U64*))[0];
+    U64 ib = (cast_val(b, U64*))[b_index];
 
     Bool result = (ia == ib);
     return result;
@@ -3125,9 +3142,10 @@ U8 internIntegerHash8Bit (U64 key, Bool which)
         q = 146519;
     }
 
-    Byte *b = (Byte*)(&key);
+    U64 *key_addr = &key;
+    Byte *b = cast_mem(key_addr, Byte*);
     for (Size i = 0; i < sizeof(key); i++) {
-        result += (U8)((U64)(b[i]) * q);
+        result += cast_val((cast_val(b[i], U64) * q), U8);
     }
 
     return result;
@@ -3217,8 +3235,8 @@ Hash_Table ht_Create (Size slots_atleast, Memory_Allocator allocator)
 
     ht.allocator = allocator;
 
-    ht.keys     = (U64*)memAlloc(ht.allocator, ht.slot_count * sizeof(*(ht.keys)));
-    ht.values   = (U64*)memAlloc(ht.allocator, ht.slot_count * sizeof(*(ht.values)));
+    ht.keys     = cast_val(memAlloc(ht.allocator, ht.slot_count * sizeof(*(ht.keys))),   U64*);
+    ht.values   = cast_val(memAlloc(ht.allocator, ht.slot_count * sizeof(*(ht.values))), U64*);
 
     memset(ht.keys,   0, ht.slot_count * sizeof(*(ht.keys)));
     memset(ht.values, 0, ht.slot_count * sizeof(*(ht.values)));
@@ -3337,7 +3355,7 @@ header_function
 U64 htInsert (Hash_Table *ht, U64 key, U64 value)
 {
     // FIXME(naman): Figure out the correct condition on which to resize on.
-    const Uint max_collisions_allowed = (Uint)ht->slot_count;
+    const Uint max_collisions_allowed = cast_val(ht->slot_count, Uint);
 
     if (key == 0) {
         return 0;
@@ -3364,8 +3382,8 @@ U64 htInsert (Hash_Table *ht, U64 key, U64 value)
         Size k_size = ht->slot_count * sizeof(*(ht->keys));
         Size v_size = ht->slot_count * sizeof(*(ht->values));
 
-        ht->keys   = (U64*)memAlloc(ht->allocator, k_size);
-        ht->values = (U64*)memAlloc(ht->allocator, v_size);
+        ht->keys   = cast_val(memAlloc(ht->allocator, k_size), U64*);
+        ht->values = cast_val(memAlloc(ht->allocator, v_size), U64*);
 
         memset(ht->keys,   0, k_size);
         memset(ht->values, 0, v_size);

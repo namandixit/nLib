@@ -33,7 +33,7 @@ Color colorNew (F32 a, F32 b, F32 c, F32 d)
 header_function
 U32 colorBGRX32LE(U8 r, U8 g, U8 b)
 {
-    return (((U32)r << 16U) | ((U32)g << 8U) | (U32)b);
+    return ((cast_val(r, U32) << 16U) | (cast_val(g, U32) << 8U) | cast_val(b, U32));
 }
 
 #ifdef LANG_CPP

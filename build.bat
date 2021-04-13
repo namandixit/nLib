@@ -111,7 +111,7 @@ SET CPPSynCompiler=clang++
 SET CPPSynCompilerFlags=-g3 -O0 -fno-strict-aliasing -fwrapv -msse2
 SET CPPSynLanguageFlags=--std=c++14 -DBUILD_INTERNAL -DBUILD_DEBUG -DBUILD_SLOW
 SET CPPSynWarningFlags=-Weverything -Wpedantic -pedantic-errors -Werror ^
-                       -Wno-old-style-cast -Wno-c++98-compat-pedantic -Wno-writable-strings ^
+                       -Wno-c++98-compat-pedantic -Wno-writable-strings ^
                        -Wno-gnu-anonymous-struct
 SET CPPSynLinkerFlags=-o %CPPTargetPath%.syntax_checking.exe
 

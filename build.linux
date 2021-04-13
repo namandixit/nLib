@@ -26,60 +26,73 @@ echo "Entering directory \`$(pwd)'"
 # BUILD
 # `````````````````````````````````````````````````````````````````````
 
-Source="${ProjectRoot}/test.c"
-Target="test"
-TargetPath="${BuildDirectory}/${Target}"
-
-if [ -f "${TargetPath}" ]; then
-    rm "${TargetPath}"
-fi
-
 # NOTE(naman): The RUNPATH is not set for the game.so file. Instead, it is set so that any user
 # may drop libGL.so or such in the directory to inject custom code for modding.
 
 # For Address Sanitizer: -fsanitize=address -fno-omit-frame-pointer
 #     Memory Sanitizer : -fsanitize=memory -fno-optimize-sibling-calls -fno-omit-frame-pointer -fsanitize-memory-track-origins
 
-echo "Libc Build ==============================================================="
+echo "C Build ==============================================================="
 
-LibcCompiler="clang"
-LibcWarningFlags="-Weverything -Wpedantic -pedantic-errors -Werror \
-                  -Wno-c++98-compat \
-                  "
-LibcCompilerFlags="-iquote . \
-                   -g3 -O0 -fno-strict-aliasing -fwrapv -msse2 \
-                   "
-LibcLanguageFlags="--std=c18 -DBUILD_INTERNAL -DBUILD_SLOW -DBUILD_DEBUG \
-                   -DBUILD_NUMBER=${NEW_BUILD_NUMBER} \
-                   -D_POSIX_C_SOURCE=200809L -D_DEFAULT_SOURCE"
-LibcLinkerFlags="-o ${TargetPath}.libc \
-                  -static-libgcc -pthread \
-                 -Wl,-rpath=\${ORIGIN} -Wl,-z,origin -Wl,--enable-new-dtags \
-                 "
+CSource="${ProjectRoot}/test.c"
+CTarget="test.c.elf"
+CTargetPath="${BuildDirectory}/${CTarget}"
 
-${LibcCompiler} ${LibcCompilerFlags} ${LibcLanguageFlags} ${LibcWarningFlags} \
-            ${Source} \
-            ${LibcLinkerFlags}
+if [ -f "${CTargetPath}" ]; then
+    rm "${CTargetPath}"
+fi
+
+CCompiler="clang"
+CWarningFlags="-Weverything -Wpedantic -pedantic-errors -Werror \
+               -Wno-c++98-compat \
+              "
+CCompilerFlags="-g3 -O0 -fno-strict-aliasing -fwrapv -msse2 \
+               "
+CLanguageFlags="--std=c18 -DBUILD_INTERNAL -DBUILD_SLOW -DBUILD_DEBUG \
+                -DBUILD_NUMBER=${NEW_BUILD_NUMBER} \
+                -D_POSIX_C_SOURCE=200809L -D_DEFAULT_SOURCE \
+               "
+CLinkerFlags="-o ${CTargetPath} \
+              -static-libgcc -pthread \
+              -Wl,-rpath=\${ORIGIN} -Wl,-z,origin -Wl,--enable-new-dtags \
+             "
+
+${CCompiler} ${CCompilerFlags} ${CLanguageFlags} ${CWarningFlags} \
+             ${CSource} \
+             ${CLinkerFlags}
 
 
-# C++ Syntax Check
-CPPSource=${ProjectRoot}/test.cpp
+echo "C++ Build ============================================================="
+
+CPPSource="${ProjectRoot}/test.cpp"
+CPPTarget="test.cpp.elf"
+CPPTargetPath="${BuildDirectory}/${CPPTarget}"
+
+if [ -f "${CPPTargetPath}" ]; then
+    rm "${CPPTargetPath}"
+fi
+
 
 CPPCompiler="clang++"
 CPPWarningFlags="-Weverything -Wpedantic -pedantic-errors -Werror \
                  -Wno-old-style-cast -Wno-c++98-compat-pedantic \
                  -Wno-writable-strings -Wno-zero-length-array \
+                 -Wno-c++20-designator -Wno-gnu-anonymous-struct \
+                "
+CPPCompilerFlags="-g3 -O0 -fno-strict-aliasing -fwrapv -msse2 \
                  "
-CPPCompilerFlags="-iquote ${ProjectRoot}/../../include -fsyntax-only \
-                  -g3 -O0 -fno-strict-aliasing -fwrapv -msse2 \
-                  "
-CPPLanguageFlags="--std=c++20 -DBUILD_INTERNAL -DBUILD_SLOW -DBUILD_DEBUG \
+CPPLanguageFlags="--std=c++14 -DBUILD_INTERNAL -DBUILD_SLOW -DBUILD_DEBUG \
                   -DBUILD_NUMBER=${NEW_BUILD_NUMBER} \
-                  -D_POSIX_C_SOURCE=200809L -D_DEFAULT_SOURCE"
-
-echo "C++ Syntax Check ========================================================="
+                  -D_POSIX_C_SOURCE=200809L -D_DEFAULT_SOURCE \
+                 "
+CPPLinkerFlags="-o ${CPPTargetPath} \
+                -static-libgcc -static-libstdc++ -pthread \
+                -Wl,-rpath=\${ORIGIN} -Wl,-z,origin -Wl,--enable-new-dtags \
+               "
 
 ${CPPCompiler} ${CPPCompilerFlags} ${CPPLanguageFlags} ${CPPWarningFlags} \
-               ${CPPSource}
+               ${CPPSource} \
+               ${CPPLinkerFlags}
+
 
 popd > /dev/null

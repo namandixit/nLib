@@ -197,15 +197,15 @@
 /* Platform dependent Headers -------------------------------------------------- */
 
 # if defined(OS_WINDOWS)
-#  if defined(COMPILER_MSVC)
-#   pragma warning(push)
-#    pragma warning(disable:4255)
-#    pragma warning(disable:4668)
-#  endif
+#  define WIN32_LEAN_AND_MEAN
+#  define NOGDI
+#  define NOMINMAX
+#  define VC_EXTRALEAN
 #  include <Windows.h>
-#  if defined(COMPILER_MSVC)
-#   pragma warning(pop)
-#  endif
+#  undef WIN32_LEAN_AND_MEAN
+#  undef NOGDI
+#  undef NOMINMAX
+#  undef VC_EXTRALEAN
 # elif defined(OS_LINUX)
 #  include <sys/types.h>
 #  include <sys/stat.h>

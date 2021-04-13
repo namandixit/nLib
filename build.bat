@@ -40,21 +40,23 @@ SET CTarget=test.c.exe
 SET CTargetPath=%BuildDirectory%\%CTarget%
 
 REM LINK.EXE does some incremental linking thing-a-majig and deleting executable prevents it
-REM IF EXIST %CTarget% del %CTarget%
+REM IF EXIST %CTargetPath% del %CTargetPath%
 
 REM SYNTAX CHECK ========================================================
 
 ECHO C Syntax Check (Clang) ===========================================
 
 SET CSynCompiler=clang
-SET CSynCompilerFlags=-fsyntax-only
+SET CSynCompilerFlags=-g3 -O0 -fno-strict-aliasing -fwrapv -msse2
 SET CSynLanguageFlags=--std=c18 -DBUILD_INTERNAL -DBUILD_DEBUG -DBUILD_SLOW
 SET CSynWarningFlags=-Weverything -Wpedantic -pedantic-errors -Werror ^
                      -Wno-c++98-compat
+SET CSynLinkerFlags=-o %CTargetPath%.syntax_checking.exe
 
 WHERE %CSynCompiler% >nul 2>&1
 IF %ERRORLEVEL% EQU 0 (
-    %CSynCompiler% %CSynCompilerFlags% %CSynLanguageFlags% %CSynWarningFlags% %CSource%
+    %CSynCompiler% %CSynCompilerFlags% %CSynLanguageFlags% %CSynWarningFlags% %CSource% %CSynLinkerFlags%
+    del %CTargetPath%.syntax_checking.*
 )
 
 REM COMPILING ===========================================================
@@ -98,22 +100,24 @@ SET CPPTarget=test.cpp.exe
 SET CPPTargetPath=%BuildDirectory%\%CPPTarget%
 
 REM LINK.EXE does some incremental linking thing-a-majig and deleting executable prevents it
-REM IF EXIST %CPPTarget% del %CPPTarget%
+REM IF EXIST %CPPTargetPath% del %CPPTargetPath%
 
 REM SYNTAX CHECK ========================================================
 
 ECHO C++ Syntax Check (Clang) =========================================
 
 SET CPPSynCompiler=clang++
-SET CPPSynCompilerFlags=-fsyntax-only
+SET CPPSynCompilerFlags=-g3 -O0 -fno-strict-aliasing -fwrapv -msse2
 SET CPPSynLanguageFlags=--std=c++14 -DBUILD_INTERNAL -DBUILD_DEBUG -DBUILD_SLOW
 SET CPPSynWarningFlags=-Weverything -Wpedantic -pedantic-errors -Werror ^
                        -Wno-old-style-cast -Wno-c++98-compat-pedantic -Wno-writable-strings ^
                        -Wno-gnu-anonymous-struct
+SET CPPSynLinkerFlags=-o %CPPTargetPath%.syntax_checking.exe
 
 WHERE %CPPSynCompiler% >nul 2>&1
 IF %ERRORLEVEL% EQU 0 (
-    %CPPSynCompiler% %CPPSynCompilerFlags% %CPPSynLanguageFlags% %CPPSynWarningFlags% %CPPSource%
+    %CPPSynCompiler% %CPPSynCompilerFlags% %CPPSynLanguageFlags% %CPPSynWarningFlags% %CPPSource% %CPPSynLinkerFlags%
+    del %CPPTargetPath%.syntax_checking.*
 )
 
 REM COMPILING ===========================================================

@@ -350,7 +350,24 @@ typedef char                 Char;
 # define gensym2_(prefix, suffix) gensym_cat_(prefix, suffix)
 # define gensym_cat_(prefix, suffix) prefix ## suffix
 
+#define entail(...)                                                     \
+    goto gensym_line(jump_to_else);                                     \
+                                                                        \
+    while (true)                                                        \
+        if (true) {                                                     \
+            __VA_ARGS__;                                                \
+            break;                                                      \
+        } else gensym_line(jump_to_else):
 
+#define envelop(cloak_arg_pre_action, cloak_arg_post_action)            \
+    cloak_arg_pre_action;                                               \
+    goto gensym_line(jump_to_else);                                     \
+                                                                        \
+    while (true)                                                        \
+        if (true) {                                                     \
+            cloak_arg_post_action;                                      \
+            break;                                                      \
+        } else gensym_line(jump_to_else):
 
 /* ==================
  * @Report

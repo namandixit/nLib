@@ -64,7 +64,8 @@ REM COMPILING ===========================================================
 ECHO C Compile (MSVC) =================================================
 
 SET CCompiler=cl
-SET CCompilerFlags=/nologo /Zi /FC /Oi
+SET CCompilerFlags=/nologo /Zi /FC /Oi ^
+                   /source-charset:utf-8 /execution-charset:utf-8
 REM nologo - Don't print MSVC version info upon invocation
 REM Zi - Create debug info
 REM FC - Give full file paths in diagnostics
@@ -125,7 +126,8 @@ REM COMPILING ===========================================================
 ECHO C++ Compile (MSVC) ===============================================
 
 SET CPPCompiler=cl
-SET CPPCompilerFlags=/nologo /Zi /FC /Oi
+SET CPPCompilerFlags=/nologo /Zi /FC /Oi ^
+                     /source-charset:utf-8 /execution-charset:utf-8
 REM nologo - Don't print MSVC version info upon invocation
 REM Zi - Create debug info
 REM FC - Give full file paths in diagnostics

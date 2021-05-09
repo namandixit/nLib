@@ -210,15 +210,11 @@
 /* Platform dependent Headers -------------------------------------------------- */
 
 # if defined(OS_WINDOWS)
-#  define WIN32_LEAN_AND_MEAN
-#  define NOGDI
 #  define NOMINMAX
-#  define VC_EXTRALEAN
+#  define COBJMACROS
 #  include <Windows.h>
-#  undef WIN32_LEAN_AND_MEAN
-#  undef NOGDI
+#  undef COBJMACROS
 #  undef NOMINMAX
-#  undef VC_EXTRALEAN
 # elif defined(OS_LINUX)
 #  include <sys/types.h>
 #  include <sys/stat.h>
